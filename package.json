@@ -1,0 +1,16 @@
+{
+  "name": "trading-signals",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node simple-server.cjs",
+    "start:simple": "node simple-server.cjs",
+    "start:win": "powershell -ExecutionPolicy Bypass -File ./start-app.ps1"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {}
+}

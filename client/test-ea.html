@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test EA Data</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #1a1a1a; color: #fff; }
+        .box { background: #2a2a2a; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .value { font-size: 24px; font-weight: bold; color: #10b981; }
+        .label { color: #94a3b8; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🎯 MT4/MT5 EA Data Test</h1>
+    <div class="box">
+        <div class="label">Account Number</div>
+        <div class="value" id="account">-</div>
+    </div>
+    <div class="box">
+        <div class="label">Balance</div>
+        <div class="value" id="balance">$0.00</div>
+    </div>
+    <div class="box">
+        <div class="label">Equity</div>
+        <div class="value" id="equity">$0.00</div>
+    </div>
+    <div class="box">
+        <div class="label">Floating P/L</div>
+        <div class="value" id="profit">$0.00</div>
+    </div>
+    <div class="box">
+        <div class="label">Open Positions</div>
+        <div class="value" id="positions">0</div>
+    </div>
+    <div class="box">
+        <div class="label">Last Update</div>
+        <div class="value" id="timestamp" style="font-size: 14px;">-</div>
+    </div>
+
+    <script>
+        async function fetchData() {
+            try {
+                const response = await fetch('/api/mt/account?account=12345678');
+                const data = await response.json();
+                
+                document.getElementById('account').textContent = data.accountNumber;
+                document.getElementById('balance').textContent = '$' + data.balance.toFixed(2);
+                document.getElementById('equity').textContent = '$' + data.equity.toFixed(2);
+                document.getElementById('profit').textContent = (data.profit >= 0 ? '+' : '') + '$' + data.profit.toFixed(2);
+                document.getElementById('profit').style.color = data.profit >= 0 ? '#10b981' : '#ef4444';
+                document.getElementById('positions').textContent = data.openPositions;
+                document.getElementById('timestamp').textContent = new Date(data.timestamp).toLocaleString();
+                
+                console.log('✅ Data updated:', data);
+            } catch (error) {
+                console.error('❌ Error:', error);
+            }
+        }
+
+        // Fetch immediately
+        fetchData();
+        
+        // Refresh every 2 seconds
+        setInterval(fetchData, 2000);
+    </script>
+</body>
+</html>

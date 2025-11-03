@@ -1,0 +1,1710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Trading Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse-glow {
+            animation: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes slide-in {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .animate-slide-in {
+            animation: slide-in 0.3s ease-out;
+        }
+        .sidebar-collapsed {
+            width: 60px;
+        }
+        .sidebar-expanded {
+            width: 320px;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex">
+    
+    <!-- Left Sidebar - MT4/MT5 Connection -->
+    <aside id="sidebar" class="sidebar-expanded bg-slate-900/80 backdrop-blur-xl border-r border-slate-800 transition-all duration-300 flex flex-col">
+        <!-- Sidebar Header -->
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
+                    <span class="text-lg">🔗</span>
+                </div>
+                <span class="text-sm font-bold text-white sidebar-text">MT4/MT5</span>
+            </div>
+            <button onclick="toggleSidebar()" class="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
+                <svg id="sidebar-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Connection Status -->
+        <div class="p-4 border-b border-slate-800">
+            <div class="flex items-center gap-2 mb-3">
+                <div id="mt-status-dot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></div>
+                <span id="mt-status-text" class="text-xs font-semibold text-slate-400 sidebar-text">DISCONNECTED</span>
+            </div>
+            <div class="sidebar-text text-[10px] text-slate-500">
+                <div>Server: <span id="mt-server-display" class="text-slate-400">Not connected</span></div>
+                <div>Account: <span id="mt-account-display" class="text-slate-400">-</span></div>
+            </div>
+        </div>
+
+        <!-- Account Information (shown when connected) -->
+        <div id="account-info" class="hidden border-b border-slate-800 p-4 space-y-3 sidebar-content">
+            <div class="text-xs font-bold text-white mb-2">💰 Account Information</div>
+            
+            <!-- Balance -->
+            <div class="flex justify-between items-center">
+                <span class="text-[10px] text-slate-400">Balance:</span>
+                <span id="account-balance" class="text-sm font-bold text-emerald-400">$0.00</span>
+            </div>
+            
+            <!-- Equity -->
+            <div class="flex justify-between items-center">
+                <span class="text-[10px] text-slate-400">Equity:</span>
+                <span id="account-equity" class="text-sm font-bold text-white">$0.00</span>
+            </div>
+            
+            <!-- Margin -->
+            <div class="flex justify-between items-center">
+                <span class="text-[10px] text-slate-400">Margin:</span>
+                <span id="account-margin" class="text-xs text-slate-300">$0.00</span>
+            </div>
+            
+            <!-- Free Margin -->
+            <div class="flex justify-between items-center">
+                <span class="text-[10px] text-slate-400">Free Margin:</span>
+                <span id="account-free-margin" class="text-xs text-emerald-400">$0.00</span>
+            </div>
+            
+            <!-- Margin Level -->
+            <div class="flex justify-between items-center">
+                <span class="text-[10px] text-slate-400">Margin Level:</span>
+                <span id="account-margin-level" class="text-xs text-slate-300">0%</span>
+            </div>
+            
+            <!-- Profit/Loss -->
+            <div class="flex justify-between items-center pt-2 border-t border-slate-700">
+                <span class="text-[10px] text-slate-400">Floating P&L:</span>
+                <span id="account-profit" class="text-sm font-bold text-slate-400">$0.00</span>
+            </div>
+            
+            <!-- Open Positions Count -->
+            <div class="flex justify-between items-center">
+                <span class="text-[10px] text-slate-400">Open Positions:</span>
+                <span id="account-positions" class="text-xs font-semibold text-blue-400">0</span>
+            </div>
+        </div>
+
+        <!-- Quick Setup (EA) -->
+        <div class="p-4 space-y-3 border-b border-slate-800 sidebar-content">
+            <!-- Header + Status Badges -->
+            <div class="flex items-center justify-between">
+                <div class="text-xs font-bold text-white flex items-center gap-2">
+                    <span>⚙️ Quick Setup (EA)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="server-status-badge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700">SERVER: UNKNOWN</span>
+                    <span id="ws-status-badge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700">WS: UNKNOWN</span>
+                    <span id="ea-status-badge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700">EA: NOT VERIFIED</span>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="downloadEA('MT4')" class="px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700 hover:bg-slate-700/60 text-[11px] text-slate-200 font-semibold">⬇️ MT4 EA</button>
+                <button onclick="downloadEA('MT5')" class="px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700 hover:bg-slate-700/60 text-[11px] text-slate-200 font-semibold">⬇️ MT5 EA</button>
+            </div>
+
+            <!-- Steps (collapsible) -->
+            <details class="rounded-lg bg-slate-900/40 border border-slate-800">
+                <summary class="cursor-pointer px-3 py-2 text-[11px] font-semibold text-slate-300">Show step-by-step instructions</summary>
+                <div class="p-3 text-[10px] text-slate-400 space-y-2">
+                    <div>1) Copy EA into MetaTrader → File → Open Data Folder → MQL4/MQL5 → Experts</div>
+                    <div>
+                        2) Enable WebRequest in MetaTrader Options → Expert Advisors → Allow WebRequest for:
+                        <div class="flex items-center gap-2 mt-1">
+                            <code id="server-url" class="text-[10px] px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300">http://localhost:4101</code>
+                            <button onclick="copyServerURL()" class="px-2 py-1 rounded bg-slate-800 border border-slate-700 text-[10px] text-slate-300 hover:bg-slate-700">Copy</button>
+                        </div>
+                    </div>
+                    <div>3) Compile EA (F7) and attach to any chart, enable AutoTrading (play icon green)</div>
+                </div>
+            </details>
+
+            <!-- Verify + Trade Readiness -->
+            <div class="space-y-2">
+                <button onclick="verifyEASetup()" class="w-full px-3 py-2 rounded-lg bg-emerald-600/20 border border-emerald-500/40 hover:bg-emerald-600/30 text-xs font-bold text-emerald-300">✅ Verify REAL EA Data</button>
+                <div id="trade-ready-band" class="px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700 text-[11px] text-slate-300">
+                    Trade readiness: <span id="trade-ready-text" class="font-bold text-slate-200">Checking…</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Form -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-4 sidebar-content">
+            <div class="flex items-center justify-between">
+                <label class="block text-xs font-semibold text-slate-300">Platform</label>
+                <label class="flex items-center gap-2 text-[10px] text-slate-400">
+                    <input id="ea-only-toggle" type="checkbox" onchange="toggleEAOnly()" class="accent-emerald-500"> EA-Only Mode
+                </label>
+            </div>
+            <!-- Platform Selection -->
+            <div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="selectPlatform('MT4')" id="btn-mt4" class="px-3 py-2 rounded-lg border-2 border-slate-700 bg-slate-800/50 hover:border-blue-500 text-xs font-semibold text-slate-300 transition-all">
+                        MT4
+                    </button>
+                    <button onclick="selectPlatform('MT5')" id="btn-mt5" class="px-3 py-2 rounded-lg border-2 border-slate-700 bg-slate-800/50 hover:border-blue-500 text-xs font-semibold text-slate-300 transition-all">
+                        MT5
+                    </button>
+                </div>
+            </div>
+
+            <!-- Server Address -->
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-2">Server Address</label>
+                <input type="text" id="mt-server" placeholder="broker.server.com:443" 
+                    class="w-full px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
+            </div>
+
+            <!-- Account Type -->
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-2">Account Type</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="selectAccountType('demo')" id="btn-demo" class="px-3 py-2 rounded-lg border-2 border-slate-700 bg-slate-800/50 hover:border-emerald-500 text-xs font-semibold text-slate-300 transition-all">
+                        📊 Demo
+                    </button>
+                    <button onclick="selectAccountType('real')" id="btn-real" class="px-3 py-2 rounded-lg border-2 border-slate-700 bg-slate-800/50 hover:border-amber-500 text-xs font-semibold text-slate-300 transition-all">
+                        💰 Real
+                    </button>
+                </div>
+            </div>
+
+            <!-- Account Number -->
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-2">Account Number</label>
+                <input type="text" id="mt-account" placeholder="12345678" 
+                    class="w-full px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
+            </div>
+
+            <!-- Password/Passphrase -->
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-2">Password</label>
+                <input type="password" id="mt-password" placeholder="••••••••" 
+                    class="w-full px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
+                <div id="ea-only-hint" class="hidden text-[10px] text-slate-500 mt-1">EA-Only mode enabled: password not required. The EA will push REAL account data directly.</div>
+            </div>
+
+            <!-- Connect Button -->
+            <button id="btn-connect" onclick="connectMT()" class="w-full px-4 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-sm font-bold transition-all shadow-lg shadow-blue-500/20">
+                🔗 Connect to MT Platform
+            </button>
+
+            <!-- Disconnect Button (hidden by default) -->
+            <button onclick="disconnectMT()" id="btn-disconnect" class="hidden w-full px-4 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold transition-all">
+                ❌ Disconnect
+            </button>
+
+            <!-- Info Box -->
+            <div class="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                <p class="text-[10px] text-slate-400 leading-relaxed">
+                    💡 <strong class="text-blue-400">Simple Setup:</strong> Enter your MT4/MT5 credentials to sync live data and execute signals automatically.
+                </p>
+            </div>
+        </div>
+
+        <!-- Sidebar Footer -->
+        <div class="p-4 border-t border-slate-800">
+            <div class="text-[10px] text-slate-500 text-center sidebar-text">
+                Secure MT Connection
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content Wrapper -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+    <!-- Main Content Wrapper -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+    <!-- Header -->
+    <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-xl">
+        <div class="max-w-full mx-auto px-6 py-4">
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20">
+                        <span class="text-2xl">⚡</span>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold text-white">Global Trading Signals</h1>
+                        <p class="text-xs text-slate-400">Professional Market Dashboard</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                    <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <span class="text-sm font-semibold text-emerald-400">LIVE MARKET</span>
+                </div>
+            </div>
+
+            <!-- Global Market Clocks -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="market-clocks"></div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto px-6 py-8">
+        
+        
+        <!-- Unified Signals + Tracker Card -->
+        <div class="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl overflow-hidden mb-8">
+            <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-white">🤖 AI-Powered Trading Signals <span class="text-slate-500">&</span> 📍 Tracker</h2>
+                    <p class="text-sm text-slate-400">Multi-layer analysis + live execution tracking</p>
+                </div>
+                <div class="w-full max-w-3xl ml-6 hidden md:block">
+                    <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700">
+                        <div class="flex items-center gap-3 text-xs">
+                            <div class="flex items-center gap-2">
+                                <div id="live-dot" class="w-2 h-2 rounded-full bg-slate-500"></div>
+                                <span id="live-text" class="text-slate-300 font-semibold">LIVE ANALYSIS</span>
+                            </div>
+                            <span class="text-slate-600">•</span>
+                            <span class="text-slate-400">Active</span>
+                            <span id="kpi-active-all" class="text-slate-200 font-semibold">0</span>
+                            <span class="text-slate-600">•</span>
+                            <span class="text-slate-400">Win Rate</span>
+                            <span id="kpi-winrate-all" class="text-slate-200 font-semibold">--%</span>
+                            <span class="text-slate-600">•</span>
+                            <span class="text-slate-400">Total PnL</span>
+                            <span id="kpi-pnl-all" class="text-slate-200 font-semibold">$0.00</span>
+                        </div>
+                        <button id="refresh-tracker" class="px-3 py-1.5 rounded-md bg-slate-900/60 border border-slate-700 text-slate-300 text-xs font-semibold hover:bg-slate-900/80">Refresh</button>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-1">
+                <!-- Signals Table (2/3) -->
+                <div class="overflow-x-auto">
+                    <!-- Filters Toolbar -->
+                    <div class="flex flex-wrap items-center gap-3 px-6 py-3 border-b border-slate-800 bg-slate-900/30">
+                        <div class="flex items-center gap-2">
+                            <input id="filter-pair" type="text" placeholder="Search pair (e.g., EUR/USD)" class="px-3 py-1.5 rounded bg-slate-800/60 border border-slate-700 text-xs text-slate-200 placeholder-slate-500 w-48" />
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-[11px] text-slate-400">Status</label>
+                            <select id="filter-status" class="px-2 py-1.5 rounded bg-slate-800/60 border border-slate-700 text-xs text-slate-200">
+                                <option value="all">All</option>
+                                <option value="active">Active</option>
+                                <option value="low-confidence">Low Conf</option>
+                                <option value="closed">Closed</option>
+                                <option value="expired">Expired</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-[11px] text-slate-400">Timeframe</label>
+                            <div class="flex border border-slate-700 rounded overflow-hidden">
+                                <button id="tf-all" class="px-2 py-1.5 text-xs bg-slate-800/60 text-slate-200">All</button>
+                                <button id="tf-1h" class="px-2 py-1.5 text-xs bg-slate-800/30 text-slate-300">1H</button>
+                                <button id="tf-4h" class="px-2 py-1.5 text-xs bg-slate-800/30 text-slate-300">4H</button>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 ml-auto">
+                            <label class="text-[11px] text-slate-400">Sort</label>
+                            <select id="sort-signals" class="px-2 py-1.5 rounded bg-slate-800/60 border border-slate-700 text-xs text-slate-200">
+                                <option value="time-desc">Time (newest)</option>
+                                <option value="confidence-desc">Confidence (high)</option>
+                                <option value="pnl-desc">PnL % (high)</option>
+                                <option value="rr-desc">R:R (high)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <table class="w-full">
+                        <thead>
+                            <tr class="border-b border-slate-800">
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">Pair</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">Signal</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">Entry / Current</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">SL / TP</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">P&L</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">Confidence</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">R:R</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">Time</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">Details
+                                    <span class="ml-3 text-[11px] font-normal normal-case text-slate-500">
+                                        Active: <span id="header-tracker-active" class="text-slate-300 font-semibold">0</span>
+                                        <span class="mx-1">•</span>
+                                        Recent: <span id="header-tracker-recent" class="text-slate-300 font-semibold">0</span>
+                                        <span class="ml-1">(Win <span id="header-tracker-win" class="text-emerald-400 font-semibold">0</span>, Loss <span id="header-tracker-loss" class="text-rose-400 font-semibold">0</span>)</span>
+                                    </span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="signals-table" class="divide-y divide-slate-800"></tbody>
+                    </table>
+                </div>
+                <!-- Tracker Panel removed per request -->
+            </div>
+        </div>
+
+        <!-- Signal Details Modal -->
+        <div id="signal-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick="if(event.target===this) closeSignalModal()">
+            <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div class="sticky top-0 bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between">
+                    <h2 class="text-xl font-bold text-white">📊 Detailed Signal Analysis</h2>
+                    <button onclick="closeSignalModal()" class="text-slate-400 hover:text-white transition">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div id="signal-modal-content" class="p-6"></div>
+            </div>
+        </div>
+
+        <!-- News & Economic Calendar Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+            <!-- News Feed -->
+            <div class="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold text-white">📰 Live Market News</h2>
+                        <p class="text-sm text-slate-400">Real-time updates from 10+ sources</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="hidden md:flex items-center gap-2 text-[11px] text-slate-400">
+                            <span>Impact:</span>
+                            <button onclick="setNewsImpact('all')" id="btn-news-all" class="px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700">All</button>
+                            <button onclick="setNewsImpact('high')" id="btn-news-high" class="px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700 text-red-300">High</button>
+                            <button onclick="setNewsImpact('medium')" id="btn-news-medium" class="px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700 text-amber-300">Med</button>
+                        </div>
+                        <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                    </div>
+                </div>
+                <div id="news-feed" class="divide-y divide-slate-800 max-h-[600px] overflow-y-auto"></div>
+            </div>
+
+            <!-- Economic Calendar -->
+            <div class="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold text-white">📅 Economic Calendar</h2>
+                        <p class="text-sm text-slate-400">Today's high-impact events</p>
+                    </div>
+                    <div class="text-xs text-slate-500 font-semibold">
+                        <span id="calendar-date"></span>
+                    </div>
+                </div>
+                <div id="economic-calendar" class="divide-y divide-slate-800 max-h-[600px] overflow-y-auto"></div>
+            </div>
+        </div>
+
+        
+    </main>
+
+    <script>
+        const markets = [
+            { name: 'LONDON', flag: '🇬🇧', offset: 0, session: 'European' },
+            { name: 'NEW YORK', flag: '🇺🇸', offset: -5, session: 'US' },
+            { name: 'TOKYO', flag: '🇯🇵', offset: 9, session: 'Asian' },
+            { name: 'SYDNEY', flag: '🇦🇺', offset: 11, session: 'Pacific' }
+        ];
+
+        function getMarketTime(offset) {
+            const now = new Date();
+            const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+            const marketTime = new Date(utc + 3600000 * offset);
+            return marketTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        }
+
+        function isMarketOpen(name) {
+            const hour = new Date().getUTCHours();
+            if (name === 'LONDON') return hour >= 8 && hour < 16;
+            if (name === 'NEW YORK') return hour >= 13 && hour < 21;
+            if (name === 'TOKYO') return hour >= 0 && hour < 8;
+            if (name === 'SYDNEY') return hour >= 22 || hour < 6;
+            return false;
+        }
+
+        function updateClocks() {
+            const container = document.getElementById('market-clocks');
+            container.innerHTML = markets.map(market => {
+                const isOpen = isMarketOpen(market.name);
+                return `
+                    <div class="relative rounded-xl p-4 backdrop-blur-xl border-2 transition-all ${
+                        isOpen
+                            ? 'bg-gradient-to-br from-emerald-500/10 to-green-600/10 border-emerald-500/40 shadow-lg shadow-emerald-500/20'
+                            : 'bg-gradient-to-br from-slate-800/30 to-slate-900/30 border-slate-700/40'
+                    }">
+                        ${isOpen ? `
+                            <div class="absolute top-2 right-2">
+                                <div class="flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                                    <span class="text-[10px] font-bold text-emerald-400 uppercase">OPEN</span>
+                                </div>
+                            </div>
+                        ` : ''}
+                        <div class="flex flex-col items-center text-center">
+                            <div class="text-4xl mb-2">${market.flag}</div>
+                            <h3 class="text-sm font-bold uppercase tracking-wider mb-1 ${isOpen ? 'text-emerald-400' : 'text-slate-400'}">
+                                ${market.name}
+                            </h3>
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-2xl font-mono font-bold ${isOpen ? 'text-white' : 'text-slate-400'}">
+                                    ${getMarketTime(market.offset)}
+                                </span>
+                            </div>
+                            <span class="text-xs text-slate-500 uppercase tracking-wide">${market.session} Session</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // cache + filters state
+        let _signalsCache = { signals: [], stats: {} };
+        const _filters = { pair: '', status: 'all', timeframe: 'all', sort: 'time-desc' };
+
+        function applySignalFilters(signals) {
+            let out = [...(signals || [])];
+            if (_filters.pair) {
+                const q = _filters.pair.toLowerCase();
+                out = out.filter(s => (s.pair || '').toLowerCase().includes(q));
+            }
+            if (_filters.status !== 'all') {
+                out = out.filter(s => (s.status || '').toLowerCase() === _filters.status);
+            }
+            if (_filters.timeframe !== 'all') {
+                out = out.filter(s => (s.timeframe || '').toLowerCase() === _filters.timeframe);
+            }
+            const sort = _filters.sort;
+            out.sort((a,b) => {
+                if (sort === 'confidence-desc') return (b.confidence||b.strength||0) - (a.confidence||a.strength||0);
+                if (sort === 'pnl-desc') return (b.pnlPercent||0) - (a.pnlPercent||0);
+                if (sort === 'rr-desc') return (b.riskReward||0) - (a.riskReward||0);
+                const ta = new Date(a.openedAt || a.timestamp).getTime();
+                const tb = new Date(b.openedAt || b.timestamp).getTime();
+                return tb - ta; // time-desc
+            });
+            return out;
+        }
+
+        function renderKPIs(stats) {
+            const activeAll = document.getElementById('kpi-active-all');
+            const wrAll = document.getElementById('kpi-winrate-all');
+            const pnlAll = document.getElementById('kpi-pnl-all');
+            if (activeAll) activeAll.textContent = stats.activeSignals ?? 0;
+            if (wrAll) wrAll.textContent = (typeof stats.winRate !== 'undefined') ? `${stats.winRate}%` : '--%';
+            if (pnlAll) pnlAll.textContent = `$${Number(stats.totalPnL || 0).toFixed(2)}`;
+        }
+
+        function renderSignalsTable() {
+            const data = _signalsCache;
+            renderKPIs(data.stats || {});
+
+            // Helpers for formatting extra details
+            const pipInfo = (pair) => {
+                        if (!pair) return { size: 1, label: 'pts' };
+                        if (pair.includes('/JPY')) return { size: 0.01, label: 'pips' };
+                        if (pair.includes('/')) return { size: 0.0001, label: 'pips' };
+                        if (pair.includes('XAU')) return { size: 0.1, label: 'pts' };
+                        return { size: 1, label: 'pts' };
+                    };
+            const formatDist = (pair, a, b) => {
+                        const { size, label } = pipInfo(pair);
+                        const d = Math.abs((a || 0) - (b || 0));
+                        const v = d / size;
+                        if (!isFinite(v)) return '-';
+                        return `${v.toFixed(0)} ${label}`;
+                    };
+            const formatPct = (a, b) => {
+                        if (!a || !b) return '-';
+                        const pct = ((b - a) / a) * 100;
+                        if (!isFinite(pct)) return '-';
+                        return `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+                    };
+            const filtered = applySignalFilters(data.signals || []);
+            const rows = filtered.map(signal => `
+                        <tr class="hover:bg-slate-800/50 transition-colors" id="row-${signal.id}" data-pair="${signal.pair}">
+                            <td class="px-6 py-4">
+                                <div class="font-bold text-white">${signal.pair}</div>
+                                <div class="text-xs text-slate-500">${signal.timeframe || '1H'}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex flex-col gap-1">
+                                    <span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-bold ${
+                                        signal.type === 'BUY'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border-2 border-emerald-500/30'
+                                            : signal.type === 'SELL'
+                                            ? 'bg-red-500/10 text-red-400 border-2 border-red-500/30'
+                                            : 'bg-slate-500/10 text-slate-400 border-2 border-slate-500/30'
+                                    }">
+                                        ${signal.type === 'BUY' ? '📈' : signal.type === 'SELL' ? '📉' : '⏸️'} ${signal.type}
+                                    </span>
+                                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold uppercase tracking-wide ${
+                                        signal.status === 'active'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                                            : signal.status === 'closed' && signal.outcome === 'win'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                                            : signal.status === 'closed' && signal.outcome === 'loss'
+                                            ? 'bg-red-500/10 text-red-400 border border-red-500/30'
+                                            : signal.status === 'expired'
+                                            ? 'bg-slate-500/10 text-slate-300 border border-slate-500/30'
+                                            : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                                    }">
+                                        ${signal.status === 'active' 
+                                            ? 'OPEN' 
+                                            : signal.status === 'closed' && signal.outcome === 'win' 
+                                            ? 'WIN' 
+                                            : signal.status === 'closed' && signal.outcome === 'loss'
+                                            ? 'LOSS' 
+                                            : signal.status === 'expired' 
+                                            ? 'EXPIRED' 
+                                            : 'LOW CONF'}
+                                    </span>
+                                    ${signal.status === 'closed' && signal.closedReason ?
+                                        `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold ${signal.closedReason==='TP' ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' : 'bg-red-500/10 text-red-300 border border-red-500/30'}">${signal.closedReason} HIT</span>`
+                                        : ''}
+                                    ${signal.availableToEnter 
+                                        ? '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/30">✓ CAN ENTER</span>'
+                                        : signal.status === 'expired'
+                                        ? '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold bg-slate-700/40 text-slate-500 border border-slate-600">✗ ENTRY CLOSED</span>'
+                                        : ''
+                                    }
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex flex-col gap-1">
+                                    <div class="text-xs text-slate-500">Entry</div>
+                                    <div class="font-semibold text-slate-300">${signal.entryPrice?.toFixed?.(5) || signal.entryPrice}</div>
+                                    <div class="text-xs ${ ((signal.currentPrice || 0) - (signal.entryPrice || 0)) >= 0 ? 'text-emerald-400' : 'text-red-400' }">
+                                        → ${signal.currentPrice?.toFixed?.(5) || signal.currentPrice} <span class="ml-1 text-slate-400">(${formatPct(signal.entryPrice, signal.currentPrice)})</span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex flex-col gap-1">
+                                    <div class="text-xs text-red-400">SL: ${signal.stopLoss?.toFixed?.(5) || 'N/A'} <span class="text-slate-500 ml-1">(${formatDist(signal.pair, signal.entryPrice, signal.stopLoss)})</span></div>
+                                    <div class="text-xs text-emerald-400">TP: ${signal.takeProfit?.toFixed?.(5) || 'N/A'} <span class="text-slate-500 ml-1">(${formatDist(signal.pair, signal.entryPrice, signal.takeProfit)})</span></div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex flex-col">
+                                    <span class="font-bold ${Number(signal.pnl) >= 0 ? 'text-emerald-400' : 'text-red-400'}">
+                                        ${Number(signal.pnl) >= 0 ? '+' : ''}${typeof signal.pnl === 'number' ? signal.pnl.toFixed(2) : signal.pnl}
+                                    </span>
+                                    <span class="text-xs ${Number(signal.pnlPercent) >= 0 ? 'text-emerald-400' : 'text-red-400'}">
+                                        ${Number(signal.pnlPercent) >= 0 ? '+' : ''}${typeof signal.pnlPercent === 'number' ? signal.pnlPercent.toFixed(2) : signal.pnlPercent}%
+                                    </span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex flex-col items-center gap-1">
+                                    <div class="relative w-16 h-16">
+                                        <svg class="transform -rotate-90 w-16 h-16">
+                                            <circle cx="32" cy="32" r="28" stroke="rgb(30, 41, 59)" stroke-width="4" fill="none"></circle>
+                                            <circle cx="32" cy="32" r="28" stroke="${
+                                                (signal.confidence || signal.strength) >= 95 ? 'rgb(16, 185, 129)' : 
+                                                (signal.confidence || signal.strength) >= 90 ? 'rgb(34, 197, 94)' : 
+                                                (signal.confidence || signal.strength) >= 85 ? 'rgb(251, 191, 36)' : 'rgb(148, 163, 184)'
+                                            }" stroke-width="4" fill="none" 
+                                            stroke-dasharray="${2 * Math.PI * 28}" 
+                                            stroke-dashoffset="${2 * Math.PI * 28 * (1 - (signal.confidence || signal.strength) / 100)}"
+                                            stroke-linecap="round"></circle>
+                                        </svg>
+                                        <div class="absolute inset-0 flex items-center justify-center">
+                                            <span class="text-xs font-bold text-white">${Math.round(signal.confidence || signal.strength)}%</span>
+                                        </div>
+                                    </div>
+                                    <span class="text-[10px] text-slate-400 uppercase">Confidence</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex flex-col items-center gap-1">
+                                    <span class="text-lg font-bold ${
+                                        (signal.riskReward || 0) >= 3 ? 'text-emerald-400' : 
+                                        (signal.riskReward || 0) >= 2 ? 'text-amber-400' : 'text-slate-400'
+                                    }">${signal.riskReward || 'N/A'}</span>
+                                    <span class="text-[10px] text-slate-400">Risk:Reward</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="text-xs text-slate-400">
+                                    <div class="mb-1">
+                                        <span class="text-slate-500">Opened:</span><br/>
+                                        <span class="text-slate-300 font-semibold">${new Date(signal.openedAt || signal.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                                    </div>
+                                    ${signal.closedAt
+                                        ? '<div class="mb-1"><span class="text-slate-500">Closed:</span><br/><span class="text-slate-300 font-semibold">' + new Date(signal.closedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) + (signal.closedReason ? ' • <span class="' + (signal.closedReason==='TP' ? 'text-emerald-400' : 'text-red-400') + '">' + signal.closedReason + '</span>' : '') + '</span></div>'
+                                        : signal.expiresAt
+                                        ? '<div><span class="text-slate-500">Valid Until:</span><br/><span class="' + (signal.availableToEnter ? 'text-emerald-400' : 'text-red-400') + ' font-semibold">' + new Date(signal.expiresAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) + '</span></div>'
+                                        : '<div><span class="text-slate-500">Status:</span> <span class="' + (signal.status === 'active' ? 'text-emerald-400' : (signal.status === 'low-confidence' ? 'text-amber-400' : 'text-slate-400')) + ' font-semibold">' + (signal.status || 'open') + '</span></div>'
+                                    }
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-2">
+                                    <button onclick="toggleSignalQuick('${signal.id}')" 
+                                        class="px-2 py-2 rounded-lg bg-slate-700/40 hover:bg-slate-700/60 border border-slate-600 text-slate-300 text-xs font-semibold transition-all">
+                                        ▼ Quick
+                                    </button>
+                                    <button onclick="showSignalDetails('${signal.id}')" 
+                                        class="px-3 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 text-xs font-semibold transition-all">
+                                        📊 View Analysis
+                                    </button>
+                                    ${mtConnection && mtConnection.connected 
+                                        ? `<button id="send-btn-${signal.id}" onclick="sendSignalToMT('${signal.id}')" 
+                                            class="px-3 py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-semibold transition-all ${signal.executed ? 'opacity-50 cursor-not-allowed' : ''}">
+                                            ${signal.executed ? '✅ Executed' : '📤 Send to MT5'}
+                                        </button>` 
+                                        : ''
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                        <tr id="details-${signal.id}" class="hidden">
+                            <td colspan="9" class="px-6 py-4 bg-slate-900/70">
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                    <div class="p-3 rounded-lg border border-slate-700 bg-slate-800/40">
+                                        <div class="text-[11px] text-slate-400 mb-1">Risk Management</div>
+                                        <div class="flex justify-between"><span class="text-slate-400">ATR:</span><span class="text-slate-200">${signal.technical?.atr?.toFixed?.(5) || signal.atr?.toFixed?.(5) || '-'}</span></div>
+                                        <div class="flex justify-between"><span class="text-slate-400">SL Distance:</span><span class="text-slate-200">${formatDist(signal.pair, signal.entryPrice, signal.stopLoss)}</span></div>
+                                        <div class="flex justify-between"><span class="text-slate-400">TP Distance:</span><span class="text-slate-200">${formatDist(signal.pair, signal.entryPrice, signal.takeProfit)}</span></div>
+                                        <div class="flex justify-between"><span class="text-slate-400">Position:</span><span class="text-slate-200">${signal.positionSize?.lots || '-'} lots • ${signal.positionSize?.units || '-'} units</span></div>
+                                        <div class="flex justify-between"><span class="text-slate-400">Risk:</span><span class="text-slate-200">$${signal.positionSize?.riskAmount || '-' } (${signal.positionSize?.riskPercent || '-' }%)</span></div>
+                                    </div>
+                                    <div class="p-3 rounded-lg border border-slate-700 bg-slate-800/40">
+                                        <div class="text-[11px] text-slate-400 mb-1">Technical Snapshot</div>
+                                        <div class="flex justify-between"><span class="text-slate-400">RSI:</span><span class="${(signal.technical?.rsi || 50) < 30 ? 'text-emerald-400' : (signal.technical?.rsi || 50) > 70 ? 'text-red-400' : 'text-slate-200'}">${signal.technical?.rsi?.toFixed?.(1) || '-'}</span></div>
+                                        <div class="flex justify-between"><span class="text-slate-400">MACD:</span><span class="${(signal.technical?.macd?.histogram || -1) > 0 ? 'text-emerald-400' : 'text-red-400'}">${(signal.technical?.macd?.histogram || -1) > 0 ? 'Bullish' : 'Bearish'}</span></div>
+                                        <div class="flex justify-between"><span class="text-slate-400">Patterns:</span><span class="text-slate-200">${signal.technical?.patterns?.length || 0}</span></div>
+                                        <div class="flex justify-between"><span class="text-slate-400">S/R Levels:</span><span class="text-slate-200">${signal.technical?.supportResistance?.length || 0}</span></div>
+                                    </div>
+                                    <div class="p-3 rounded-lg border border-slate-700 bg-slate-800/40">
+                                        <div class="text-[11px] text-slate-400 mb-1">Timing</div>
+                                        <div class="flex justify-between"><span class="text-slate-400">Opened:</span><span class="text-slate-200">${new Date(signal.openedAt || signal.timestamp).toLocaleString()}</span></div>
+                                        <div class="flex justify-between"><span class="text-slate-400">Expires:</span><span class="text-slate-200">${signal.expiresAt ? new Date(signal.expiresAt).toLocaleString() : '-'}</span></div>
+                                        <div class="flex justify-between"><span class="text-slate-400">Closed:</span><span class="text-slate-200">${signal.closedAt ? new Date(signal.closedAt).toLocaleString() : '-'}</span></div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('');
+            const tableEl = document.getElementById('signals-table');
+            if (tableEl) {
+                tableEl.innerHTML = rows;
+                hookSignalRowHoverLinks();
+            }
+        }
+
+        function loadDashboard() {
+            fetch('/api/dashboard')
+                .then(res => res.json())
+                .then(data => {
+                    _signalsCache = data || { signals: [], stats: {} };
+                    renderSignalsTable();
+                })
+                .catch(err => console.error('Error loading dashboard:', err));
+        }
+
+        function showSignalDetails(signalId) {
+            fetch(`/api/signal/${signalId}`)
+                .then(res => res.json())
+                .then(signal => {
+                    const modalContent = document.getElementById('signal-modal-content');
+                    modalContent.innerHTML = `
+                        <div class="space-y-6">
+                            <!-- Signal Header -->
+                            <div class="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl">
+                                <div>
+                                    <h3 class="text-2xl font-bold text-white">${signal.pair}</h3>
+                                    <p class="text-sm text-slate-400">Generated ${getTimeAgo(signal.timestamp)}</p>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <div class="text-center">
+                                        <div class="text-3xl font-bold ${signal.confidence >= 95 ? 'text-emerald-400' : signal.confidence >= 90 ? 'text-green-400' : 'text-amber-400'}">
+                                            ${Math.round(signal.confidence || signal.strength)}%
+                                        </div>
+                                        <div class="text-xs text-slate-400">Confidence</div>
+                                    </div>
+                                    <span class="px-4 py-2 rounded-xl text-lg font-bold ${
+                                        signal.type === 'BUY'
+                                            ? 'bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/40'
+                                            : 'bg-red-500/20 text-red-400 border-2 border-red-500/40'
+                                    }">
+                                        ${signal.type === 'BUY' ? '📈 BUY' : '📉 SELL'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Trade Setup -->
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="p-4 bg-slate-800/30 rounded-xl border border-slate-700">
+                                    <div class="text-xs text-slate-400 mb-1">Entry Price</div>
+                                    <div class="text-xl font-bold text-white">${signal.entryPrice?.toFixed(5)}</div>
+                                </div>
+                                <div class="p-4 bg-slate-800/30 rounded-xl border border-slate-700">
+                                    <div class="text-xs text-slate-400 mb-1">Current Price</div>
+                                    <div class="text-xl font-bold text-emerald-400">${signal.currentPrice?.toFixed(5)}</div>
+                                </div>
+                                <div class="p-4 bg-red-500/10 rounded-xl border border-red-500/30">
+                                    <div class="text-xs text-red-400 mb-1">Stop Loss</div>
+                                    <div class="text-xl font-bold text-red-400">${signal.stopLoss?.toFixed(5)}</div>
+                                </div>
+                                <div class="p-4 bg-emerald-500/10 rounded-xl border border-emerald-500/30">
+                                    <div class="text-xs text-emerald-400 mb-1">Take Profit</div>
+                                    <div class="text-xl font-bold text-emerald-400">${signal.takeProfit?.toFixed(5)}</div>
+                                </div>
+                            </div>
+
+                            <!-- AI Reasoning -->
+                            <div class="p-4 bg-slate-800/30 rounded-xl border border-slate-700">
+                                <h4 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                                    <span>🤖</span> AI Analysis & Reasoning
+                                </h4>
+                                <div class="space-y-2">
+                                    ${(signal.reasoning || []).map(reason => `
+                                        <div class="flex items-start gap-2 text-sm">
+                                            <span class="text-emerald-400">•</span>
+                                            <span class="text-slate-300">${reason}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+
+                            <!-- Technical Indicators -->
+                            ${signal.technical ? `
+                                <div class="p-4 bg-slate-800/30 rounded-xl border border-slate-700">
+                                    <h4 class="text-sm font-bold text-white mb-3">📊 Technical Analysis</h4>
+                                    <div class="grid grid-cols-3 gap-3">
+                                        <div>
+                                            <div class="text-xs text-slate-400">RSI</div>
+                                            <div class="text-lg font-bold ${
+                                                signal.technical.rsi < 30 ? 'text-emerald-400' : 
+                                                signal.technical.rsi > 70 ? 'text-red-400' : 'text-slate-300'
+                                            }">${signal.technical.rsi?.toFixed(1)}</div>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs text-slate-400">MACD</div>
+                                            <div class="text-lg font-bold ${
+                                                signal.technical.macd?.histogram > 0 ? 'text-emerald-400' : 'text-red-400'
+                                            }">${signal.technical.macd?.histogram > 0 ? 'Bullish' : 'Bearish'}</div>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs text-slate-400">Patterns</div>
+                                            <div class="text-lg font-bold text-blue-400">${signal.technical.patterns?.length || 0} Found</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            <!-- Risk Management -->
+                            <div class="p-4 bg-amber-500/10 rounded-xl border border-amber-500/30">
+                                <h4 class="text-sm font-bold text-amber-400 mb-2">⚠️ Risk Management</h4>
+                                <div class="grid grid-cols-2 gap-3 text-sm">
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-400">Risk/Reward:</span>
+                                        <span class="font-bold text-white">${signal.riskReward || 'N/A'}</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-400">Timeframe:</span>
+                                        <span class="font-bold text-white">${signal.timeframe || '1H'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    document.getElementById('signal-modal').classList.remove('hidden');
+                })
+                .catch(err => console.error('Error loading signal details:', err));
+        }
+
+        function closeSignalModal() {
+            document.getElementById('signal-modal').classList.add('hidden');
+        }
+
+        async function sendSignalToMT(signalId) {
+            if (!mtConnection || !mtConnection.connected) {
+                alert('❌ MT5 not connected. Please connect your MT5 account first.');
+                return;
+            }
+
+            const btn = document.getElementById(`send-btn-${signalId}`);
+            if (!btn || btn.classList.contains('opacity-50')) {
+                return; // Already executed
+            }
+
+            // Show loading state
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '⏳ Sending...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/mt/send-signal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        signalId: signalId,
+                        account: mtConnection.account
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    btn.innerHTML = '✅ Sent to MT5';
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                    
+                    // Show success notification
+                    showNotification('✅ Signal sent to MT5 successfully!', 'success');
+                    
+                    // Refresh dashboard after 1 second to show updated status
+                    setTimeout(() => loadDashboard(), 1000);
+                } else {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    showNotification('❌ Failed to send signal: ' + (result.message || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error sending signal to MT5:', error);
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                showNotification('❌ Network error sending signal', 'error');
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            const colors = {
+                success: 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400',
+                error: 'bg-red-500/20 border-red-500/40 text-red-400',
+                info: 'bg-blue-500/20 border-blue-500/40 text-blue-400'
+            };
+
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 px-6 py-4 rounded-xl border-2 ${colors[type]} font-semibold text-sm shadow-2xl z-50 animate-slide-in`;
+            notification.innerHTML = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                notification.style.transition = 'opacity 0.3s';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        function getTimeAgo(dateString) {
+            const seconds = Math.floor((new Date() - new Date(dateString)) / 1000);
+            if (seconds < 60) return `${seconds}s ago`;
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            return `${Math.floor(hours / 24)}d ago`;
+        }
+
+        let newsImpactFilter = 'all';
+        function setNewsImpact(level) {
+            newsImpactFilter = level;
+            document.getElementById('btn-news-all').classList.toggle('bg-blue-900/30', level==='all');
+            document.getElementById('btn-news-high').classList.toggle('bg-blue-900/30', level==='high');
+            document.getElementById('btn-news-medium').classList.toggle('bg-blue-900/30', level==='medium');
+            loadNews();
+        }
+
+        function loadNews() {
+            const params = newsImpactFilter==='all' ? '' : `?impact=${newsImpactFilter}`;
+            fetch('/api/news' + params)
+                .then(res => res.json())
+                .then(news => {
+                    document.getElementById('news-feed').innerHTML = news.map(item => {
+                        const impactColors = {
+                            high: 'bg-red-500/10 text-red-400 border-red-500/20',
+                            medium: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+                            low: 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                        };
+                        return `
+                            <div class="px-6 py-4 hover:bg-slate-800/50 transition-colors cursor-pointer">
+                                <div class="flex items-start justify-between gap-4 mb-2">
+                                    <h3 class="text-sm font-semibold text-white leading-snug flex-1">${item.title}</h3>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${impactColors[item.impact]} whitespace-nowrap">
+                                        ${item.impact}
+                                    </span>
+                                </div>
+                                <p class="text-xs text-slate-400 mb-2 line-clamp-2">${item.snippet}</p>
+                                <div class="flex items-center justify-between text-xs">
+                                    <div class="flex items-center gap-3">
+                                        <span class="text-slate-500 font-medium">${item.source}</span>
+                                        <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">${item.category}</span>
+                                    </div>
+                                    <span class="text-slate-500">${getTimeAgo(item.time)}</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                })
+                .catch(err => console.error('Error loading news:', err));
+        }
+
+        // ===== Signal Tracker =====
+        async function loadTracker() {
+            try {
+                const res = await fetch('/api/signals/tracker');
+                const data = await res.json();
+                renderTracker(data);
+            } catch (e) {
+                console.error('Error loading tracker:', e);
+            }
+        }
+
+        function mmss(ms) {
+            if (!ms || ms <= 0) return '0:00';
+            const total = Math.floor(ms / 1000);
+            const m = Math.floor(total / 60);
+            const s = (total % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function pct(n) {
+            if (n === null || n === undefined) return '0.00%';
+            return `${Number(n).toFixed(2)}%`;
+        }
+
+        function renderTracker({ active = [], closedRecent = [], holdWindowMs = 0, stats }) {
+            const activeEl = document.getElementById('tracker-active');
+            const recentEl = document.getElementById('tracker-recent');
+            // Update header summary counts (even if panel is removed)
+            try {
+                const hac = document.getElementById('header-tracker-active');
+                const hrc = document.getElementById('header-tracker-recent');
+                const hrw = document.getElementById('header-tracker-win');
+                const hrl = document.getElementById('header-tracker-loss');
+                if (hac) hac.textContent = String(active.length);
+                if (hrc) hrc.textContent = String(closedRecent.length);
+                const wins = (closedRecent || []).filter(s => (s.outcome||'').toLowerCase() === 'win').length;
+                const losses = (closedRecent || []).filter(s => (s.outcome||'').toLowerCase() === 'loss').length;
+                if (hrw) hrw.textContent = String(wins);
+                if (hrl) hrl.textContent = String(losses);
+            } catch {}
+            if (activeEl) {
+                if (active.length === 0) {
+                    activeEl.innerHTML = `<div class="text-sm text-slate-500">No active signals.</div>`;
+                } else {
+                    activeEl.innerHTML = active.map(s => {
+                        const dirColor = s.type === 'BUY' ? 'text-emerald-400' : 'text-red-400';
+                        const pctBar = Math.max(0, Math.min(100, Math.round((s.progressClamped || 0) * 100)));
+                        const hold = s.holdRemaining > 0 ? `Hold ${mmss(s.holdRemaining)}` : 'Free to close';
+                        const pnlClass = (s.pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        return `
+                            <div class=\"p-3 rounded-lg border border-slate-700 bg-slate-800/40 tracker-item cursor-pointer\" data-pair=\"${s.pair}\" onclick=\"onTrackerItemClick('${s.id}')\">\n                                <div class=\"flex items-center justify-between\">\n                                    <div class=\"font-semibold text-slate-200\">${s.pair} <span class=\"${dirColor} text-xs ml-1\">${s.type}</span></div>\n                                    <div class=\"text-xs ${pnlClass}\">${pct(s.pnlPercent)}</div>\n                                </div>\n                                <div class=\"mt-2\">\n                                    <div class=\"h-2 w-full bg-slate-900 rounded\">\n                                        <div class=\"h-2 bg-indigo-500 rounded\" style=\"width:${pctBar}%\"></div>\n                                    </div>\n                                    <div class=\"flex items-center justify-between text-[11px] text-slate-400 mt-1\">\n                                        <div>Entry ${Number(s.entryPrice).toFixed(5)}</div>\n                                        <div>TP ${Number(s.takeProfit).toFixed(5)}</div>\n                                    </div>\n                                    <div class=\"flex items-center justify-between text-[11px] text-slate-500 mt-1\">\n                                        <div>${hold}</div>\n                                        <div>Age ${mmss(s.ageMs || 0)}</div>\n                                    </div>\n                                </div>\n                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+
+            if (recentEl) {
+                if (closedRecent.length === 0) {
+                    recentEl.innerHTML = `<div class=\"text-sm text-slate-500\">No recent closures.</div>`;
+                } else {
+                    recentEl.innerHTML = closedRecent.map(s => {
+                        const outcome = (s.outcome || '').toUpperCase();
+                        const badge = outcome === 'WIN' ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' : outcome === 'LOSS' ? 'bg-red-500/10 text-red-300 border border-red-500/30' : 'bg-slate-700/40 text-slate-300 border border-slate-600';
+                        const reason = s.closedReason ? `<span class=\"ml-2 text-[10px] px-1.5 py-0.5 rounded ${s.closedReason==='TP' ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' : s.closedReason==='SL' ? 'bg-red-500/10 text-red-300 border border-red-500/30' : 'bg-slate-700/40 text-slate-300 border border-slate-600'}\">${s.closedReason}</span>` : '';
+                        const pnlClass = (s.pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const duration = (s.openedAt && s.closedAt) ? mmss(new Date(s.closedAt) - new Date(s.openedAt)) : '';
+                        return `
+                            <div class=\"p-3 rounded-lg border border-slate-700 bg-slate-800/40 tracker-item\" data-pair=\"${s.pair}\">\n                                <div class=\"flex items-center justify-between\">\n                                    <div class=\"font-semibold text-slate-200\">${s.pair} <span class=\"text-xs ml-1\">${s.type}</span>\n                                        <span class=\"ml-2 text-[10px] px-1.5 py-0.5 rounded ${badge}\">${outcome || s.status}</span>\n                                        ${reason}\n                                    </div>\n                                    <div class=\"text-xs ${pnlClass}\">${pct(s.pnlPercent)}</div>\n                                </div>\n                                <div class=\"mt-1 text-[11px] text-slate-500\">${duration ? `Duration ${duration}` : ''}</div>\n                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+        }
+
+        function loadEconomicCalendar() {
+            fetch('/api/economic-calendar')
+                .then(res => res.json())
+                .then(events => {
+                    // Update calendar date
+                    const today = new Date();
+                    document.getElementById('calendar-date').textContent = today.toLocaleDateString('en-US', { 
+                        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' 
+                    });
+
+                    document.getElementById('economic-calendar').innerHTML = events.map(event => {
+                        const eventTime = new Date(event.time);
+                        const isPast = eventTime < new Date();
+                        const impactColors = {
+                            high: 'bg-red-500',
+                            medium: 'bg-amber-500',
+                            low: 'bg-blue-500'
+                        };
+                        
+                        return `
+                            <div class="px-6 py-4 hover:bg-slate-800/50 transition-colors ${isPast ? 'opacity-50' : ''}">
+                                <div class="flex items-start gap-4">
+                                    <div class="flex flex-col items-center min-w-[60px]">
+                                        <span class="text-2xl mb-1">${event.flag}</span>
+                                        <span class="text-xs font-mono font-bold ${isPast ? 'text-slate-600' : 'text-emerald-400'}">
+                                            ${eventTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                        </span>
+                                        <span class="text-[10px] text-slate-500 uppercase">${event.currency}</span>
+                                    </div>
+                                    
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <div class="w-1.5 h-1.5 rounded-full ${impactColors[event.impact]}"></div>
+                                            <h3 class="text-sm font-semibold ${isPast ? 'text-slate-400' : 'text-white'}">${event.event}</h3>
+                                        </div>
+                                        
+                                        <div class="flex items-center gap-4 text-xs">
+                                            ${event.actual !== null ? `
+                                                <div class="flex items-center gap-1">
+                                                    <span class="text-slate-500">Actual:</span>
+                                                    <span class="font-semibold text-emerald-400">${event.actual}</span>
+                                                </div>
+                                            ` : ''}
+                                            <div class="flex items-center gap-1">
+                                                <span class="text-slate-500">Forecast:</span>
+                                                <span class="font-semibold text-slate-300">${event.forecast}</span>
+                                            </div>
+                                            <div class="flex items-center gap-1">
+                                                <span class="text-slate-500">Previous:</span>
+                                                <span class="font-semibold text-slate-400">${event.previous}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                })
+                .catch(err => console.error('Error loading calendar:', err));
+        }
+
+        // Update clocks every second
+        updateClocks();
+        setInterval(updateClocks, 1000);
+        
+    // Load all dashboard data
+    loadDashboard();
+    loadNews();
+    loadEconomicCalendar();
+    loadTracker();
+        
+        // Refresh intervals
+    setInterval(loadDashboard, 10000); // Refresh every 10 seconds
+    setInterval(loadNews, 30000); // Refresh news every 30 seconds
+    setInterval(loadEconomicCalendar, 60000); // Refresh calendar every minute
+    setInterval(loadTracker, 10000); // Refresh tracker every 10 seconds
+
+        // Live updates via SSE (instant push from server)
+        try {
+            const es = new EventSource('/api/stream');
+            es.onopen = () => {
+                const dot = document.getElementById('live-dot');
+                const txt = document.getElementById('live-text');
+                if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+                if (txt) { txt.textContent = 'LIVE ANALYSIS'; txt.className = 'text-xs font-semibold text-emerald-400'; }
+            };
+            es.onerror = () => {
+                const dot = document.getElementById('live-dot');
+                const txt = document.getElementById('live-text');
+                if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-500 animate-pulse';
+                if (txt) { txt.textContent = 'RETRYING…'; txt.className = 'text-xs font-semibold text-amber-400'; }
+            };
+            es.addEventListener('news', () => loadNews());
+            es.addEventListener('calendar', () => loadEconomicCalendar());
+            es.addEventListener('signals', () => {
+                loadDashboard();
+                loadTracker();
+            });
+            es.addEventListener('ping', () => {});
+        } catch (e) {
+            console.warn('SSE not available, using polling only');
+        }
+
+        function toggleSignalQuick(id) {
+            const row = document.getElementById(`details-${id}`);
+            if (!row) return;
+            row.classList.toggle('hidden');
+        }
+
+        // Tracker -> Table linking
+        function onTrackerItemClick(id) {
+            const row = document.getElementById(`row-${id}`);
+            if (row) {
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                toggleSignalQuick(id);
+                // brief highlight on the row
+                row.classList.add('ring-1','ring-indigo-500/60');
+                setTimeout(() => row.classList.remove('ring-1','ring-indigo-500/60'), 1200);
+            }
+        }
+
+        function hookSignalRowHoverLinks() {
+            const rows = document.querySelectorAll('#signals-table tr[id^="row-"]');
+            rows.forEach(row => {
+                const pair = row.getAttribute('data-pair');
+                if (!pair) return;
+                const enter = () => document.querySelectorAll(`.tracker-item[data-pair="${pair}"]`).forEach(el => el.classList.add('ring-1','ring-indigo-500/60'));
+                const leave = () => document.querySelectorAll(`.tracker-item[data-pair="${pair}"]`).forEach(el => el.classList.remove('ring-1','ring-indigo-500/60'));
+                row.addEventListener('mouseenter', enter);
+                row.addEventListener('mouseleave', leave);
+            });
+        }
+
+        // Manual refresh for tracker
+        document.addEventListener('click', (e) => {
+            if (e && e.target && e.target.id === 'refresh-tracker') {
+                loadTracker();
+            }
+        });
+
+        // ========== MT4/MT5 Connection Functions ==========
+        let mtConnection = {
+            platform: 'MT4',
+            accountType: 'demo',
+            connected: false,
+            server: '',
+            account: '',
+            connectionId: null
+        };
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const icon = document.getElementById('sidebar-icon');
+            const textEls = document.querySelectorAll('.sidebar-text');
+            const contentEls = document.querySelectorAll('.sidebar-content');
+            
+            if (sidebar.classList.contains('sidebar-expanded')) {
+                sidebar.classList.remove('sidebar-expanded');
+                sidebar.classList.add('sidebar-collapsed');
+                textEls.forEach(el => el.classList.add('hidden'));
+                contentEls.forEach(el => el.classList.add('hidden'));
+                icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path>';
+            } else {
+                sidebar.classList.remove('sidebar-collapsed');
+                sidebar.classList.add('sidebar-expanded');
+                textEls.forEach(el => el.classList.remove('hidden'));
+                contentEls.forEach(el => el.classList.remove('hidden'));
+                icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path>';
+            }
+        }
+
+        function selectPlatform(platform) {
+            mtConnection.platform = platform;
+            document.getElementById('btn-mt4').classList.remove('border-blue-500', 'bg-blue-500/10');
+            document.getElementById('btn-mt5').classList.remove('border-blue-500', 'bg-blue-500/10');
+            
+            if (platform === 'MT4') {
+                document.getElementById('btn-mt4').classList.add('border-blue-500', 'bg-blue-500/10');
+            } else {
+                document.getElementById('btn-mt5').classList.add('border-blue-500', 'bg-blue-500/10');
+            }
+        }
+
+        function toggleEAOnly() {
+            const checked = document.getElementById('ea-only-toggle').checked;
+            const pwd = document.getElementById('mt-password');
+            const hint = document.getElementById('ea-only-hint');
+            const btn = document.getElementById('btn-connect');
+            if (checked) {
+                pwd.disabled = true;
+                pwd.classList.add('opacity-50', 'cursor-not-allowed');
+                hint.classList.remove('hidden');
+                btn.textContent = '🔗 Connect (EA-Only Mode)';
+            } else {
+                pwd.disabled = false;
+                pwd.classList.remove('opacity-50', 'cursor-not-allowed');
+                hint.classList.add('hidden');
+                btn.textContent = '🔗 Connect to MT Platform';
+            }
+        }
+
+        function downloadEA(platform) {
+            const url = platform === 'MT4' ? '/downloads/MT4_AccountDataSender.mq4' : '/downloads/MT5_AccountDataSender.mq5';
+            window.open(url, '_blank');
+        }
+
+        function copyServerURL() {
+            const el = document.getElementById('server-url');
+            const text = el?.textContent || 'http://localhost:4101';
+            navigator.clipboard.writeText(text).then(() => showNotification('📋 URL copied to clipboard', 'info'));
+        }
+
+        async function verifyEASetup() {
+            try {
+                const account = document.getElementById('mt-account').value.trim();
+                if (!account) {
+                    alert('Enter your Account Number first');
+                    return;
+                }
+                const resp = await fetch(`/api/mt/account?account=${encodeURIComponent(account)}`);
+                const data = await resp.json();
+                const badge = document.getElementById('ea-status-badge');
+                if (data && (data.isRealData || (data.dataSource||'').includes('REAL'))) {
+                    badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+                    badge.textContent = 'EA: REAL DATA';
+                    showNotification('✅ EA is sending REAL data from your terminal', 'success');
+                    // Flip connection indicators to green if not already
+                    document.getElementById('mt-status-dot').className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse';
+                    document.getElementById('mt-status-text').textContent = 'CONNECTED (EA)';
+                    document.getElementById('mt-status-text').className = 'text-xs font-semibold text-emerald-400 sidebar-text';
+                    document.getElementById('account-info').classList.remove('hidden');
+                    updateTradeReadiness();
+                } else {
+                    badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40';
+                    badge.textContent = 'EA: WAITING';
+                    showNotification('⚠️ Not receiving EA data yet. Make sure WebRequest is allowed and EA is attached.', 'error');
+                    updateTradeReadiness();
+                }
+            } catch (e) {
+                showNotification('❌ Verification failed. Is the server running on http://localhost:4101?', 'error');
+                updateTradeReadiness();
+            }
+        }
+
+        // Connectivity checks for Server/WS
+        async function checkServerHealth() {
+            const badge = document.getElementById('server-status-badge');
+            try {
+                const r = await fetch('/api/health', { cache: 'no-store' });
+                if (r.ok) {
+                    badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+                    badge.textContent = 'SERVER: ONLINE';
+                    return true;
+                }
+            } catch {}
+            badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-500/20 text-red-300 border border-red-500/40';
+            badge.textContent = 'SERVER: OFFLINE';
+            return false;
+        }
+
+        async function checkWebSocketStatus() {
+            const badge = document.getElementById('ws-status-badge');
+            return new Promise((resolve) => {
+                try {
+                    const ws = new WebSocket('ws://localhost:8765');
+                    let done = false;
+                    const finish = (ok) => {
+                        if (done) return;
+                        done = true;
+                        if (ok) {
+                            badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+                            badge.textContent = 'WS: ONLINE';
+                            resolve(true);
+                        } else {
+                            badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-500/20 text-red-300 border border-red-500/40';
+                            badge.textContent = 'WS: OFFLINE';
+                            resolve(false);
+                        }
+                    };
+                    ws.onopen = () => { try { ws.close(); } catch {}; finish(true); };
+                    ws.onerror = () => finish(false);
+                    setTimeout(() => { try { ws.close(); } catch {}; finish(false); }, 2000);
+                } catch {
+                    badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-500/20 text-red-300 border border-red-500/40';
+                    badge.textContent = 'WS: OFFLINE';
+                    resolve(false);
+                }
+            });
+        }
+
+        async function updateTradeReadiness() {
+            const band = document.getElementById('trade-ready-band');
+            const text = document.getElementById('trade-ready-text');
+            const serverOK = (document.getElementById('server-status-badge').textContent || '').includes('ONLINE');
+            const wsOK = (document.getElementById('ws-status-badge').textContent || '').includes('ONLINE');
+            // Always update header summary counts
+            const mtOK = !!(window.mtConnection && mtConnection.connected);
+            const ready = serverOK && wsOK && (eaOK || mtOK);
+            if (ready) {
+                band.className = 'px-3 py-2 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-[11px] text-emerald-200';
+                text.textContent = 'READY — You can send signals to MT5';
+            } else {
+                band.className = 'px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700 text-[11px] text-slate-300';
+                text.textContent = 'Not ready — complete steps above';
+            }
+        }
+
+        async function beginConnectivityChecks() {
+            await checkServerHealth();
+                // If panel elements exist (older layout), update them; otherwise skip
+                const activeEl = document.getElementById('tracker-active');
+                const recentEl = document.getElementById('tracker-recent');
+                if (!activeEl && !recentEl) return;
+
+                if (activeEl) {
+                    if (active.length === 0) {
+                        activeEl.innerHTML = `<div class="text-sm text-slate-500">No active signals.</div>`;
+                    } else {
+                        activeEl.innerHTML = active.map(s => {
+                            const dirColor = s.type === 'BUY' ? 'text-emerald-400' : 'text-red-400';
+                            const pctBar = Math.max(0, Math.min(100, Math.round((s.progressClamped || 0) * 100)));
+                            const hold = s.holdRemaining > 0 ? `Hold ${mmss(s.holdRemaining)}` : 'Free to close';
+                            const pnlClass = (s.pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            return `
+                                <div class="p-3 rounded-lg border border-slate-700 bg-slate-800/40 tracker-item cursor-pointer" data-pair="${s.pair}" onclick="onTrackerItemClick('${s.id}')">
+                                    <div class="flex items-center justify-between">
+                                        <div class="font-semibold text-slate-200">${s.pair} <span class="${dirColor} text-xs ml-1">${s.type}</span></div>
+                                        <div class="text-xs ${pnlClass}">${pct(s.pnlPercent)}</div>
+                                    </div>
+                                    <div class="mt-2">
+                                        <div class="h-2 w-full bg-slate-900 rounded">
+                                            <div class="h-2 bg-indigo-500 rounded" style="width:${pctBar}%"></div>
+                                        </div>
+                                        <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+                                            <div>Entry ${Number(s.entryPrice).toFixed(5)}</div>
+                                            <div>TP ${Number(s.takeProfit).toFixed(5)}</div>
+                                        </div>
+                                        <div class="flex items-center justify-between text-[11px] text-slate-500 mt-1">
+                                            <div>${hold}</div>
+                                            <div>Age ${mmss(s.ageMs || 0)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                }
+                if (recentEl) {
+                    if (closedRecent.length === 0) {
+                        recentEl.innerHTML = `<div class="text-sm text-slate-500">No recent closures.</div>`;
+                    } else {
+                        recentEl.innerHTML = closedRecent.map(s => {
+                            const outcomeClass = (s.outcome||'').toLowerCase() === 'win' ? 'text-emerald-400' : 'text-rose-400';
+                            return `
+                                <div class="p-3 rounded-lg border border-slate-700 bg-slate-800/40">
+                                    <div class="flex items-center justify-between">
+                                        <div class="font-semibold text-slate-200">${s.pair} <span class="text-xs text-slate-400 ml-1">${s.type}</span></div>
+                                        <div class="text-xs ${outcomeClass}">${(s.outcome||'').toUpperCase()}${s.closedReason ? ' • '+s.closedReason : ''}</div>
+                                    </div>
+                                    <div class="text-[11px] text-slate-400 mt-1">Opened ${new Date(s.openedAt).toLocaleTimeString()} • Closed ${new Date(s.closedAt).toLocaleTimeString()}</div>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                }
+
+            try {
+                // Show connecting status
+                document.getElementById('mt-status-dot').className = 'w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse';
+                document.getElementById('mt-status-text').textContent = 'CONNECTING...';
+                document.getElementById('mt-status-text').className = 'text-xs font-semibold text-amber-400 sidebar-text';
+
+                // Call backend API to establish real MT connection
+                const response = await fetch('/api/mt/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        platform: mtConnection.platform,
+                        server: server,
+                        account: account,
+                        password: password,
+                        accountType: mtConnection.accountType
+                    })
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Connection failed');
+                }
+
+                // Store connection info
+                mtConnection.connected = true;
+                mtConnection.server = server;
+                mtConnection.account = account;
+                mtConnection.connectionId = result.connectionId;
+
+                // Update UI - Connected
+                document.getElementById('mt-status-dot').className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse';
+                document.getElementById('mt-status-text').textContent = 'CONNECTED';
+                document.getElementById('mt-status-text').className = 'text-xs font-semibold text-emerald-400 sidebar-text';
+                document.getElementById('mt-server-display').textContent = server;
+                document.getElementById('mt-account-display').textContent = `${account} (${mtConnection.accountType.toUpperCase()})`;
+                document.getElementById('btn-disconnect').classList.remove('hidden');
+                
+                // Show account information panel
+                document.getElementById('account-info').classList.remove('hidden');
+
+                // Fetch and display real account data
+                await fetchAccountData();
+                startAccountDataRefresh();
+
+                // Save to localStorage
+                localStorage.setItem('mtConnection', JSON.stringify(mtConnection));
+
+                console.log('✅ Connected to MT Platform:', mtConnection);
+                
+                // Show notification with EA installation instructions if needed
+                if (result.pendingEA) {
+                    showNotification(
+                        `⚠️ Connection registered! Now install the EA in your MT4/MT5 terminal to get REAL data.\n\n` +
+                        `📁 File: ${mtConnection.platform}_AccountDataSender.mq${mtConnection.platform === 'MT4' ? '4' : '5'}\n` +
+                        `📂 Copy to: Experts folder\n` +
+                        `⚙️ Compile in MetaEditor (F7)\n` +
+                        `📊 Drag onto any chart`,
+                        'warning'
+                    );
+                } else {
+                    showNotification(`✅ Connected to ${mtConnection.platform} - ${mtConnection.accountType.toUpperCase()} Account`, 'success');
+                }
+
+            } catch (error) {
+                console.error('Connection error:', error);
+                
+                // Reset UI on error
+                document.getElementById('mt-status-dot').className = 'w-2.5 h-2.5 rounded-full bg-red-500';
+                document.getElementById('mt-status-text').textContent = 'CONNECTION FAILED';
+                document.getElementById('mt-status-text').className = 'text-xs font-semibold text-red-400 sidebar-text';
+                
+                alert('❌ Connection failed: ' + error.message);
+                
+                // Reset after 3 seconds
+                setTimeout(() => {
+                    document.getElementById('mt-status-dot').className = 'w-2.5 h-2.5 rounded-full bg-slate-500';
+                    document.getElementById('mt-status-text').textContent = 'DISCONNECTED';
+                    document.getElementById('mt-status-text').className = 'text-xs font-semibold text-slate-400 sidebar-text';
+                }, 3000);
+            }
+        }
+
+        async function disconnectMT() {
+            try {
+                if (mtConnection.connectionId) {
+                    // Call backend to disconnect
+                    await fetch('/api/mt/disconnect', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ connectionId: mtConnection.connectionId })
+                    });
+                }
+            } catch (error) {
+                console.error('Disconnect error:', error);
+            }
+
+            mtConnection.connected = false;
+            mtConnection.server = '';
+            mtConnection.account = '';
+            mtConnection.connectionId = null;
+
+            // Update UI
+            document.getElementById('mt-status-dot').className = 'w-2.5 h-2.5 rounded-full bg-slate-500';
+            document.getElementById('mt-status-text').textContent = 'DISCONNECTED';
+            document.getElementById('mt-status-text').className = 'text-xs font-semibold text-slate-400 sidebar-text';
+            document.getElementById('mt-server-display').textContent = 'Not connected';
+            document.getElementById('mt-account-display').textContent = '-';
+            document.getElementById('btn-disconnect').classList.add('hidden');
+            
+            // Hide account information panel
+            document.getElementById('account-info').classList.add('hidden');
+            
+            // Stop auto-refresh
+            if (accountDataInterval) clearInterval(accountDataInterval);
+
+            // Clear form
+            document.getElementById('mt-server').value = '';
+            document.getElementById('mt-account').value = '';
+            document.getElementById('mt-password').value = '';
+
+            // Clear localStorage
+            localStorage.removeItem('mtConnection');
+
+            showNotification('❌ Disconnected from MT Platform', 'info');
+        }
+
+        // Preserve enhanced toast if already defined earlier; otherwise provide a minimal fallback
+        window.showNotification = window.showNotification || function(message, type) {
+            const color = type === 'success' ? 'emerald' : type === 'error' ? 'red' : 'blue';
+            console.log(`[${(type || 'info').toUpperCase()}] ${message}`);
+            // Minimal inline toast fallback if CSS class from earlier isn't present
+            try {
+                const note = document.createElement('div');
+                note.style.position = 'fixed';
+                note.style.top = '16px';
+                note.style.right = '16px';
+                note.style.padding = '10px 14px';
+                note.style.borderRadius = '8px';
+                note.style.zIndex = '9999';
+                note.style.fontWeight = '600';
+                note.style.color = color === 'emerald' ? '#10b981' : color === 'red' ? '#f87171' : '#60a5fa';
+                note.style.background = 'rgba(15, 23, 42, 0.9)';
+                note.style.border = `1px solid ${note.style.color}`;
+                note.textContent = message;
+                document.body.appendChild(note);
+                setTimeout(() => { note.style.opacity = '0'; note.style.transition = 'opacity 0.3s'; setTimeout(() => note.remove(), 300); }, 2500);
+            } catch {}
+        }
+
+        // Fetch account data from MT4/MT5
+        async function fetchAccountData() {
+            if (!mtConnection.connectionId && !mtConnection.account) {
+                console.error('No connection ID or account number available');
+                return;
+            }
+
+            try {
+                // Fetch real data from backend API with connection ID or account number
+                let url = `/api/mt/account?connectionId=${mtConnection.connectionId}`;
+                if (mtConnection.account) {
+                    url += `&account=${mtConnection.account}`;
+                }
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to fetch account data');
+                }
+
+                const data = await response.json();
+
+                // Show data source indicator
+                const isRealData = data.isRealData || data.dataSource?.includes('REAL');
+                const dataSourceIndicator = isRealData ? 
+                    '✅ REAL DATA from MT4/MT5' : 
+                    '⚠️ ' + (data.dataSource || 'Simulated');
+                
+                console.log(`📊 Data Source: ${dataSourceIndicator}`);
+                
+                // Show alert if waiting for EA
+                if (data.pendingEA || data.alert) {
+                    console.warn('⚠️ Install EA to get REAL data:', data.alert || data.message);
+                }
+
+                // Update UI with account data
+                document.getElementById('account-balance').textContent = `$${data.balance.toFixed(2)}`;
+                document.getElementById('account-equity').textContent = `$${data.equity.toFixed(2)}`;
+                document.getElementById('account-margin').textContent = `$${data.margin.toFixed(2)}`;
+                document.getElementById('account-free-margin').textContent = `$${data.freeMargin.toFixed(2)}`;
+                document.getElementById('account-margin-level').textContent = data.margin > 0 ? `${data.marginLevel.toFixed(0)}%` : '∞';
+                
+                // Color-code profit/loss
+                const profitEl = document.getElementById('account-profit');
+                profitEl.textContent = `${data.profit >= 0 ? '+' : ''}$${data.profit.toFixed(2)}`;
+                if (data.profit > 0) {
+                    profitEl.className = 'text-sm font-bold text-emerald-400';
+                } else if (data.profit < 0) {
+                    profitEl.className = 'text-sm font-bold text-red-400';
+                } else {
+                    profitEl.className = 'text-sm font-bold text-slate-400';
+                }
+                
+                document.getElementById('account-positions').textContent = data.openPositions;
+
+                console.log('📊 Account data updated:', {
+                    dataSource: dataSourceIndicator,
+                    balance: data.balance,
+                    equity: data.equity,
+                    profit: data.profit,
+                    positions: data.openPositions
+                });
+
+            } catch (err) {
+                console.error('❌ Error fetching account data:', err);
+                showNotification('⚠️ Failed to fetch account data', 'error');
+            }
+        }
+
+        // Auto-refresh account data every 5 seconds when connected
+        let accountDataInterval = null;
+        function startAccountDataRefresh() {
+            if (accountDataInterval) clearInterval(accountDataInterval);
+            accountDataInterval = setInterval(() => {
+                if (mtConnection.connected) {
+                    fetchAccountData();
+                }
+            }, 5000);
+        }
+
+    // Load saved connection and preferences on page load
+    window.addEventListener('DOMContentLoaded', () => {
+            const saved = localStorage.getItem('mtConnection');
+            if (saved) {
+                try {
+                    const conn = JSON.parse(saved);
+                    if (conn.connected && conn.server && conn.account) {
+                        mtConnection = conn;
+                        document.getElementById('mt-server').value = conn.server;
+                        document.getElementById('mt-account').value = conn.account;
+                        selectPlatform(conn.platform);
+                        selectAccountType(conn.accountType);
+                        // Auto-reconnect UI (password not saved for security)
+                        document.getElementById('mt-status-dot').className = 'w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse';
+                        document.getElementById('mt-status-text').textContent = 'RECONNECT NEEDED';
+                        document.getElementById('mt-status-text').className = 'text-xs font-semibold text-amber-400 sidebar-text';
+                    }
+                } catch {}
+            }
+            // Default platform selection
+            selectPlatform('MT4');
+            selectAccountType('demo');
+            beginConnectivityChecks();
+
+            // Filters wiring (with localStorage persistence)
+            const pairInput = document.getElementById('filter-pair');
+            const statusSel = document.getElementById('filter-status');
+            const sortSel = document.getElementById('sort-signals');
+            const tfAll = document.getElementById('tf-all');
+            const tf1 = document.getElementById('tf-1h');
+            const tf4 = document.getElementById('tf-4h');
+            const saveFilters = () => {
+                try { localStorage.setItem('signalFilters', JSON.stringify(_filters)); } catch {}
+            };
+            const applySavedFiltersToUI = () => {
+                try {
+                    const savedFilters = JSON.parse(localStorage.getItem('signalFilters') || '{}');
+                    if (typeof savedFilters.pair === 'string') _filters.pair = savedFilters.pair;
+                    if (typeof savedFilters.status === 'string') _filters.status = savedFilters.status;
+                    if (typeof savedFilters.sort === 'string') _filters.sort = savedFilters.sort;
+                    if (typeof savedFilters.timeframe === 'string') _filters.timeframe = savedFilters.timeframe;
+                    if (pairInput && _filters.pair) pairInput.value = _filters.pair;
+                    if (statusSel && _filters.status) statusSel.value = _filters.status;
+                    if (sortSel && _filters.sort) sortSel.value = _filters.sort;
+                } catch {}
+            };
+            if (pairInput) pairInput.addEventListener('input', (e) => { _filters.pair = e.target.value.trim(); saveFilters(); renderSignalsTable(); });
+            if (statusSel) statusSel.addEventListener('change', (e) => { _filters.status = e.target.value; saveFilters(); renderSignalsTable(); });
+            if (sortSel) sortSel.addEventListener('change', (e) => { _filters.sort = e.target.value; saveFilters(); renderSignalsTable(); });
+            const setTf = (val) => {
+                _filters.timeframe = val;
+                [tfAll, tf1, tf4].forEach(btn => btn && btn.classList.remove('bg-slate-800/60', 'text-slate-200'));
+                if (val==='all' && tfAll) { tfAll.classList.add('bg-slate-800/60','text-slate-200'); }
+                if (val==='1h' && tf1) { tf1.classList.add('bg-slate-800/60','text-slate-200'); }
+                if (val==='4h' && tf4) { tf4.classList.add('bg-slate-800/60','text-slate-200'); }
+                saveFilters();
+                renderSignalsTable();
+            };
+            if (tfAll) tfAll.addEventListener('click', () => setTf('all'));
+            if (tf1) tf1.addEventListener('click', () => setTf('1h'));
+            if (tf4) tf4.addEventListener('click', () => setTf('4h'));
+
+            // Initialize filter UI from saved values
+            applySavedFiltersToUI();
+            if (_filters.timeframe) {
+                const tf = _filters.timeframe;
+                if (tf === '1h') setTf('1h');
+                else if (tf === '4h') setTf('4h');
+                else setTf('all');
+            }
+        });
+    </script>
+    </div>
+</body>
+</html>
