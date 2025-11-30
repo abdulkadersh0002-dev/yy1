@@ -1,0 +1,17 @@
+{
+  "$id": "economic-indicator.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Economic Indicator",
+  "type": "object",
+  "required": ["name", "value", "impact", "trend", "source"],
+  "properties": {
+    "name": { "type": "string" },
+    "value": { "type": ["number", "null"] },
+    "change": { "type": ["number", "null"] },
+    "impact": { "type": "number" },
+    "trend": { "type": "string" },
+    "source": { "type": "string" },
+    "observedAt": { "type": ["string", "null"] }
+  },
+  "additionalProperties": true
+}

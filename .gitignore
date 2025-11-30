@@ -1,35 +1,9 @@
-# Node/JS
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Env & local configs
-.env
-.env.*
-.DS_Store
-Thumbs.db
-
-# Build/output
 dist/
-build/
-coverage/
-.cache/
-
-# Editors/OS
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Logs
-logs/
+reports/
+.env
 *.log
-*.pid
-*.pid.lock
-
-# Misc
-*.local
-.vercel/
-.netlify/
+.DS_Store
+trades_history.json
+positions.json
+performance_data.json

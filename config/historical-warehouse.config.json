@@ -1,0 +1,15 @@
+{
+  "_notes": [
+    "Populate the prices/macro/news arrays with dataset descriptors before running the ETL script.",
+    "Each descriptor can specify path, format (csv|json|ndjson), column mappings, timezone, and metadata.",
+    "Set dryRun to false when you are ready to persist into TimescaleDB."
+  ],
+  "dryRun": true,
+  "prices": [],
+  "macro": [],
+  "news": [],
+  "normalizeFeatureStore": {
+    "enabled": true,
+    "batchSize": 250
+  }
+}

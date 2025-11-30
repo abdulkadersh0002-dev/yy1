@@ -1,0 +1,14 @@
+{{ define "provider.alert.body" }}
+*Service*: {{ .CommonLabels.service }}
+*Summary*: {{ .CommonAnnotations.summary }}
+*Description*: {{ .CommonAnnotations.description }}
+*State*: {{ .Status | toUpper }}
+*Severity*: {{ .CommonLabels.severity }}
+*Runbook*: {{ .CommonAnnotations.runbook }}
+{{- if .ExternalURL }}
+*Alertmanager*: {{ .ExternalURL }}
+{{- end }}
+{{- if .CommonAnnotations.ticket_hint }}
+*Ticketing*: {{ .CommonAnnotations.ticket_hint }}
+{{- end }}
+{{ end }}

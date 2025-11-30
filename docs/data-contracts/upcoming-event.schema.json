@@ -1,0 +1,17 @@
+{
+  "$id": "upcoming-event.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Upcoming Economic Event",
+  "type": "object",
+  "required": ["time", "event", "impact", "currency"],
+  "properties": {
+    "time": { "type": ["string", "number"] },
+    "event": { "type": "string" },
+    "impact": { "type": "number" },
+    "currency": { "type": "string" },
+    "actual": { "type": ["string", "number", "null"] },
+    "forecast": { "type": ["string", "number", "null"] },
+    "previous": { "type": ["string", "number", "null"] }
+  },
+  "additionalProperties": true
+}
