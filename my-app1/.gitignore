@@ -1,0 +1,9 @@
+node_modules/
+dist/
+reports/
+.env
+*.log
+.DS_Store
+trades_history.json
+positions.json
+performance_data.json

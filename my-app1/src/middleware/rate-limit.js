@@ -1,0 +1,44 @@
+const DEFAULT_WINDOW_MS = 60 * 1000;
+const DEFAULT_MAX_REQUESTS = 30;
+
+export function createRateLimiter({
+  windowMs = DEFAULT_WINDOW_MS,
+  max = DEFAULT_MAX_REQUESTS,
+  logger
+} = {}) {
+  const hits = new Map();
+
+  const cleanup = () => {
+    const now = Date.now();
+    for (const [key, entry] of hits) {
+      if (entry.resetAt <= now) {
+        hits.delete(key);
+      }
+    }
+  };
+
+  return function rateLimiter(req, res, next) {
+    const now = Date.now();
+    const key = `${req.identity?.id || 'anonymous'}|${req.method}|${req.path}`;
+    const existing = hits.get(key);
+
+    if (!existing || existing.resetAt <= now) {
+      hits.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+
+    if (existing.count >= max) {
+      logger?.warn?.({ key, windowMs, max }, 'Rate limit exceeded');
+      return res.status(429).json({ success: false, error: 'Too many requests' });
+    }
+
+    existing.count += 1;
+    hits.set(key, existing);
+
+    if (hits.size > max * 10) {
+      cleanup();
+    }
+
+    return next();
+  };
+}

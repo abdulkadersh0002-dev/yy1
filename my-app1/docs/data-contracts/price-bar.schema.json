@@ -1,0 +1,17 @@
+{
+  "$id": "price-bar.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Price Bar",
+  "type": "object",
+  "required": ["time", "open", "high", "low", "close"],
+  "properties": {
+    "time": { "type": "number" },
+    "open": { "type": "number" },
+    "high": { "type": "number" },
+    "low": { "type": "number" },
+    "close": { "type": "number" },
+    "volume": { "type": "number" },
+    "provider": { "type": "string" }
+  },
+  "additionalProperties": false
+}

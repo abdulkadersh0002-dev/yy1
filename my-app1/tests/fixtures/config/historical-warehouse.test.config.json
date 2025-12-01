@@ -1,0 +1,9 @@
+{
+  "dryRun": true,
+  "prices": [],
+  "macro": [],
+  "news": [],
+  "normalizeFeatureStore": {
+    "enabled": false
+  }
+}

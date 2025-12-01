@@ -1,0 +1,41 @@
+{
+  "outputDir": "reports/backtesting",
+  "transactionCosts": {
+    "spreadPips": 0.8,
+    "slippagePips": 0.2,
+    "commissionPerLot": 7,
+    "lotSize": 100000
+  },
+  "backtesterOptions": {
+    "entryOffset": 1,
+    "defaultHoldBars": 12,
+    "defaultTakeProfitPips": 20,
+    "defaultStopLossPips": 15,
+    "units": 100000
+  },
+  "monteCarlo": {
+    "enabled": true,
+    "iterations": 500,
+    "sampleSize": 200
+  },
+  "walkForward": {
+    "enabled": true,
+    "windowSize": 600,
+    "stepSize": 300
+  },
+  "datasets": [
+    {
+      "label": "Sample EURUSD Backtest",
+      "pair": "EURUSD",
+      "timeframe": "M15",
+      "priceFile": {
+        "path": "data/backtests/eurusd-m15-bars.json",
+        "format": "json"
+      },
+      "signalFile": {
+        "path": "data/backtests/eurusd-m15-signals.json",
+        "format": "json"
+      }
+    }
+  ]
+}
