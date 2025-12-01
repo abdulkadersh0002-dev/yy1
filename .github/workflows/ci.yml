@@ -42,6 +42,11 @@ jobs:
       - name: Run unit tests
         run: npm run test:unit
 
+      - name: Run unit tests with coverage
+        if: matrix.node-version == '22'
+        run: npm run test:coverage
+        continue-on-error: true
+
       - name: Run integration tests
         run: npm run test:integration
 
