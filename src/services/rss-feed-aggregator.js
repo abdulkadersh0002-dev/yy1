@@ -3,6 +3,7 @@ import axios from 'axios';
 import { appConfig } from '../app/config.js';
 
 const DEFAULT_FEEDS = [
+  // === MAJOR FINANCIAL NEWS SOURCES ===
   {
     id: 'reuters-top-news',
     name: 'Reuters',
@@ -10,7 +11,8 @@ const DEFAULT_FEEDS = [
       'https://www.reuters.com/feed/rss/businessNews',
       'https://news.google.com/rss/search?q=site:reuters.com+business&hl=en-US&gl=US&ceid=US:en'
     ],
-    category: 'macro'
+    category: 'macro',
+    priority: 1
   },
   {
     id: 'reuters-markets',
@@ -19,13 +21,38 @@ const DEFAULT_FEEDS = [
       'https://www.reuters.com/markets/europe/rss',
       'https://news.google.com/rss/search?q=site:reuters.com+markets&hl=en-US&gl=US&ceid=US:en'
     ],
-    category: 'markets'
+    category: 'markets',
+    priority: 1
+  },
+  {
+    id: 'bloomberg-markets',
+    name: 'Bloomberg Markets',
+    url: [
+      'https://news.google.com/rss/search?q=site:bloomberg.com+markets&hl=en-US&gl=US&ceid=US:en',
+      'https://news.google.com/rss/search?q=Bloomberg+forex+currency&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'markets',
+    priority: 1
+  },
+  {
+    id: 'cnbc-markets',
+    name: 'CNBC Markets',
+    url: [
+      'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664',
+      'https://news.google.com/rss/search?q=site:cnbc.com+markets&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'markets',
+    priority: 1
   },
   {
     id: 'yahoo-finance',
     name: 'Yahoo Finance',
-    url: 'https://finance.yahoo.com/news/rssindex',
-    category: 'markets'
+    url: [
+      'https://finance.yahoo.com/news/rssindex',
+      'https://news.google.com/rss/search?q=site:finance.yahoo.com+forex&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'markets',
+    priority: 2
   },
   {
     id: 'marketwatch',
@@ -34,19 +61,29 @@ const DEFAULT_FEEDS = [
       'https://feeds.marketwatch.com/marketwatch/marketpulse/',
       'https://news.google.com/rss/search?q=site:marketwatch.com+markets&hl=en-US&gl=US&ceid=US:en'
     ],
-    category: 'markets'
+    category: 'markets',
+    priority: 2
   },
+  // === FOREX SPECIALIZED SOURCES ===
   {
     id: 'investing-com',
     name: 'Investing.com',
-    url: 'https://www.investing.com/rss/news_25.rss',
-    category: 'forex'
+    url: [
+      'https://www.investing.com/rss/news_25.rss',
+      'https://news.google.com/rss/search?q=site:investing.com+forex&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'forex',
+    priority: 1
   },
   {
     id: 'forexlive',
     name: 'ForexLive',
-    url: 'https://www.forexlive.com/feed/news',
-    category: 'forex'
+    url: [
+      'https://www.forexlive.com/feed/news',
+      'https://news.google.com/rss/search?q=site:forexlive.com&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'forex',
+    priority: 1
   },
   {
     id: 'dailyfx',
@@ -55,7 +92,59 @@ const DEFAULT_FEEDS = [
       'https://www.dailyfx.com/feeds/forex_market_news',
       'https://news.google.com/rss/search?q=DailyFX+forex&hl=en-US&gl=US&ceid=US:en'
     ],
-    category: 'forex'
+    category: 'forex',
+    priority: 1
+  },
+  {
+    id: 'fxstreet',
+    name: 'FXStreet',
+    url: [
+      'https://news.google.com/rss/search?q=site:fxstreet.com+forex&hl=en-US&gl=US&ceid=US:en',
+      'https://news.google.com/rss/search?q=FXStreet+currency&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'forex',
+    priority: 2
+  },
+  // === CENTRAL BANK & ECONOMIC SOURCES ===
+  {
+    id: 'federal-reserve',
+    name: 'Federal Reserve',
+    url: [
+      'https://news.google.com/rss/search?q=Federal+Reserve+interest+rate&hl=en-US&gl=US&ceid=US:en',
+      'https://news.google.com/rss/search?q=Fed+monetary+policy&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'macro',
+    priority: 1
+  },
+  {
+    id: 'ecb-news',
+    name: 'ECB News',
+    url: [
+      'https://news.google.com/rss/search?q=ECB+European+Central+Bank&hl=en-US&gl=US&ceid=US:en',
+      'https://news.google.com/rss/search?q=ECB+interest+rate&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'macro',
+    priority: 1
+  },
+  {
+    id: 'financial-times',
+    name: 'Financial Times',
+    url: [
+      'https://news.google.com/rss/search?q=site:ft.com+markets&hl=en-US&gl=US&ceid=US:en',
+      'https://news.google.com/rss/search?q=Financial+Times+forex&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'markets',
+    priority: 1
+  },
+  {
+    id: 'wsj-markets',
+    name: 'Wall Street Journal',
+    url: [
+      'https://news.google.com/rss/search?q=site:wsj.com+markets&hl=en-US&gl=US&ceid=US:en',
+      'https://news.google.com/rss/search?q=Wall+Street+Journal+forex&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'markets',
+    priority: 1
   }
 ];
 
