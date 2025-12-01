@@ -20,10 +20,7 @@ class EnhancedNewsAnalyzer {
     this.aggregator =
       options.aggregator ||
       new RssFeedAggregator({
-        apiKeys: {
-          polygon: apiKeys?.polygon || process.env.POLYGON_API_KEY,
-          finnhub: apiKeys?.finnhub || process.env.FINNHUB_API_KEY
-        },
+        apiKeys,
         cacheTtlMs: options.aggregatorCacheTtlMs || 2 * 60 * 1000
       });
     this.languageProcessor =

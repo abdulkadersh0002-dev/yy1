@@ -1,6 +1,7 @@
 const DEFAULT_HEADER = 'x-api-key';
 const DEFAULT_SECRET_NAME = 'api-auth-keys';
 const DEFAULT_CACHE_MS = 60 * 1000;
+import { appConfig } from '../app/config.js';
 
 const normalizeKeys = (raw) => {
   if (!raw) {
@@ -88,21 +89,25 @@ const pathMatches = (req, matcher) => {
 };
 
 export const createApiAuthMiddleware = (options = {}) => {
+  const securityConfig = appConfig.security?.apiAuth || {};
+
   const enabled =
     options.enabled ??
-    (process.env.ENABLE_API_AUTH !== 'false' && process.env.API_AUTH_ENABLED !== 'false');
+    (securityConfig.enabled ?? true);
   const secretManager = options.secretManager;
   const logger = options.logger || console;
   const auditLogger = options.auditLogger || null;
   const headerName = (
     options.headerName ||
-    process.env.API_AUTH_HEADER ||
+    securityConfig.headerName ||
     DEFAULT_HEADER
   ).toLowerCase();
-  const secretName = options.secretName || process.env.API_AUTH_SECRET_NAME || DEFAULT_SECRET_NAME;
+  const secretName = options.secretName || securityConfig.secretName || DEFAULT_SECRET_NAME;
   const cacheMs = Number.isFinite(options.cacheMs)
     ? options.cacheMs
-    : Number.parseInt(process.env.API_AUTH_CACHE_MS, 10) || DEFAULT_CACHE_MS;
+    : Number.isFinite(securityConfig.cacheMs)
+      ? securityConfig.cacheMs
+      : DEFAULT_CACHE_MS;
 
   const exemptRoutes = options.exemptRoutes || [
     { method: 'GET', path: /^\/api\/health(\/.*)?$/ },

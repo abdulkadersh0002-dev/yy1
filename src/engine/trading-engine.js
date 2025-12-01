@@ -17,6 +17,18 @@ import { persistenceHub } from './modules/persistence-hub.js';
 import { orchestrationCoordinator } from './modules/orchestration-coordinator.js';
 import { dataQualityGuard } from './modules/data-quality-guard.js';
 import { getPairMetadata, getPipSize, getPricePrecision } from '../config/pair-catalog.js';
+import {
+  createTradingSignalDTO,
+  createTradeDTO,
+  normalizeEconomicAnalysis,
+  normalizeNewsAnalysis,
+  normalizeTechnicalAnalysis,
+  validateTradingSignalDTO,
+  validateTradeDTO,
+  validateEconomicAnalysisDTO,
+  validateNewsAnalysisDTO,
+  validateTechnicalAnalysisDTO
+} from '../models/dtos.js';
 
 class TradingEngine {
   constructor(config = {}) {
@@ -219,6 +231,12 @@ class TradingEngine {
     };
     this.lastBrokerSync = 0;
 
+    // Lightweight, in-memory cache for recent analytics to avoid duplicate work
+    this.analyticsCache = {
+      entryByPair: new Map(),
+      winRateByKey: new Map()
+    };
+
     this.bindAnalysisCoreMethods();
     this.bindRiskEngineMethods();
     this.bindExecutionEngineMethods();
@@ -227,6 +245,38 @@ class TradingEngine {
     this.bindDataQualityGuard();
     this.updateVaRMetrics();
     this.refreshRiskCommandSnapshot();
+  }
+
+  classifyError(error, context = {}) {
+    const message = error?.message || '';
+    const name = error?.name || '';
+
+    if (
+      message.includes('ECON_API') ||
+      message.includes('NEWS_API') ||
+      message.includes('PRICE_API') ||
+      message.includes('NETWORK') ||
+      /ECONOMICS?|NEWS?|PRICE|HTTP|NETWORK/i.test(message + name)
+    ) {
+      return { type: 'provider', category: 'Provider/API failure', context };
+    }
+
+    if (
+      message.includes('ANALYZER') ||
+      /ANALYZER|ANALYSIS|SCORER|MODEL/i.test(message + name)
+    ) {
+      return { type: 'analyzer', category: 'Analyzer failure', context };
+    }
+
+    if (
+      message.includes('BROKER') ||
+      message.includes('EXECUTION') ||
+      /BROKER|EXECUTION|ORDER|POSITION/i.test(message + name)
+    ) {
+      return { type: 'execution', category: 'Execution/broker failure', context };
+    }
+
+    return { type: 'unknown', category: 'Unknown engine error', context };
   }
 
   setBrokerRouter(router) {
@@ -302,15 +352,34 @@ class TradingEngine {
       return 45;
     }
 
+    const technicalScoreRaw = components?.technical?.score ?? 0;
+    const newsConfidenceRaw = components?.news?.confidence ?? 0;
+    const economicScoreRaw =
+      components?.economic?.score ?? components?.economic?.details?.relativeSentiment ?? 0;
+    const riskRewardRaw = entry?.riskReward ?? 0;
+
+    const cacheKey = JSON.stringify({
+      direction,
+      strength: Math.round(strength ?? 0),
+      confidence: Math.round(confidence ?? 0),
+      technicalScore: Math.round(technicalScoreRaw),
+      newsConfidence: Math.round(newsConfidenceRaw),
+      economicScore: Math.round(economicScoreRaw),
+      riskReward: Number(riskRewardRaw.toFixed(2)),
+      trailingEnabled: Boolean(entry?.trailingStop?.enabled)
+    });
+
+    const cached = this.analyticsCache.winRateByKey.get(cacheKey);
+    if (typeof cached === 'number') {
+      return cached;
+    }
+
     const clampedStrength = Math.min(Math.max(strength || 0, 0), 100);
     const clampedConfidence = Math.min(Math.max(confidence || 0, 0), 100);
-    const technicalScore = Math.min(Math.abs(components.technical.score || 0), 120);
-    const newsConfidence = Math.min(components.news.confidence || 0, 100);
-    const economicEdge = Math.min(
-      Math.abs(components.economic.score || components.economic.details?.relativeSentiment || 0),
-      100
-    );
-    const riskReward = entry ? Math.min(Math.max(entry.riskReward || 0, 0), 4) : 0;
+    const technicalScore = Math.min(Math.abs(technicalScoreRaw || 0), 120);
+    const newsConfidence = Math.min(newsConfidenceRaw || 0, 100);
+    const economicEdge = Math.min(Math.abs(economicScoreRaw || 0), 100);
+    const riskReward = Math.min(Math.max(riskRewardRaw || 0, 0), 4);
 
     let composite =
       clampedStrength * 0.32 +
@@ -341,7 +410,9 @@ class TradingEngine {
       estimate = Math.max(estimate, 94 + Math.min(riskReward - 2, 1) * 3);
     }
 
-    return parseFloat(estimate.toFixed(1));
+    const finalEstimate = parseFloat(estimate.toFixed(1));
+    this.analyticsCache.winRateByKey.set(cacheKey, finalEstimate);
+    return finalEstimate;
   }
 
   buildTradePlan(pair, direction, entry, winRate, confidence) {
@@ -370,6 +441,26 @@ class TradingEngine {
       return null;
     }
 
+    const volatilitySummary = technical?.volatilitySummary || technical?.volatility || {};
+
+    // Build a stable cache key for this pair/direction and current volatility regime
+    const cacheKey = JSON.stringify({
+      pair,
+      direction,
+      marketPrice: typeof marketPrice === 'number' ? Number(marketPrice.toFixed(5)) : null,
+      volatilityState: volatilitySummary.state || 'normal',
+      volatilityScore: Number.isFinite(volatilitySummary.averageScore)
+        ? Math.round(volatilitySummary.averageScore)
+        : Number.isFinite(volatilitySummary.volatilityScore)
+          ? Math.round(volatilitySummary.volatilityScore)
+          : 0
+    });
+
+    const cachedEntry = this.analyticsCache.entryByPair.get(cacheKey);
+    if (cachedEntry) {
+      return { ...cachedEntry };
+    }
+
     // Get current price from technical analysis (fallback to live fetch result)
     const currentPrice =
       typeof marketPrice === 'number' ? marketPrice : this.getCurrentPrice(technical);
@@ -378,7 +469,6 @@ class TradingEngine {
       return null;
     }
 
-    const volatilitySummary = technical?.volatilitySummary || technical?.volatility || {};
     const volatilityScoreRaw = Number.isFinite(volatilitySummary.averageScore)
       ? volatilitySummary.averageScore
       : (volatilitySummary.volatilityScore ?? 70);
@@ -450,6 +540,7 @@ class TradingEngine {
       );
     }
 
+    this.analyticsCache.entryByPair.set(cacheKey, { ...entry });
     return entry;
   }
 
@@ -1363,7 +1454,7 @@ class TradingEngine {
   }
 
   getDefaultSignal(pair) {
-    return {
+    const raw = {
       pair,
       timestamp: Date.now(),
       direction: 'NEUTRAL',
@@ -1374,6 +1465,29 @@ class TradingEngine {
       entry: null,
       isValid: { isValid: false, checks: {}, reason: 'Error generating signal' }
     };
+
+    return validateTradingSignalDTO(createTradingSignalDTO(raw));
+  }
+
+  // DTO helper accessors so other modules can opt in without importing dtos.js directly
+  toTradingSignalDTO(raw) {
+    return validateTradingSignalDTO(createTradingSignalDTO(raw));
+  }
+
+  toTradeDTO(raw) {
+    return validateTradeDTO(createTradeDTO(raw));
+  }
+
+  toEconomicAnalysisDTO(raw) {
+    return validateEconomicAnalysisDTO(normalizeEconomicAnalysis(raw));
+  }
+
+  toNewsAnalysisDTO(raw) {
+    return validateNewsAnalysisDTO(normalizeNewsAnalysis(raw));
+  }
+
+  toTechnicalAnalysisDTO(raw) {
+    return validateTechnicalAnalysisDTO(normalizeTechnicalAnalysis(raw));
   }
 
   /**

@@ -1,5 +1,6 @@
 import RSSParser from 'rss-parser';
 import axios from 'axios';
+import { appConfig } from '../app/config.js';
 
 const DEFAULT_FEEDS = [
   {
@@ -131,9 +132,10 @@ export default class RssFeedAggregator {
     this.feeds = feeds;
     this.cacheTtlMs = cacheTtlMs;
     this.cache = new Map();
+    const tradingApiKeys = appConfig.trading?.apiKeys || {};
     this.apiKeys = {
-      polygon: apiKeys.polygon || process.env.POLYGON_API_KEY,
-      finnhub: apiKeys.finnhub || process.env.FINNHUB_API_KEY
+      polygon: apiKeys.polygon || tradingApiKeys.polygon,
+      finnhub: apiKeys.finnhub || tradingApiKeys.finnhub
     };
     this.polygonLimit = polygonLimit;
     this.finnhubCategory = finnhubCategory;

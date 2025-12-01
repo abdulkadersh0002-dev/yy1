@@ -28,7 +28,16 @@ export const executionEngine = {
 
       this.activeTrades.set(trade.id, trade);
       this.dailyRisk += trade.riskFraction || this.config.riskPerTrade;
-      console.log(`Trade executed: ${trade.direction} ${trade.pair} @ ${trade.entryPrice}`);
+      this.logger?.info?.(
+        {
+          module: 'ExecutionEngine',
+          tradeId: trade.id,
+          pair: trade.pair,
+          direction: trade.direction,
+          entryPrice: trade.entryPrice
+        },
+        'Trade executed'
+      );
 
       if (this.brokerRouter) {
         const brokerResult = await this.commitBrokerOrder(trade, signal);
@@ -53,7 +62,7 @@ export const executionEngine = {
         signal
       };
     } catch (error) {
-      console.error('Trade execution error:', error.message);
+      this.logger?.error?.({ module: 'ExecutionEngine', err: error }, 'Trade execution error');
       return {
         success: false,
         reason: error.message,
@@ -72,7 +81,10 @@ export const executionEngine = {
         if (!trade.movedToBreakeven && this.shouldMoveToBreakeven(trade, currentPrice)) {
           trade.stopLoss = trade.entryPrice;
           trade.movedToBreakeven = true;
-          console.log(`Moved SL to breakeven for trade ${tradeId}`);
+          this.logger?.info?.(
+            { module: 'ExecutionEngine', tradeId, pair: trade.pair },
+            'Moved SL to breakeven'
+          );
         }
 
         if (trade.trailingStop.enabled && this.shouldActivateTrailing(trade, currentPrice)) {
@@ -94,7 +106,10 @@ export const executionEngine = {
           await this.syncBrokerFills();
           this.lastBrokerSync = now;
         } catch (error) {
-          console.error('Broker reconciliation sync failed:', error.message);
+          this.logger?.error?.(
+            { module: 'ExecutionEngine', err: error },
+            'Broker reconciliation sync failed'
+          );
         }
       }
     }
@@ -121,13 +136,29 @@ export const executionEngine = {
       const newStopLoss = currentPrice - trade.trailingStop.trailingDistance;
       if (newStopLoss > trade.stopLoss) {
         trade.stopLoss = newStopLoss;
-        console.log(`Updated trailing SL for ${trade.id}: ${newStopLoss.toFixed(5)}`);
+        this.logger?.info?.(
+          {
+            module: 'ExecutionEngine',
+            tradeId: trade.id,
+            pair: trade.pair,
+            newStopLoss: Number(newStopLoss.toFixed(5))
+          },
+          'Updated trailing SL'
+        );
       }
     } else {
       const newStopLoss = currentPrice + trade.trailingStop.trailingDistance;
       if (newStopLoss < trade.stopLoss) {
         trade.stopLoss = newStopLoss;
-        console.log(`Updated trailing SL for ${trade.id}: ${newStopLoss.toFixed(5)}`);
+        this.logger?.info?.(
+          {
+            module: 'ExecutionEngine',
+            tradeId: trade.id,
+            pair: trade.pair,
+            newStopLoss: Number(newStopLoss.toFixed(5))
+          },
+          'Updated trailing SL'
+        );
       }
     }
   },
@@ -169,9 +200,16 @@ export const executionEngine = {
       this.handleTradeClosed(trade);
     }
 
-    console.log(
-      `Trade closed: ${trade.id} | ${trade.direction} ${trade.pair} | ` +
-        `PnL: ${trade.finalPnL.percentage.toFixed(2)}% | Reason: ${reason}`
+    this.logger?.info?.(
+      {
+        module: 'ExecutionEngine',
+        tradeId: trade.id,
+        pair: trade.pair,
+        direction: trade.direction,
+        pnlPercentage: trade.finalPnL?.percentage,
+        reason
+      },
+      'Trade closed'
     );
 
     return trade;
@@ -205,7 +243,10 @@ export const executionEngine = {
       trade.brokerRoute = payload.broker || routing.defaultBroker || null;
       return { success: true, order: result.order };
     } catch (error) {
-      console.error('Broker order commit failed:', error.message);
+      this.logger?.error?.(
+        { module: 'ExecutionEngine', err: error },
+        'Broker order commit failed'
+      );
       return { success: false, error: error.message };
     }
   },
@@ -249,7 +290,10 @@ export const executionEngine = {
       }
       return this.brokerRouter.closePosition(payload);
     } catch (error) {
-      console.error('Broker close failed:', error.message);
+      this.logger?.error?.(
+        { module: 'ExecutionEngine', err: error },
+        'Broker close failed'
+      );
       return { success: false, error: error.message };
     }
   }

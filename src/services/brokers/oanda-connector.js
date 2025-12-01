@@ -1,4 +1,5 @@
 import BaseBrokerConnector from './base-connector.js';
+import { appConfig } from '../../app/config.js';
 
 const PRACTICE_URL = 'https://api-fxpractice.oanda.com';
 const LIVE_URL = 'https://api-fxtrade.oanda.com';
@@ -7,8 +8,9 @@ class OandaConnector extends BaseBrokerConnector {
   constructor(options = {}) {
     const accountMode = options.accountMode === 'real' ? 'real' : 'demo';
     const baseURL = accountMode === 'real' ? LIVE_URL : PRACTICE_URL;
-    const accessToken = options.accessToken || process.env.OANDA_ACCESS_TOKEN || '';
-    const accountId = options.accountId || process.env.OANDA_ACCOUNT_ID || '';
+    const brokerConfig = appConfig.brokers?.oanda || {};
+    const accessToken = options.accessToken || brokerConfig.accessToken || '';
+    const accountId = options.accountId || brokerConfig.accountId || '';
     super({
       name: 'oanda',
       accountMode,

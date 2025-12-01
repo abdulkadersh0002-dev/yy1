@@ -369,7 +369,10 @@ export function buildAppConfig(environment = process.env) {
   };
 
   const autoTrading = {
-    autostart: parseBoolSafe(env.AUTO_TRADING_AUTOSTART, true)
+    autostart: parseBoolSafe(env.AUTO_TRADING_AUTOSTART, true),
+    monitoringIntervalMs: parseIntSafe(env.AUTO_TRADING_MONITORING_INTERVAL_MS),
+    signalGenerationIntervalMs: parseIntSafe(env.AUTO_TRADING_SIGNAL_INTERVAL_MS),
+    signalCheckIntervalMs: parseIntSafe(env.AUTO_TRADING_SIGNAL_CHECK_INTERVAL_MS)
   };
 
   const services = {

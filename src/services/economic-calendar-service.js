@@ -2,11 +2,14 @@ import axios from 'axios';
 import RSSParser from 'rss-parser';
 import { assertRealTimeDataAvailability } from '../config/runtime-flags.js';
 import { getPairMetadata } from '../config/pair-catalog.js';
+import { getServiceToggles } from '../app/config-service.js';
+
+const calendarConfig = getServiceToggles()?.economicCalendar || {};
 
 const DEFAULT_CALENDAR_RSS_URL =
-  process.env.CALENDAR_RSS_URL || 'https://nfs.faireconomy.media/ff_calendar_thisweek.xml';
+  calendarConfig.rssUrl || 'https://nfs.faireconomy.media/ff_calendar_thisweek.xml';
 const DEFAULT_CALENDAR_JSON_URL =
-  process.env.CALENDAR_JSON_URL || 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
+  calendarConfig.jsonUrl || 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 const DEFAULT_CALENDAR_RSS_TTL_MS = 10 * 60 * 1000;
 
 class EconomicCalendarService {

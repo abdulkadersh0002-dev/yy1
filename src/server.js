@@ -3,13 +3,6 @@
  * REST API for automated trading system with real-time monitoring
  */
 
-import express from 'express';
-import cors from 'cors';
-import compression from 'compression';
-import { createServer } from 'http';
-import WebSocket, { WebSocketServer } from 'ws';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import TradingEngine from './engine/trading-engine.js';
 import TradeManager from './engine/trade-manager.js';
 import HeartbeatMonitor from './services/heartbeat-monitor.js';
@@ -22,44 +15,31 @@ import BrokerRouter from './services/brokers/broker-router.js';
 import BrokerReconciliationService from './services/brokers/reconciliation-service.js';
 import SecretManager from './services/security/secret-manager.js';
 import AuditLogger from './services/logging/audit-logger.js';
-import { createApiAuthMiddleware } from './middleware/api-auth.js';
-import {
-  buildHealthzPayload,
-  buildModuleHealthSummary,
-  buildProviderAvailabilitySnapshot,
-  classifyProviderAvailabilitySnapshot,
-  summarizeProviderAvailabilityHistory
-} from './services/health-summary.js';
-import {
-  metrics as metricsRegistry,
-  observeSignalGeneration,
-  recordTradeExecution,
-  updateProviderAvailabilityMetrics
-} from './services/metrics.js';
+import { metrics as metricsRegistry, updateProviderAvailabilityMetrics } from './services/metrics.js';
 import PairPrefetchScheduler from './services/pair-prefetch-scheduler.js';
 import { pairCatalog } from './config/pair-catalog.js';
-import { appConfig } from './app/config.js';
+import {
+  getServerConfig,
+  getTradingConfig,
+  getBrokerConfig,
+  getServiceToggles,
+  getAutoTradingConfig,
+  getDatabaseConfig,
+  getRawEnv,
+  getPairPrefetchSettings
+} from './app/config-service.js';
+import { startServer } from './app/startup.js';
 
-const app = express();
-const server = createServer(app);
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 const durationSecondsFrom = (start) => Number(process.hrtime.bigint() - start) / 1e9;
 
-const {
-  server: serverConfig,
-  apiAuth: apiAuthConfig,
-  trading: tradingConfig,
-  alerting: alertingConfig,
-  brokers: brokerConfig,
-  brokerRouting: brokerRoutingConfig,
-  services: serviceToggles,
-  pairPrefetch: pairPrefetchSettings,
-  autoTrading: autoTradingConfig,
-  database: databaseConfig,
-  env: rawEnv
-} = appConfig;
+const serverConfig = getServerConfig();
+const tradingConfig = getTradingConfig();
+const { brokers: brokerConfig, brokerRouting: brokerRoutingConfig } = getBrokerConfig();
+const serviceToggles = getServiceToggles();
+const pairPrefetchSettings = getPairPrefetchSettings();
+const autoTradingConfig = getAutoTradingConfig();
+const databaseConfig = getDatabaseConfig();
+const rawEnv = getRawEnv();
 
 const secretManager = new SecretManager({ logger });
 const auditLogger = new AuditLogger({ logger });
@@ -67,19 +47,6 @@ const auditLogger = new AuditLogger({ logger });
 void auditLogger.init().catch((error) => {
   logger.error({ err: error }, 'Failed to initialize audit logger');
 });
-
-const requestBodyLimit = serverConfig.requestJsonLimit;
-app.use(compression());
-app.use(cors());
-app.use(express.json({ limit: requestBodyLimit }));
-app.use(express.urlencoded({ extended: true, limit: requestBodyLimit }));
-
-const websocketClients = new Set();
-const enableWebSockets = serverConfig.enableWebSockets;
-const websocketPath = serverConfig.websocketPath;
-const websocketPingIntervalMs = serverConfig.websocketPingIntervalMs;
-let websocketHeartbeat;
-let wss;
 
 const providerAvailabilityBroadcastMs = Number.isFinite(
   serverConfig.providerAvailabilityBroadcastIntervalMs
@@ -97,7 +64,6 @@ const providerAvailabilityHistoryLimit = Number.isFinite(
   ? Math.max(1, serverConfig.providerAvailabilityHistoryLimit)
   : 288;
 const providerAvailabilityAlertConfig = serverConfig.providerAvailabilityAlert || {};
-let providerAvailabilityInterval;
 let lastProviderAvailabilityDigest = null;
 let latestProviderAvailabilitySnapshot = null;
 let latestProviderAvailabilityClassification = null;
@@ -105,135 +71,6 @@ const providerAvailabilityHistory = [];
 let lastProviderAvailabilityState = 'unknown';
 let lastProviderAvailabilityReason = 'unknown';
 let lastProviderAlertAt = 0;
-
-const broadcast = (type, payload) => {
-  if (!enableWebSockets || websocketClients.size === 0) {
-    return;
-  }
-
-  const message = JSON.stringify({
-    type,
-    payload,
-    timestamp: Date.now()
-  });
-
-  for (const client of websocketClients) {
-    if (client.readyState === WebSocket.OPEN) {
-      try {
-        client.send(message);
-      } catch (error) {
-        logger.warn({ err: error }, 'Failed to broadcast WebSocket message');
-      }
-    }
-  }
-};
-
-if (enableWebSockets) {
-  wss = new WebSocketServer({ server, path: websocketPath });
-
-  wss.on('connection', (socket) => {
-    socket.isAlive = true;
-    websocketClients.add(socket);
-    logger.info({ activeClients: websocketClients.size }, 'WebSocket client connected');
-
-    socket.on('pong', () => {
-      socket.isAlive = true;
-    });
-
-    socket.on('close', () => {
-      websocketClients.delete(socket);
-      logger.info({ activeClients: websocketClients.size }, 'WebSocket client disconnected');
-    });
-
-    socket.on('error', (error) => {
-      logger.warn({ err: error }, 'WebSocket client error');
-    });
-
-    try {
-      socket.send(
-        JSON.stringify({
-          type: 'connected',
-          timestamp: Date.now()
-        })
-      );
-    } catch (error) {
-      logger.warn({ err: error }, 'Failed to send WebSocket welcome message');
-    }
-
-    if (latestProviderAvailabilitySnapshot) {
-      try {
-        socket.send(
-          JSON.stringify({
-            type: 'provider_availability',
-            payload: latestProviderAvailabilitySnapshot,
-            timestamp: Date.now()
-          })
-        );
-      } catch (error) {
-        logger.warn(
-          { err: error },
-          'Failed to send provider availability snapshot to WebSocket client'
-        );
-      }
-    }
-  });
-
-  const heartbeatInterval = websocketPingIntervalMs > 5000 ? websocketPingIntervalMs : 30000;
-  websocketHeartbeat = setInterval(() => {
-    for (const socket of websocketClients) {
-      if (socket.readyState !== WebSocket.OPEN) {
-        websocketClients.delete(socket);
-        continue;
-      }
-
-      if (socket.isAlive === false) {
-        websocketClients.delete(socket);
-        socket.terminate();
-        continue;
-      }
-
-      socket.isAlive = false;
-      try {
-        socket.ping();
-      } catch (error) {
-        logger.warn({ err: error }, 'WebSocket ping failed');
-        websocketClients.delete(socket);
-        socket.terminate();
-      }
-    }
-  }, heartbeatInterval);
-
-  logger.info({ path: websocketPath }, 'WebSocket server initialized');
-} else {
-  logger.info('WebSocket broadcasting disabled via ENABLE_WEBSOCKETS flag');
-}
-
-const apiAuth = createApiAuthMiddleware({
-  enabled: apiAuthConfig.enabled,
-  secretManager,
-  logger,
-  auditLogger,
-  exemptRoutes: [
-    { method: 'GET', path: /^\/api\/health(\/.*)?$/ },
-    { method: 'GET', path: /^\/api\/health\/heartbeat(\/.*)?$/ },
-    { method: 'GET', path: /^\/metrics$/ },
-    { path: /^\/api\/client(\/.*)?$/ }
-  ]
-});
-
-const requireBasicRead = apiAuth.requireAnyRole(['read.basic', 'admin']);
-const requireRiskRead = apiAuth.requireAnyRole(['risk.read', 'admin']);
-const requireBrokerRead = apiAuth.requireAnyRole(['broker.read', 'admin']);
-const requireBrokerWrite = apiAuth.requireAnyRole(['broker.write', 'admin']);
-const requireSignalsGenerate = apiAuth.requireAnyRole(['signals.generate', 'admin']);
-const requireTradeExecute = apiAuth.requireAnyRole(['trade.execute', 'admin']);
-const requireTradeClose = apiAuth.requireAnyRole(['trade.close', 'trade.execute', 'admin']);
-const requireTradeRead = apiAuth.requireAnyRole(['trade.read', 'admin']);
-const requireAutomationControl = apiAuth.requireAnyRole(['automation.control', 'admin']);
-const requireConfigRead = apiAuth.requireAnyRole(['config.read', 'admin']);
-const requireConfigWrite = apiAuth.requireAnyRole(['config.write', 'admin']);
-
-app.use('/api', apiAuth.authenticate);
 
 const config = { ...tradingConfig };
 
@@ -714,7 +551,47 @@ if (autoTradingAutostart) {
   logger.info('Auto trading auto-start disabled; awaiting manual start command');
 }
 
-app.get('/api/risk/command-center', requireRiskRead, (req, res) => {
+const providerAvailabilityState = {
+  buildSnapshot: ({ timeframes, requireHealthyQuality, qualityThreshold }) =>
+    buildProviderAvailabilitySnapshot({
+      priceDataFetcher: tradingEngine.priceDataFetcher,
+      timeframes,
+      requireHealthyQuality,
+      qualityThreshold
+    }),
+  providerAvailabilityAlertConfig,
+  history: providerAvailabilityHistory,
+  historyLimit: providerAvailabilityHistoryLimit,
+  loadProviderAvailabilityHistory
+};
+
+// The following route handlers are now mounted via route modules
+// in `src/app/http.js` for health, trading, auto-trading, and config.
+// Broker and diagnostic routes that remain here can be gradually moved
+// in later phases if desired.
+
+const { app, server } = startServer({
+  serverConfig,
+  tradingEngine,
+  tradeManager,
+  heartbeatMonitor,
+  brokerRouter,
+  secretManager,
+  auditLogger,
+  logger,
+  alertBus,
+  pairPrefetchScheduler,
+  services: serviceToggles,
+  metricsRegistry,
+  providerAvailabilityState,
+  onClose: () => {
+    pairPrefetchScheduler.stop();
+    riskReportService?.stop?.();
+    brokerReconciliationService?.stop?.();
+  }
+});
+
+app.get('/api/risk/command-center', (req, res) => {
   if (config.riskCommandCenter?.enabled === false) {
     return res.status(503).json({ success: false, error: 'Risk command center disabled' });
   }
@@ -1571,50 +1448,5 @@ app.use((err, req, res, _next) => {
 
 // Start server
 const PORT = serverConfig.port;
-
-server.listen(PORT, () => {
-  logger.info({ port: Number(PORT) }, 'Server listening');
-  logger.info(`
-╔═══════════════════════════════════════════════════════════════╗
-║                                                               ║
-║     Intelligent Auto-Trading System Started                  ║
-║                                                               ║
-║     Server: http://localhost:${PORT}                            ║
-║                                                               ║
-║     API Endpoints:                                           ║
-║     - POST /api/signal/generate                              ║
-║     - POST /api/signal/batch                                 ║
-║     - POST /api/trade/execute                                ║
-║     - POST /api/auto-trading/start                           ║
-║     - POST /api/auto-trading/stop                            ║
-║     - GET  /api/trades/active                                ║
-║     - GET  /api/trades/history                               ║
-║     - GET  /api/statistics                                   ║
-║     - GET  /api/status                                       ║
-║                                                               ║
-╚═══════════════════════════════════════════════════════════════╝
-  `);
-});
-
-server.on('close', () => {
-  pairPrefetchScheduler.stop();
-  riskReportService?.stop?.();
-  brokerReconciliationService?.stop?.();
-  if (websocketHeartbeat) {
-    clearInterval(websocketHeartbeat);
-  }
-  if (providerAvailabilityInterval) {
-    clearInterval(providerAvailabilityInterval);
-  }
-  for (const socket of websocketClients) {
-    try {
-      socket.terminate();
-    } catch (error) {
-      logger.warn({ err: error }, 'Failed to terminate WebSocket client');
-    }
-  }
-  websocketClients.clear();
-  wss?.close();
-});
 
 export { app, server, tradingEngine, tradeManager, brokerRouter };

@@ -6,6 +6,7 @@ import {
   requireRealTimeData,
   assertRealTimeDataAvailability
 } from '../config/runtime-flags.js';
+import { appConfig } from '../app/config.js';
 import {
   getPairMetadata,
   getProviderSymbol,
@@ -22,7 +23,7 @@ const PROVIDER_KEY_MAP = PROVIDERS.reduce((acc, name) => {
   return acc;
 }, {});
 
-const IS_TEST_ENV = (process.env.NODE_ENV || '').toLowerCase() === 'test';
+const IS_TEST_ENV = (appConfig.env.NODE_ENV || '').toLowerCase() === 'test';
 
 const PROVIDER_LABELS = {
   twelveData: 'Twelve Data',
@@ -195,11 +196,13 @@ function rounded(value, digits = 6) {
 
 export default class PriceDataFetcher {
   constructor(apiKeys = {}, options = {}) {
+    const tradingApiKeys = appConfig.trading?.apiKeys || {};
+
     this.apiKeys = {
-      twelveData: apiKeys.twelveData || process.env.TWELVE_DATA_API_KEY || null,
-      polygon: apiKeys.polygon || process.env.POLYGON_API_KEY || null,
-      finnhub: apiKeys.finnhub || process.env.FINNHUB_API_KEY || null,
-      alphaVantage: apiKeys.alphaVantage || process.env.ALPHA_VANTAGE_API_KEY || null
+      twelveData: apiKeys.twelveData || tradingApiKeys.twelveData || null,
+      polygon: apiKeys.polygon || tradingApiKeys.polygon || null,
+      finnhub: apiKeys.finnhub || tradingApiKeys.finnhub || null,
+      alphaVantage: apiKeys.alphaVantage || tradingApiKeys.alphaVantage || null
     };
 
     this.logger = options.logger || console;

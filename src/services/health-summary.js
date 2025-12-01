@@ -1,4 +1,5 @@
 import { requireRealTimeData } from '../config/runtime-flags.js';
+import { appConfig } from '../app/config.js';
 
 const CRITICAL_PROVIDER_STATUSES = new Set(['missing', 'disabled', 'breaker']);
 const DEGRADED_PROVIDER_STATUSES = new Set(['warning', 'backoff']);
@@ -135,7 +136,7 @@ function summarizeNewsHealth(newsAnalyzer) {
     };
   }
 
-  const rssOnlyMode = process.env.NEWS_RSS_ONLY === 'true';
+  const rssOnlyMode = appConfig.env.NEWS_RSS_ONLY === 'true';
   if (rssOnlyMode) {
     const feedCount = Array.isArray(newsAnalyzer.aggregator?.feeds)
       ? newsAnalyzer.aggregator.feeds.length

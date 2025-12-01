@@ -1,21 +1,27 @@
 import { Pool } from 'pg';
+import { appConfig } from '../app/config.js';
 
 let pool = null;
 
 function getConfig() {
-  const { DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, DB_SSL } = process.env;
+  const config = appConfig.database || {};
 
-  if (!DB_HOST || !DB_NAME || !DB_USER || !DB_PASSWORD) {
+  const host = config.host;
+  const database = config.name;
+  const user = config.user;
+  const password = config.password;
+
+  if (!host || !database || !user || !password) {
     return null;
   }
 
   return {
-    host: DB_HOST,
-    port: DB_PORT ? Number(DB_PORT) : 5432,
-    database: DB_NAME,
-    user: DB_USER,
-    password: DB_PASSWORD,
-    ssl: DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    host,
+    port: Number.isFinite(config.port) ? config.port : 5432,
+    database,
+    user,
+    password,
+    ssl: config.ssl === true ? { rejectUnauthorized: false } : false,
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,

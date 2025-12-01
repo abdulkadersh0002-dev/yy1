@@ -1,8 +1,10 @@
 import BaseBrokerConnector from './base-connector.js';
+import { appConfig } from '../../app/config.js';
 
 class Mt5Connector extends BaseBrokerConnector {
   constructor(options = {}) {
-    const baseURL = options.baseUrl || process.env.MT5_BRIDGE_URL || 'http://127.0.0.1:5002/api';
+    const brokerConfig = appConfig.brokers?.mt5 || {};
+    const baseURL = options.baseUrl || brokerConfig.baseUrl || 'http://127.0.0.1:5002/api';
     super({
       name: 'mt5',
       accountMode: options.accountMode === 'real' ? 'real' : 'demo',
@@ -15,8 +17,8 @@ class Mt5Connector extends BaseBrokerConnector {
         }
       }
     });
-    this.apiKey = options.apiKey || process.env.MT5_BRIDGE_TOKEN || null;
-    this.expectedAccount = options.accountNumber || process.env.MT5_ACCOUNT_NUMBER || null;
+    this.apiKey = options.apiKey || brokerConfig.apiKey || null;
+    this.expectedAccount = options.accountNumber || brokerConfig.accountNumber || null;
   }
 
   async healthCheck() {

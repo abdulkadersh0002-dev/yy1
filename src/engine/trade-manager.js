@@ -4,6 +4,7 @@
  */
 
 import { listTargetPairs } from '../config/pair-catalog.js';
+import logger from '../services/logging/logger.js';
 
 class TradeManager {
   constructor(tradingEngine) {
@@ -16,7 +17,21 @@ class TradeManager {
     this.tradingPairs = listTargetPairs();
 
     this.lastSignalCheck = new Map();
-    this.signalCheckInterval = 900000; // 15 minutes
+
+    const config = this.tradingEngine?.config || {};
+    const autoTradingConfig = config.autoTrading || {};
+
+    this.signalCheckInterval = Number.isFinite(autoTradingConfig.signalCheckIntervalMs)
+      ? autoTradingConfig.signalCheckIntervalMs
+      : 900000; // 15 minutes default
+
+    this.monitoringIntervalMs = Number.isFinite(autoTradingConfig.monitoringIntervalMs)
+      ? autoTradingConfig.monitoringIntervalMs
+      : 10000; // 10 seconds default
+
+    this.signalGenerationIntervalMs = Number.isFinite(autoTradingConfig.signalGenerationIntervalMs)
+      ? autoTradingConfig.signalGenerationIntervalMs
+      : 300000; // 5 minutes default
   }
 
   /**
@@ -24,22 +39,22 @@ class TradeManager {
    */
   async startAutoTrading() {
     if (this.autoTradingEnabled) {
-      console.log('Auto trading is already running');
+      logger.info({ module: 'TradeManager' }, 'Auto trading is already running');
       return { success: false, message: 'Already running' };
     }
 
-    console.log('Starting automated trading system...');
+    logger.info({ module: 'TradeManager' }, 'Starting automated trading system...');
     this.autoTradingEnabled = true;
 
-    // Start monitoring active trades (every 10 seconds)
+    // Start monitoring active trades
     this.monitoringInterval = setInterval(() => {
-      this.monitorActiveTrades();
-    }, 10000);
+      void this.monitorActiveTrades();
+    }, this.monitoringIntervalMs);
 
-    // Start signal generation (every 5 minutes)
+    // Start signal generation
     this.signalGenerationInterval = setInterval(() => {
-      this.checkForNewSignals();
-    }, 300000);
+      void this.checkForNewSignals();
+    }, this.signalGenerationIntervalMs);
 
     // Initial signal check
     this.checkForNewSignals();
@@ -48,7 +63,7 @@ class TradeManager {
       success: true,
       message: 'Auto trading started',
       pairs: this.tradingPairs.length,
-      checkInterval: '5 minutes'
+      checkIntervalMs: this.signalGenerationIntervalMs
     };
   }
 
@@ -60,7 +75,7 @@ class TradeManager {
       return { success: false, message: 'Auto trading is not running' };
     }
 
-    console.log('Stopping automated trading system...');
+    logger.info({ module: 'TradeManager' }, 'Stopping automated trading system...');
     this.autoTradingEnabled = false;
 
     if (this.monitoringInterval) {
@@ -86,7 +101,7 @@ class TradeManager {
   async checkForNewSignals() {
     if (!this.autoTradingEnabled) return;
 
-    console.log('Checking for new trading signals...');
+    logger.debug({ module: 'TradeManager' }, 'Checking for new trading signals...');
 
     for (const pair of this.tradingPairs) {
       try {
@@ -96,16 +111,21 @@ class TradeManager {
           continue;
         }
 
-        // Generate signal
+        // Generate signal (includes risk checks + validateSignal)
         const signal = await this.tradingEngine.generateSignal(pair);
         this.lastSignalCheck.set(pair, Date.now());
 
         // Log signal
-        console.log(
-          `Signal: ${pair} | ${signal.direction} | ` +
-            `Strength: ${signal.strength.toFixed(0)} | ` +
-            `Confidence: ${signal.confidence.toFixed(0)}% | ` +
-            `Valid: ${signal.isValid.isValid}`
+        logger.info(
+          {
+            module: 'TradeManager',
+            pair,
+            direction: signal.direction,
+            strength: signal.strength,
+            confidence: signal.confidence,
+            isValid: signal.isValid?.isValid
+          },
+          'Auto-trading signal evaluated'
         );
 
         // Execute if valid
@@ -113,13 +133,31 @@ class TradeManager {
           const result = await this.tradingEngine.executeTrade(signal);
 
           if (result.success) {
-            console.log(`✓ Trade opened: ${result.trade.id}`);
+            logger.info(
+              { module: 'TradeManager', tradeId: result.trade?.id, pair },
+              'Auto-trading opened trade'
+            );
           } else {
-            console.log(`✗ Trade rejected: ${result.reason}`);
+            logger.warn(
+              { module: 'TradeManager', pair, reason: result.reason },
+              'Auto-trading trade rejected'
+            );
           }
         }
       } catch (error) {
-        console.error(`Error checking signal for ${pair}:`, error.message);
+        const classified =
+          this.tradingEngine.classifyError?.(error, {
+            scope: 'TradeManager.checkForNewSignals',
+            pair
+          }) || {
+            type: 'unknown',
+            category: 'Unknown engine error',
+            context: { scope: 'TradeManager.checkForNewSignals', pair }
+          };
+        logger.error(
+          { module: 'TradeManager', pair, err: error, errorType: classified.type },
+          'Error checking signal for pair'
+        );
       }
     }
   }
@@ -133,7 +171,18 @@ class TradeManager {
     try {
       await this.tradingEngine.manageActiveTrades();
     } catch (error) {
-      console.error('Error monitoring trades:', error.message);
+      const classified =
+        this.tradingEngine.classifyError?.(error, {
+          scope: 'TradeManager.monitorActiveTrades'
+        }) || {
+          type: 'unknown',
+          category: 'Unknown engine error',
+          context: { scope: 'TradeManager.monitorActiveTrades' }
+        };
+      logger.error(
+        { module: 'TradeManager', err: error, errorType: classified.type },
+        'Error monitoring trades'
+      );
     }
   }
 
@@ -158,27 +207,18 @@ class TradeManager {
     return {
       success: true,
       closed: results.filter((r) => r.success).length,
-      failed: results.filter((r) => !r.success).length,
-      results
+      failed: results.filter((r) => !r.success).length
     };
   }
 
-  /**
-   * Get status
-   */
   getStatus() {
     return {
       enabled: this.autoTradingEnabled,
       pairs: this.tradingPairs,
       activeTrades: this.tradingEngine.activeTrades.size,
-      maxTrades: this.tradingEngine.config.maxConcurrentTrades,
       statistics: this.tradingEngine.getStatistics()
     };
   }
-
-  /**
-   * Add trading pair
-   */
   addPair(pair) {
     if (!this.tradingPairs.includes(pair)) {
       this.tradingPairs.push(pair);
@@ -188,7 +228,7 @@ class TradeManager {
   }
 
   /**
-   * Remove trading pair
+      logger.error({ module: 'TradeManager', err: error }, 'Error monitoring trades');
    */
   removePair(pair) {
     const index = this.tradingPairs.indexOf(pair);

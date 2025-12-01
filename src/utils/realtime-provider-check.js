@@ -1,4 +1,5 @@
 import { allowSyntheticData, requireRealTimeData } from '../config/runtime-flags.js';
+import { appConfig } from '../app/config.js';
 
 const REQUIRED_PROVIDERS = [
   { envKey: 'TWELVE_DATA_API_KEY', label: 'Twelve Data', configKey: 'twelveData' },
@@ -52,7 +53,7 @@ function collectInvalidProviders(list, apiKeys) {
   };
 
   list.forEach(({ envKey, label, configKey, optional }) => {
-    const keyValue = apiKeys?.[configKey] ?? process.env[envKey];
+    const keyValue = apiKeys?.[configKey] ?? appConfig.trading?.apiKeys?.[configKey];
     if (!keyValue) {
       if (optional) {
         result.optionalMissing.push(label);
@@ -74,8 +75,8 @@ function collectInvalidProviders(list, apiKeys) {
   return result;
 }
 
-function parseDisabledProviders(env = process.env) {
-  const raw = env.PRICE_PROVIDERS_DISABLED;
+function parseDisabledProviders(envConfig) {
+  const raw = envConfig?.PRICE_PROVIDERS_DISABLED;
   if (!raw) {
     return new Set();
   }
@@ -87,15 +88,15 @@ function parseDisabledProviders(env = process.env) {
   );
 }
 
-function preferRssNews(env = process.env) {
-  if (env.NEWS_RSS_ONLY === 'true') {
+function preferRssNews(envConfig) {
+  if (envConfig?.NEWS_RSS_ONLY === 'true') {
     return true;
   }
-  const translationEnabled = env.ENABLE_NEWS_TRANSLATION === 'true';
+  const translationEnabled = envConfig?.ENABLE_NEWS_TRANSLATION === 'true';
   return !translationEnabled;
 }
 
-export function enforceRealTimeProviderReadiness(apiKeys = {}, env = process.env) {
+export function enforceRealTimeProviderReadiness(apiKeys = {}, envConfig = appConfig.env) {
   if (!requireRealTimeData()) {
     return;
   }
@@ -108,8 +109,8 @@ export function enforceRealTimeProviderReadiness(apiKeys = {}, env = process.env
     throw error;
   }
 
-  const disabledProviders = parseDisabledProviders(env);
-  const rssOnlyNews = preferRssNews(env);
+  const disabledProviders = parseDisabledProviders(envConfig);
+  const rssOnlyNews = preferRssNews(envConfig);
   const filteredRequiredProviders = REQUIRED_PROVIDERS.filter((provider) => {
     const normalizedKey = provider.configKey.toLowerCase();
     if (disabledProviders.has(normalizedKey)) {
@@ -146,7 +147,7 @@ export function enforceRealTimeProviderReadiness(apiKeys = {}, env = process.env
   }
 
   const dbRequired = ['DB_HOST', 'DB_USER', 'DB_PASSWORD'];
-  const dbMissing = dbRequired.filter((key) => !env[key]);
+  const dbMissing = dbRequired.filter((key) => !envConfig[key]);
   if (dbMissing.length > 0) {
     issues.push(`database configuration missing: ${dbMissing.join(', ')}`);
   }

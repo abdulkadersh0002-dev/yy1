@@ -15,7 +15,9 @@ function parseBooleanOrNull(value) {
   return null;
 }
 
-const isTestEnv = (process.env.NODE_ENV || '').toLowerCase() === 'test';
+const rawNodeEnv = (process.env.NODE_ENV || '').toLowerCase();
+const isTestEnv = rawNodeEnv === 'test';
+const isProdEnv = rawNodeEnv === 'production';
 
 export function allowSyntheticData() {
   const requireFlag = parseBooleanOrNull(process.env.REQUIRE_REALTIME_DATA);
@@ -29,7 +31,11 @@ export function allowSyntheticData() {
     return !requireFlag;
   }
 
-  return isTestEnv;
+  if (isProdEnv) {
+    return false;
+  }
+
+  return true;
 }
 
 export function requireRealTimeData() {

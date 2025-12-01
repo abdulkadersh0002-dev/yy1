@@ -1,15 +1,16 @@
 import https from 'https';
 import BaseBrokerConnector from './base-connector.js';
+import { appConfig } from '../../app/config.js';
 
 class IbkrConnector extends BaseBrokerConnector {
   constructor(options = {}) {
-    const baseURL =
-      options.baseUrl || process.env.IBKR_GATEWAY_URL || 'https://127.0.0.1:5000/v1/api';
-    const accountId = options.accountId || process.env.IBKR_ACCOUNT_ID || null;
+    const brokerConfig = appConfig.brokers?.ibkr || {};
+    const baseURL = options.baseUrl || brokerConfig.baseUrl || 'https://127.0.0.1:5000/v1/api';
+    const accountId = options.accountId || brokerConfig.accountId || null;
     const allowSelfSigned =
       options.allowSelfSigned != null
         ? Boolean(options.allowSelfSigned)
-        : process.env.IBKR_ALLOW_SELF_SIGNED === 'true';
+        : brokerConfig.allowSelfSigned !== false;
     const agent = new https.Agent({ rejectUnauthorized: !allowSelfSigned });
 
     super({

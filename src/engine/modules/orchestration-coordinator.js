@@ -3,7 +3,7 @@ export const orchestrationCoordinator = {
     const { autoExecute = false } = options;
 
     try {
-      console.log(`Generating signal for ${pair}...`);
+      this.logger?.debug?.({ module: 'OrchestrationCoordinator', pair }, 'Generating signal');
 
       if (this.featureStore && typeof this.featureStore.purgeExpired === 'function') {
         this.featureStore.purgeExpired();
@@ -48,7 +48,10 @@ export const orchestrationCoordinator = {
               bars: 240
             });
           } catch (error) {
-            console.error(`Data quality guard failed for ${pair}:`, error.message);
+            this.logger?.error?.(
+              { module: 'OrchestrationCoordinator', pair, err: error },
+              'Data quality guard failed'
+            );
             dataQualityReport = existingAssessment || null;
           }
         } else {
@@ -77,7 +80,15 @@ export const orchestrationCoordinator = {
 
       return signal;
     } catch (error) {
-      console.error(`Signal generation error for ${pair}:`, error.message);
+      const classified = this.classifyError?.(error, { scope: 'generateSignal', pair }) || {
+        type: 'unknown',
+        category: 'Unknown engine error',
+        context: { scope: 'generateSignal', pair }
+      };
+      this.logger?.error?.(
+        { module: 'OrchestrationCoordinator', pair, err: error, errorType: classified.type },
+        'Signal generation error'
+      );
       const fallback = this.getDefaultSignal(pair);
       if (autoExecute) {
         return {
@@ -85,6 +96,7 @@ export const orchestrationCoordinator = {
           execution: {
             success: false,
             reason: error.message,
+            errorType: classified.type,
             signal: fallback
           }
         };
@@ -94,10 +106,32 @@ export const orchestrationCoordinator = {
   },
 
   async generateAndExecute(pair) {
-    const result = await this.generateSignal(pair, { autoExecute: true });
-    if (result && typeof result === 'object' && 'signal' in result) {
-      return result;
+    try {
+      const result = await this.generateSignal(pair, { autoExecute: true });
+      if (result && typeof result === 'object' && 'signal' in result) {
+        return result;
+      }
+      return { signal: result, execution: null };
+    } catch (error) {
+      const classified = this.classifyError?.(error, { scope: 'generateAndExecute', pair }) || {
+        type: 'unknown',
+        category: 'Unknown engine error',
+        context: { scope: 'generateAndExecute', pair }
+      };
+      this.logger?.error?.(
+        { module: 'OrchestrationCoordinator', pair, err: error, errorType: classified.type },
+        'Error in generateAndExecute'
+      );
+      const fallback = this.getDefaultSignal(pair);
+      return {
+        signal: fallback,
+        execution: {
+          success: false,
+          reason: error.message,
+          errorType: classified.type,
+          signal: fallback
+        }
+      };
     }
-    return { signal: result, execution: null };
   }
 };

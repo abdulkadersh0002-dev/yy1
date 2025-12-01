@@ -1,5 +1,6 @@
 import { francAll } from 'franc';
 import * as translateModule from '@vitalets/google-translate-api';
+import { appConfig } from '../app/config.js';
 
 const translateFn = async (text, options = {}) => {
   const candidate =
@@ -77,8 +78,8 @@ function normalizeLanguageCode(rawCode) {
 export default class LanguageProcessor {
   constructor(options = {}) {
     const {
-      targetLanguage = process.env.NEWS_TARGET_LANGUAGE || 'en',
-      enableTranslation = process.env.ENABLE_NEWS_TRANSLATION !== 'false',
+      targetLanguage = appConfig.env.NEWS_TARGET_LANGUAGE || 'en',
+      enableTranslation = appConfig.env.ENABLE_NEWS_TRANSLATION !== 'false',
       detectionMinLength = 24,
       detectionMaxCandidates = 5,
       translationTimeoutMs = 7000

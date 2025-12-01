@@ -1,7 +1,8 @@
 import client from 'prom-client';
+import { appConfig } from '../app/config.js';
 
 const register = new client.Registry();
-const prefix = process.env.METRICS_PREFIX || 'signals';
+const prefix = appConfig.env.METRICS_PREFIX || 'signals';
 
 client.collectDefaultMetrics({
   register,

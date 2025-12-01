@@ -560,27 +560,27 @@ function App() {
     : null;
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div>
-          <h1 className="app-title">Signals Strategy</h1>
-          <p className="app-subtitle">Neon intelligence control deck</p>
+    <div className="dashboard">
+      <header className="dashboard__header">
+        <div className="dashboard__brand">
+          <h1 className="dashboard__title">Signals Control Deck</h1>
+          <p className="dashboard__subtitle">Neon intelligence for live trading operations</p>
         </div>
-        <div className="app-meta">
-          <span className="app-clock">{headlineClock}</span>
-          {endpointLabel && <span className="app-endpoint">Endpoint · {endpointLabel}</span>}
-          {buildLabel && <span className="app-endpoint">Build · {buildLabel}</span>}
-          {trackedPairsLabel && <span className="app-endpoint">Coverage · {trackedPairsLabel}</span>}
+        <div className="dashboard__meta">
+          <span className="dashboard__clock">{headlineClock}</span>
+          {endpointLabel && <span className="dashboard__tag">Endpoint · {endpointLabel}</span>}
+          {buildLabel && <span className="dashboard__tag">Build · {buildLabel}</span>}
+          {trackedPairsLabel && <span className="dashboard__tag">Coverage · {trackedPairsLabel}</span>}
         </div>
       </header>
 
-      <main className="app-layout">
-        <section className="app-section app-section--hero">
-          <div className="app-grid app-grid--hero">
-            <div className="app-grid__cell app-grid__cell--primary">
+      <main className="dashboard__main">
+        <section className="dashboard__section dashboard__section--ops">
+          <div className="dashboard__row dashboard__row--hero">
+            <div className="dashboard__col dashboard__col--span-6">
               <SignalEnginePanel snapshot={engineSnapshot} />
             </div>
-            <div className="app-grid__cell app-grid__cell--health">
+            <div className="dashboard__col dashboard__col--span-6">
               <SystemHealthSummary
                 snapshot={engineSnapshot}
                 featureSnapshots={featureSnapshots}
@@ -588,87 +588,89 @@ function App() {
                 events={eventFeed}
               />
             </div>
-            <div className="app-grid__cell app-grid__cell--availability">
+          </div>
+          <div className="dashboard__row dashboard__row--ops-grid">
+            <div className="dashboard__col dashboard__col--span-7">
               <ProviderAvailabilityTrend />
             </div>
-            <div className="app-grid__cell app-grid__cell--events">
+            <div className="dashboard__col dashboard__col--span-5">
               <LiveEventFeed events={eventFeed} />
             </div>
           </div>
         </section>
 
-        <section className="app-section app-section--ops">
-          <div className="app-section__header">
+        <section className="dashboard__section dashboard__section--control">
+          <header className="section-header">
             <div>
-              <h2>Execution Control</h2>
-              <p>Trigger live signals and monitor analytic fingerprints</p>
+              <h2 className="section-header__title">Execution Console</h2>
+              <p className="section-header__subtitle">Trigger signals, inspect fingerprints, and adjust regime safely</p>
             </div>
-          </div>
-          <div className="app-grid app-grid--ops">
-            <SignalEngineConsole
-              pairs={engineSnapshot.status?.pairs || []}
-              onSignalGenerated={handleSignalGenerated}
-            />
-            <FeatureSnapshotGrid snapshots={featureSnapshots} />
+          </header>
+          <div className="dashboard__row">
+            <div className="dashboard__col dashboard__col--span-6">
+              <SignalEngineConsole
+                pairs={engineSnapshot.status?.pairs || []}
+                onSignalGenerated={handleSignalGenerated}
+              />
+            </div>
+            <div className="dashboard__col dashboard__col--span-6">
+              <FeatureSnapshotGrid snapshots={featureSnapshots} />
+            </div>
           </div>
         </section>
 
-        <section className="app-section app-section--trading">
-          <div className="app-section__header">
+        <section className="dashboard__section dashboard__section--trading">
+          <header className="section-header">
             <div>
-              <h2>Portfolio Pulse</h2>
-              <p>Open exposure with the latest performance closes</p>
+              <h2 className="section-header__title">Portfolio Pulse</h2>
+              <p className="section-header__subtitle">Open exposure and recent closures in one clear view</p>
             </div>
-          </div>
+          </header>
           <TradesTable
             activeTrades={activeTrades}
             tradeHistory={tradeHistory}
           />
         </section>
 
-        <section className="app-section app-section--sessions">
-          <div className="app-section__header">
+        <section className="dashboard__section dashboard__section--sessions">
+          <header className="section-header">
             <div>
-              <h2>Global Trading Sessions</h2>
-              <p>Real-time clocks highlighting market overlap zones</p>
+              <h2 className="section-header__title">Global Sessions</h2>
+              <p className="section-header__subtitle">Live clocks and overlap windows for major markets</p>
             </div>
-          </div>
-          <div className="session-grid">
+          </header>
+          <div className="session-row">
             {sessionCards.map((session) => (
               <article
                 key={session.id}
-                className={`session-card session-card--${session.theme} ${session.isOpen ? 'session-card--open' : 'session-card--closed'}`}
+                className={`session-pill session-pill--${session.theme} ${session.isOpen ? 'session-pill--open' : 'session-pill--closed'}`}
               >
-                <header className="session-card__header">
-                  <span className="session-card__badge">{session.city}</span>
-                  <span className={`session-card__status ${session.isOpen ? 'session-card__status--open' : 'session-card__status--closed'}`}>
+                <header className="session-pill__header">
+                  <span className="session-pill__city">{session.city}</span>
+                  <span className={`session-pill__status ${session.isOpen ? 'session-pill__status--open' : 'session-pill__status--closed'}`}>
                     {session.statusLabel}
                   </span>
                 </header>
-                <h2 className="session-card__title">{session.label}</h2>
-                <div className="session-card__body">
-                  <span className="session-card__time">{session.timeDisplay}</span>
-                  <span className="session-card__timezone">{session.zoneDisplay}</span>
+                <div className="session-pill__body">
+                  <span className="session-pill__time">{session.timeDisplay}</span>
+                  <span className="session-pill__timezone">{session.zoneDisplay}</span>
                 </div>
-                <footer className="session-card__footer">
-                  <div className="session-card__progress">
-                    <span className="session-card__transition">{session.nextTransitionLabel}</span>
-                    <span className="session-card__duration">{session.transitionDuration}</span>
-                  </div>
-                  <span className="session-card__window">{session.windowLabel}</span>
+                <footer className="session-pill__footer">
+                  <span className="session-pill__window">{session.windowLabel}</span>
+                  <span className="session-pill__transition">{session.nextTransitionLabel} · {session.transitionDuration}</span>
                 </footer>
               </article>
             ))}
           </div>
         </section>
 
-        <section className="app-section app-section--ticker">
-          <div className="app-section__header">
+        <section className="dashboard__section dashboard__section--signals">
+          <header className="section-header">
             <div>
-              <h2>Signal Stream</h2>
-              <p>Latest opportunities cascading from the engine</p>
+              <h2 className="section-header__title">Signal Stream</h2>
+              <p className="section-header__subtitle">Most recent opportunities flowing from the engine</p>
             </div>
-          </div>
+          </header>
           <SignalTicker signals={signals} />
         </section>
       </main>

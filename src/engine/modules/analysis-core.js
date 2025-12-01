@@ -30,8 +30,6 @@ export const analysisCore = {
   async analyzeNews(pair) {
     const analysis = await this.newsAnalyzer.analyzeNews(pair);
 
-    this.recordNewsInsights(pair, analysis);
-
     return {
       sentiment: analysis.sentiment.overall,
       direction: analysis.direction,
