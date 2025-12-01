@@ -1,5 +1,0 @@
-{
-  "channel": "#signals-ops",
-  "title": "[signals][warning] ProviderAvailabilityUptimeSLOBreached",
-  "text": "*Service*: signals-app\n*Summary*: CI SLO breach test\n*Description*: CI verification for uptime SLO breach routing\n*State*: FIRING\n*Severity*: warning\n*Runbook*: https://docs.signalsstrategy.dev/runbooks/operational-provider-outage"
-}

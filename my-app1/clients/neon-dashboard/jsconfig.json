@@ -1,8 +1,0 @@
-{
-  "compilerOptions": {
-    "jsx": "react-jsx",
-    "module": "esnext",
-    "target": "es2020"
-  },
-  "exclude": ["dist", "node_modules"]
-}

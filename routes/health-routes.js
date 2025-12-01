@@ -2,7 +2,6 @@ import { Router } from 'express';
 import {
   buildHealthzPayload,
   buildModuleHealthSummary,
-  buildProviderAvailabilitySnapshot,
   classifyProviderAvailabilitySnapshot,
   summarizeProviderAvailabilityHistory
 } from '../src/services/health-summary.js';
@@ -14,8 +13,7 @@ export default function healthRoutes({
   heartbeatMonitor,
   metricsRegistry,
   logger,
-  providerAvailabilityState,
-  requireBasicRead
+  providerAvailabilityState
 }) {
   const router = Router();
 
@@ -92,9 +90,7 @@ export default function healthRoutes({
         unavailableProviders: Array.isArray(entry.unavailableProviders)
           ? [...entry.unavailableProviders]
           : [],
-        breakerProviders: Array.isArray(entry.breakerProviders)
-          ? [...entry.breakerProviders]
-          : [],
+        breakerProviders: Array.isArray(entry.breakerProviders) ? [...entry.breakerProviders] : [],
         blockedTimeframes: Array.isArray(entry.blockedTimeframes)
           ? [...entry.blockedTimeframes]
           : []

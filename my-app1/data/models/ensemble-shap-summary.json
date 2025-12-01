@@ -1,8 +1,0 @@
-{
-  "baselineProbability": 0.5,
-  "weights": {
-    "xgb": 0,
-    "lightgbm": 1
-  },
-  "features": []
-}

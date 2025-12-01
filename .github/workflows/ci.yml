@@ -11,21 +11,37 @@ on:
       - develop
 
 jobs:
+  lint-test:
+    name: Lint & Test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ['20', '22']
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Run integration tests
+        run: npm run test:integration
+
   quality:
     name: Quality & Delivery Checks
-          - name: Delete old alert payload artifacts
-            if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-            env:
-              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            run: |
-              set -euo pipefail
-              gh api repos/${{ github.repository }}/actions/artifacts \
-                --paginate \
-                --jq '.artifacts[] | select(.name == "alertmanager-payloads") | .id' | \
-                tail -n +6 | \
-                while read -r artifact_id; do
-                  gh api repos/${{ github.repository }}/actions/artifacts/${artifact_id} -X DELETE
-                done
+    needs: lint-test
     runs-on: ubuntu-latest
     env:
       NODE_ENV: test

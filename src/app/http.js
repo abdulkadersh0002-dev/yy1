@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
+import helmet from 'helmet';
 import { createApiAuthMiddleware } from '../middleware/api-auth.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { appConfig } from '../app/config.js';
@@ -8,6 +9,8 @@ import healthRoutes from '../../routes/health-routes.js';
 import tradingRoutes from '../../routes/trading-routes.js';
 import autoTradingRoutes from '../../routes/auto-trading-routes.js';
 import configRoutes from '../../routes/config-routes.js';
+import brokerRoutes from '../../routes/broker-routes.js';
+import featureRoutes from '../../routes/feature-routes.js';
 
 export function createHttpApp({
   tradingEngine,
@@ -17,9 +20,6 @@ export function createHttpApp({
   secretManager,
   auditLogger,
   logger,
-  alertBus,
-  pairPrefetchScheduler,
-  services,
   broadcast,
   metricsRegistry,
   providerAvailabilityState
@@ -29,18 +29,13 @@ export function createHttpApp({
   const {
     server: serverConfig,
     apiAuth: apiAuthConfig,
-    trading: tradingConfig,
-    alerting: alertingConfig,
-    brokers: brokerConfig,
-    brokerRouting: brokerRoutingConfig,
-    services: serviceToggles,
-    pairPrefetch: pairPrefetchSettings,
-    autoTrading: autoTradingConfig,
-    database: databaseConfig,
-    env: rawEnv
+    brokerRouting: brokerRoutingConfig
   } = appConfig;
 
   const requestBodyLimit = serverConfig.requestJsonLimit;
+
+  // Security middleware
+  app.use(helmet());
   app.use(compression());
   app.use(cors());
   app.use(express.json({ limit: requestBodyLimit }));
@@ -60,16 +55,11 @@ export function createHttpApp({
   });
 
   const requireBasicRead = apiAuth.requireAnyRole(['read.basic', 'admin']);
-  const requireRiskRead = apiAuth.requireAnyRole(['risk.read', 'admin']);
   const requireBrokerRead = apiAuth.requireAnyRole(['broker.read', 'admin']);
   const requireBrokerWrite = apiAuth.requireAnyRole(['broker.write', 'admin']);
   const requireSignalsGenerate = apiAuth.requireAnyRole(['signals.generate', 'admin']);
   const requireTradeExecute = apiAuth.requireAnyRole(['trade.execute', 'admin']);
-  const requireTradeClose = apiAuth.requireAnyRole([
-    'trade.close',
-    'trade.execute',
-    'admin'
-  ]);
+  const requireTradeClose = apiAuth.requireAnyRole(['trade.close', 'trade.execute', 'admin']);
   const requireTradeRead = apiAuth.requireAnyRole(['trade.read', 'admin']);
   const requireAutomationControl = apiAuth.requireAnyRole(['automation.control', 'admin']);
   const requireConfigRead = apiAuth.requireAnyRole(['config.read', 'admin']);
@@ -91,8 +81,7 @@ export function createHttpApp({
       heartbeatMonitor,
       metricsRegistry,
       logger,
-      providerAvailabilityState,
-      requireBasicRead
+      providerAvailabilityState
     })
   );
 
@@ -134,6 +123,38 @@ export function createHttpApp({
       requireConfigWrite: [sensitiveRateLimiter, requireConfigWrite]
     })
   );
+
+  app.use(
+    '/api',
+    brokerRoutes({
+      tradingEngine,
+      brokerRouter,
+      auditLogger,
+      logger,
+      config: { brokerRouting: brokerRoutingConfig },
+      requireBrokerRead,
+      requireBrokerWrite: [sensitiveRateLimiter, requireBrokerWrite]
+    })
+  );
+
+  app.use(
+    '/api',
+    featureRoutes({
+      tradingEngine,
+      logger,
+      requireBasicRead
+    })
+  );
+
+  // Global error handler
+  app.use((err, req, res, _next) => {
+    logger.error({ err }, 'Server error');
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: err.message
+    });
+  });
 
   return app;
 }

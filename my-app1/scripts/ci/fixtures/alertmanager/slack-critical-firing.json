@@ -1,5 +1,0 @@
-{
-  "channel": "#signals-incident",
-  "title": "[signals][critical] ProviderAvailabilityCritical",
-  "text": "*Service*: signals-app\n*Summary*: CI flapping test\n*Description*: CI verification for repeated fire/resolution\n*State*: FIRING\n*Severity*: critical\n*Runbook*: https://docs.signalsstrategy.dev/runbooks/operational-provider-outage"
-}
