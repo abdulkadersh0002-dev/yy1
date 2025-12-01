@@ -286,7 +286,11 @@ const providerAvailabilityState = {
 };
 
 // Start the server - all routes are mounted via route modules in `src/app/http.js`
-const { app, server, websocketLayer } = startServer({
+const {
+  app,
+  server,
+  websocketLayer: _websocketLayer
+} = startServer({
   serverConfig,
   tradingEngine,
   tradeManager,

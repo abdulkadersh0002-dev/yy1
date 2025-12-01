@@ -16,7 +16,7 @@ function parseBooleanOrNull(value) {
 }
 
 const rawNodeEnv = (process.env.NODE_ENV || '').toLowerCase();
-const isTestEnv = rawNodeEnv === 'test';
+const _isTestEnv = rawNodeEnv === 'test';
 const isProdEnv = rawNodeEnv === 'production';
 
 export function allowSyntheticData() {

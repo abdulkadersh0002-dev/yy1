@@ -52,7 +52,7 @@ function collectInvalidProviders(list, apiKeys) {
     optionalPlaceholders: []
   };
 
-  list.forEach(({ envKey, label, configKey, optional }) => {
+  list.forEach(({ label, configKey, optional }) => {
     const keyValue = apiKeys?.[configKey] ?? appConfig.trading?.apiKeys?.[configKey];
     if (!keyValue) {
       if (optional) {
