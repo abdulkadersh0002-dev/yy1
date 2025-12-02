@@ -1,4 +1,5 @@
 import OandaConnector from './oanda-connector.js';
+import Mt4Connector from './mt4-connector.js';
 import Mt5Connector from './mt5-connector.js';
 import IbkrConnector from './ibkr-connector.js';
 
@@ -25,6 +26,14 @@ class BrokerRouter {
           ? cfg.oanda
           : new OandaConnector({ ...cfg.oanda, logger: this.logger });
       this.registerConnector(oanda);
+    }
+
+    if (cfg.mt4 !== false) {
+      const mt4 =
+        cfg.mt4 instanceof Mt4Connector
+          ? cfg.mt4
+          : new Mt4Connector({ ...cfg.mt4, logger: this.logger });
+      this.registerConnector(mt4);
     }
 
     if (cfg.mt5 !== false) {
@@ -89,6 +98,56 @@ class BrokerRouter {
 
   listConnectors() {
     return Array.from(this.connectors.values());
+  }
+
+  async probeConnector(name, options = {}) {
+    if (!name) {
+      const error = new Error('Connector id is required');
+      error.code = 'INVALID_CONNECTOR_ID';
+      throw error;
+    }
+
+    const connector = this.getConnector(name);
+    if (!connector) {
+      const error = new Error(`Unknown broker connector: ${name}`);
+      error.code = 'UNKNOWN_CONNECTOR';
+      throw error;
+    }
+
+    const action = (options.action || 'probe').toLowerCase();
+    const params = options.params || {};
+
+    try {
+      if (action === 'connect' && typeof connector.connect === 'function') {
+        await connector.connect(params);
+      } else if (action === 'disconnect' && typeof connector.disconnect === 'function') {
+        await connector.disconnect(params);
+      } else if (action === 'restart' && typeof connector.restart === 'function') {
+        await connector.restart(params);
+      } else if (action !== 'probe') {
+        const error = new Error(`Unsupported broker connector action: ${action}`);
+        error.code = 'UNSUPPORTED_ACTION';
+        throw error;
+      }
+    } catch (error) {
+      this.logger?.warn?.(
+        { err: error, broker: connector.id, action },
+        'Broker connector action failed'
+      );
+      error.code = error.code || 'CONNECTOR_ACTION_FAILED';
+      throw error;
+    }
+
+    const health = await connector.healthCheck();
+    if (health?.connected) {
+      this.lastSyncAt = new Date().toISOString();
+    }
+
+    return {
+      broker: connector.id,
+      action,
+      health
+    };
   }
 
   async getHealthSnapshots() {

@@ -19,7 +19,7 @@ export function startServer({
   onClose
 }) {
   const websocketLayer = createWebSocketLayer({
-    server: null, // placeholder, will be set after HTTP server is created
+    server: null, // WebSocket layer attaches once HTTP server exists
     config: serverConfig,
     logger
   });
@@ -43,7 +43,7 @@ export function startServer({
   const server = createServer(app);
 
   // Now that server exists, update WebSocket layer if websockets are enabled
-  websocketLayer.server = server;
+  websocketLayer.attach(server);
 
   const PORT = serverConfig.port;
 

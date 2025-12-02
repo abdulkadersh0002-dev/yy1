@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ok, serverError } from '../src/utils/http-response.js';
+import { badRequest, notFound, ok, serverError } from '../src/utils/http-response.js';
 
 export default function brokerRoutes({
   tradingEngine,
@@ -100,6 +100,38 @@ export default function brokerRoutes({
     } catch (error) {
       logger.error({ err: error }, 'Manual close failed');
       return serverError(res, error);
+    }
+  });
+
+  router.post('/broker/connectors/:id/probe', requireBrokerWrite, async (req, res) => {
+    if (!config.brokerRouting?.enabled) {
+      return res.status(503).json({ success: false, error: 'Broker routing disabled' });
+    }
+
+    const connectorId = (req.params.id || '').toLowerCase();
+    if (!connectorId) {
+      return badRequest(res, 'Connector id is required');
+    }
+
+    try {
+      const result = await brokerRouter.probeConnector(connectorId, {
+        action: req.body?.action || 'connect',
+        params: req.body?.params || {}
+      });
+      return ok(res, { connector: result });
+    } catch (error) {
+      if (error.code === 'UNKNOWN_CONNECTOR') {
+        return notFound(res, error.message);
+      }
+      if (error.code === 'INVALID_CONNECTOR_ID') {
+        return badRequest(res, error.message);
+      }
+      if (error.code === 'UNSUPPORTED_ACTION') {
+        return badRequest(res, error.message);
+      }
+      logger.error({ err: error, connectorId }, 'Broker connector probe failed');
+      const statusCode = error.code === 'CONNECTOR_ACTION_FAILED' ? 502 : undefined;
+      return serverError(res, error, { statusCode });
     }
   });
 

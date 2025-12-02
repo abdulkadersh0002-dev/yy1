@@ -25,7 +25,7 @@ export default function healthRoutes({
     });
 
     const statusCode = payload.status === 'critical' ? 503 : 200;
-    return ok(res, { data: payload }, { statusCode });
+    return ok(res, { ...payload }, { statusCode });
   });
 
   router.get('/health/modules', (req, res) => {

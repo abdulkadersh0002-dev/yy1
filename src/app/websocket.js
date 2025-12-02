@@ -1,10 +1,6 @@
 import WebSocket, { WebSocketServer } from 'ws';
 
-export function createWebSocketLayer({
-  server,
-  config,
-  logger
-}) {
+export function createWebSocketLayer({ server, config, logger }) {
   const websocketClients = new Set();
   const enableWebSockets = config.enableWebSockets;
   const websocketPath = config.websocketPath;
@@ -12,6 +8,7 @@ export function createWebSocketLayer({
 
   let websocketHeartbeat;
   let wss;
+  let initializeLogged = false;
 
   const broadcast = (type, payload) => {
     if (!enableWebSockets || websocketClients.size === 0) {
@@ -35,8 +32,20 @@ export function createWebSocketLayer({
     }
   };
 
-  if (enableWebSockets) {
-    wss = new WebSocketServer({ server, path: websocketPath });
+  const initializeServer = (httpServer) => {
+    if (!enableWebSockets) {
+      if (!initializeLogged) {
+        logger?.info?.('WebSocket broadcasting disabled via ENABLE_WEBSOCKETS flag');
+        initializeLogged = true;
+      }
+      return;
+    }
+
+    if (!httpServer || wss) {
+      return;
+    }
+
+    wss = new WebSocketServer({ server: httpServer, path: websocketPath });
 
     wss.on('connection', (socket) => {
       socket.isAlive = true;
@@ -94,13 +103,20 @@ export function createWebSocketLayer({
     }, heartbeatInterval);
 
     logger?.info?.({ path: websocketPath }, 'WebSocket server initialized');
-  } else {
+    initializeLogged = true;
+  };
+
+  if (server) {
+    initializeServer(server);
+  } else if (!enableWebSockets && !initializeLogged) {
     logger?.info?.('WebSocket broadcasting disabled via ENABLE_WEBSOCKETS flag');
+    initializeLogged = true;
   }
 
   const shutdown = () => {
     if (websocketHeartbeat) {
       clearInterval(websocketHeartbeat);
+      websocketHeartbeat = undefined;
     }
     for (const socket of websocketClients) {
       try {
@@ -111,11 +127,15 @@ export function createWebSocketLayer({
     }
     websocketClients.clear();
     wss?.close();
+    wss = undefined;
   };
 
   return {
     broadcast,
     shutdown,
-    websocketClients
+    websocketClients,
+    attach(serverInstance) {
+      initializeServer(serverInstance);
+    }
   };
 }

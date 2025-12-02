@@ -271,6 +271,7 @@ function buildBrokerConfig(env) {
     parseBoolSafe(env.ENABLE_BROKER_OANDA, false) &&
     Boolean(env.OANDA_ACCESS_TOKEN && env.OANDA_ACCOUNT_ID);
   const mt5Enabled = parseBoolSafe(env.ENABLE_BROKER_MT5, true);
+  const mt4Enabled = parseBoolSafe(env.ENABLE_BROKER_MT4, false);
   const ibkrEnabled = parseBoolSafe(env.ENABLE_BROKER_IBKR, false) && Boolean(env.IBKR_GATEWAY_URL);
 
   return {
@@ -279,6 +280,13 @@ function buildBrokerConfig(env) {
       accountMode: env.OANDA_ACCOUNT_MODE || 'demo',
       accessToken: env.OANDA_ACCESS_TOKEN,
       accountId: env.OANDA_ACCOUNT_ID
+    },
+    mt4: {
+      enabled: mt4Enabled,
+      accountMode: env.MT4_ACCOUNT_MODE || 'demo',
+      baseUrl: env.MT4_BRIDGE_URL,
+      apiKey: env.MT4_BRIDGE_TOKEN,
+      accountNumber: env.MT4_ACCOUNT_NUMBER
     },
     mt5: {
       enabled: mt5Enabled,

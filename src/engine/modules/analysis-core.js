@@ -185,7 +185,8 @@ export const analysisCore = {
     if (
       !dataQualityContext.shouldBlock &&
       Number.isFinite(dataQualityContext.confidenceFloor) &&
-      confidence < dataQualityContext.confidenceFloor
+      confidence < dataQualityContext.confidenceFloor &&
+      !dataQualityContext.syntheticRelaxed
     ) {
       dataQualityContext.shouldBlock = true;
       dataQualityContext.confidenceFloorBreached = true;
@@ -383,7 +384,10 @@ export const analysisCore = {
               spreadPips: dataQualityContext.spreadPips,
               confidenceFloor: dataQualityContext.confidenceFloor ?? null,
               confidenceFloorBreached: dataQualityContext.confidenceFloorBreached,
-              circuitBreaker: dataQualityContext.circuitBreaker || null
+              circuitBreaker: dataQualityContext.circuitBreaker || null,
+              syntheticRelaxed: dataQualityContext.syntheticRelaxed,
+              syntheticContext:
+                resolvedDataQuality.syntheticContext || dataQualityContext.syntheticContext || null
             }
           : null
       },
@@ -436,7 +440,10 @@ export const analysisCore = {
               spreadPips: dataQualityContext.spreadPips,
               confidenceFloor: dataQualityContext.confidenceFloor ?? null,
               confidenceFloorBreached: dataQualityContext.confidenceFloorBreached,
-              circuitBreaker: dataQualityContext.circuitBreaker || null
+              circuitBreaker: dataQualityContext.circuitBreaker || null,
+              syntheticRelaxed: dataQualityContext.syntheticRelaxed,
+              syntheticContext:
+                resolvedDataQuality.syntheticContext || dataQualityContext.syntheticContext || null
             }
           : null
       },
@@ -871,6 +878,22 @@ export const analysisCore = {
       merged.spread = addition.spread;
     }
 
+    if (primary.syntheticRelaxed || addition.syntheticRelaxed) {
+      merged.syntheticRelaxed = Boolean(primary.syntheticRelaxed || addition.syntheticRelaxed);
+      const suppressed = new Set();
+      const notes = new Set();
+      const primaryContext = primary.syntheticContext || {};
+      const additionContext = addition.syntheticContext || {};
+      (primaryContext.suppressedIssues || []).forEach((value) => suppressed.add(value));
+      (additionContext.suppressedIssues || []).forEach((value) => suppressed.add(value));
+      (primaryContext.notes || []).forEach((value) => notes.add(value));
+      (additionContext.notes || []).forEach((value) => notes.add(value));
+      merged.syntheticContext = {
+        suppressedIssues: Array.from(suppressed),
+        notes: Array.from(notes)
+      };
+    }
+
     return merged;
   },
 
@@ -925,8 +948,13 @@ export const analysisCore = {
     }
 
     const issues = Array.isArray(report.issues) ? report.issues.map((issue) => String(issue)) : [];
-
-    modifier = Math.max(0.3, modifier - Math.min(0.2, issues.length * 0.03));
+    const syntheticRelaxed = Boolean(report.syntheticRelaxed);
+    const issuePenalty = Math.min(0.2, issues.length * 0.03);
+    if (syntheticRelaxed) {
+      modifier = Math.max(0.5, modifier - issuePenalty * 0.3);
+    } else {
+      modifier = Math.max(0.3, modifier - issuePenalty);
+    }
 
     const confidencePenaltyBase =
       report.status === 'critical' ? 18 : report.status === 'degraded' ? 10 : 0;
@@ -943,6 +971,11 @@ export const analysisCore = {
       confidencePenalty += 4;
     }
 
+    if (syntheticRelaxed) {
+      const relaxationFactor = spreadStatus === 'critical' ? 0.55 : 0.45;
+      confidencePenalty = Math.max(0, Math.round(confidencePenalty * relaxationFactor));
+    }
+
     const freshnessMs = assessedAt != null ? Date.now() - assessedAt : null;
     const stale = Number.isFinite(freshnessMs) && freshnessMs > 10 * 60 * 1000;
 
@@ -951,6 +984,11 @@ export const analysisCore = {
       : null;
 
     const circuitBreaker = report.circuitBreaker || null;
+
+    let normalizedConfidenceFloor = confidenceFloor;
+    if (syntheticRelaxed && normalizedConfidenceFloor != null) {
+      normalizedConfidenceFloor = Math.max(35, normalizedConfidenceFloor - 10);
+    }
 
     return {
       modifier: Number(modifier.toFixed(3)),
@@ -964,9 +1002,11 @@ export const analysisCore = {
       stale,
       spreadStatus,
       spreadPips: Number.isFinite(report.spread?.pips) ? Number(report.spread.pips) : null,
-      confidenceFloor,
+      confidenceFloor: normalizedConfidenceFloor,
       confidenceFloorBreached: false,
-      circuitBreaker
+      circuitBreaker,
+      syntheticRelaxed,
+      syntheticContext: report.syntheticContext || null
     };
   },
 

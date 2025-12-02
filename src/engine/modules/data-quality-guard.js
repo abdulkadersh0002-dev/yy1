@@ -1,3 +1,5 @@
+import { allowSyntheticData } from '../../config/runtime-flags.js';
+
 const TIMEFRAME_SECONDS = {
   M1: 60,
   M5: 300,
@@ -87,6 +89,10 @@ export const dataQualityGuard = {
     }
 
     const assessedAt = Date.now();
+    const relaxForSynthetic =
+      options?.relaxForSynthetic !== undefined
+        ? Boolean(options.relaxForSynthetic)
+        : allowSyntheticData();
     const timeframes =
       Array.isArray(options.timeframes) && options.timeframes.length > 0
         ? Array.from(new Set(options.timeframes.map(normalizeTimeframe)))
@@ -94,7 +100,8 @@ export const dataQualityGuard = {
 
     const bars = Number.isInteger(options.bars) && options.bars > 10 ? options.bars : 240;
     const timeframeReports = {};
-    const issues = [];
+    let issues = [];
+    const suppressedIssues = [];
     let aggregateScore = 0;
     let assessedCount = 0;
 
@@ -120,10 +127,17 @@ export const dataQualityGuard = {
         const priceBars = await this.priceDataFetcher.fetchPriceData(pair, timeframe, bars, {
           purpose: 'quality-check'
         });
-        const report = await this.evaluateTimeframeQuality(pair, priceBars, timeframe, options);
+        const report = await this.evaluateTimeframeQuality(pair, priceBars, timeframe, {
+          relaxForSynthetic
+        });
         timeframeReports[timeframe] = report;
         aggregateScore += report.score;
         assessedCount++;
+        if (relaxForSynthetic && Array.isArray(report.suppressedIssues)) {
+          report.suppressedIssues
+            .filter(Boolean)
+            .forEach((issue) => suppressedIssues.push(`${timeframe}:${issue}`));
+        }
         if (Array.isArray(report.issues) && report.issues.length > 0) {
           report.issues.forEach((issue) => issues.push(`${timeframe}:${issue}`));
         }
@@ -178,7 +192,10 @@ export const dataQualityGuard = {
       }
     }
 
-    const adjustedScore = Math.max(0, Number((score - spreadPenalty).toFixed(1)));
+    let adjustedScore = Math.max(0, Number((score - spreadPenalty).toFixed(1)));
+    if (relaxForSynthetic && spreadStatus !== 'critical' && adjustedScore < 82) {
+      adjustedScore = Math.min(95, adjustedScore + 8);
+    }
 
     let status = 'healthy';
     if (
@@ -197,8 +214,22 @@ export const dataQualityGuard = {
       status = 'degraded';
     }
 
-    const recommendation =
+    if (relaxForSynthetic && status === 'critical' && spreadStatus !== 'critical') {
+      status = 'degraded';
+    }
+
+    let recommendation =
       status === 'critical' ? 'block' : status === 'degraded' ? 'caution' : 'proceed';
+    if (relaxForSynthetic) {
+      recommendation =
+        recommendation === 'block'
+          ? 'caution'
+          : recommendation === 'caution'
+            ? 'monitor'
+            : recommendation;
+    }
+
+    issues = issues.filter(Boolean);
 
     const report = {
       pair,
@@ -217,7 +248,14 @@ export const dataQualityGuard = {
       weekendGap: {
         severity: worstWeekendGapSeverity,
         maxPips: maxWeekendGapPips
-      }
+      },
+      syntheticRelaxed: relaxForSynthetic,
+      syntheticContext: relaxForSynthetic
+        ? {
+            suppressedIssues,
+            notes: spreadStatus === 'critical' ? ['spread_status_critical'] : []
+          }
+        : null
     };
 
     if (!this.dataQualityAssessments) {
@@ -245,10 +283,15 @@ export const dataQualityGuard = {
       report.confidenceFloor = confidenceFloor;
     }
 
+    if (relaxForSynthetic) {
+      delete report.confidenceFloor;
+    }
+
     if (
-      (status === 'critical' && adjustedScore < 55) ||
-      spreadStatus === 'critical' ||
-      worstWeekendGapSeverity === 'critical'
+      !relaxForSynthetic &&
+      ((status === 'critical' && adjustedScore < 55) ||
+        spreadStatus === 'critical' ||
+        worstWeekendGapSeverity === 'critical')
     ) {
       this.activatePairCircuitBreaker?.(pair, {
         reason:
@@ -268,7 +311,7 @@ export const dataQualityGuard = {
     }
 
     const breakerAfter = this.getPairCircuitBreaker?.(pair) || activeBreaker;
-    if (breakerAfter) {
+    if (breakerAfter && !relaxForSynthetic) {
       report.circuitBreaker = breakerAfter;
       report.recommendation = 'block';
       if (!issues.includes('pair:circuit_breaker_active')) {
@@ -295,8 +338,9 @@ export const dataQualityGuard = {
     return report;
   },
 
-  async evaluateTimeframeQuality(pair, bars, timeframe) {
+  async evaluateTimeframeQuality(pair, bars, timeframe, options = {}) {
     const normalizedTf = normalizeTimeframe(timeframe);
+    const relaxForSynthetic = options.relaxForSynthetic === true;
     const expectedSeconds = timeframeToSeconds(normalizedTf);
     const expectedIntervalMs = expectedSeconds * 1000;
     const report = {
@@ -317,7 +361,8 @@ export const dataQualityGuard = {
         detected: false,
         pips: 0,
         severity: 'none'
-      }
+      },
+      suppressedIssues: []
     };
 
     if (!Array.isArray(bars) || bars.length < 5) {
@@ -417,10 +462,23 @@ export const dataQualityGuard = {
       }
     }
 
+    if (relaxForSynthetic && report.weekendGap.detected) {
+      report.suppressedIssues.push('weekend_gap_adjusted');
+      if (report.weekendGap.severity === 'critical') {
+        report.weekendGap.severity = 'elevated';
+      } else if (report.weekendGap.severity === 'elevated') {
+        report.weekendGap.severity = 'minor';
+      }
+    }
+
     const spikePenalty = Math.min(report.spikeCount * 4, 35);
-    const gapPenalty = Math.min(report.gapCount * 5, 40);
-    const misalignPenalty = misalignmentCount > 0 ? Math.min(misalignmentCount * 3, 15) : 0;
-    const stalePenalty = report.stale ? 20 : 0;
+    const gapPenaltyBase = Math.min(report.gapCount * 5, 40);
+    const gapPenalty = relaxForSynthetic ? Math.round(gapPenaltyBase * 0.35) : gapPenaltyBase;
+    const misalignPenaltyBase = misalignmentCount > 0 ? Math.min(misalignmentCount * 3, 15) : 0;
+    const misalignPenalty = relaxForSynthetic
+      ? Math.round(misalignPenaltyBase * 0.3)
+      : misalignPenaltyBase;
+    const stalePenalty = report.stale ? (relaxForSynthetic ? 8 : 20) : 0;
     const sanityPenalty = report.sanityIssues.length > 0 ? 15 : 0;
 
     let score = 100 - spikePenalty - gapPenalty - misalignPenalty - stalePenalty - sanityPenalty;

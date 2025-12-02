@@ -225,9 +225,22 @@ export function createTradingSignalDTO(raw) {
     components: raw.components || {},
     entry: raw.entry ?? null,
     riskManagement: raw.riskManagement || {},
+    // Normalize validation structure to ensure downstream Zod schema only sees booleans
+    // even when upstream signal builders hand back null/undefined states.
     isValid: {
       isValid: Boolean(raw.isValid?.isValid),
-      checks: raw.isValid?.checks || {},
+      checks: (() => {
+        const checks = raw.isValid?.checks || {};
+        if (typeof checks !== 'object' || checks === null) {
+          return {};
+        }
+        return Object.fromEntries(
+          Object.entries(checks).map(([key, value]) => [
+            key,
+            value === null ? false : Boolean(value)
+          ])
+        );
+      })(),
       reason: raw.isValid?.reason || 'Unspecified'
     },
     explainability: raw.explainability ?? null,

@@ -1,14 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLiveClock } from './hooks/useLiveClock.js';
 import { useWebSocketFeed } from './hooks/useWebSocketFeed.js';
-import SignalTicker from './components/SignalTicker.jsx';
-import SignalEnginePanel from './components/SignalEnginePanel.jsx';
 import SignalEngineConsole from './components/SignalEngineConsole.jsx';
-import FeatureSnapshotGrid from './components/FeatureSnapshotGrid.jsx';
-import LiveEventFeed from './components/LiveEventFeed.jsx';
-import TradesTable from './components/TradesTable.jsx';
 import SystemHealthSummary from './components/SystemHealthSummary.jsx';
-import ProviderAvailabilityTrend from './components/ProviderAvailabilityTrend.jsx';
 import { fetchJson } from './utils/api.js';
 import { useModuleHealth } from './context/ModuleHealthContext.jsx';
 
@@ -248,8 +242,8 @@ function App() {
   const now = useLiveClock(() => new Date());
   const [signals, setSignals] = useState([]);
   const [eventFeed, setEventFeed] = useState([]);
-  const [activeTrades, setActiveTrades] = useState([]);
-  const [tradeHistory, setTradeHistory] = useState([]);
+  const [, setActiveTrades] = useState([]);
+  const [, setTradeHistory] = useState([]);
   const [featureSnapshots, setFeatureSnapshots] = useState([]);
   const [engineSnapshot, setEngineSnapshot] = useState({
     status: null,
@@ -257,6 +251,11 @@ function App() {
     updatedAt: null,
     loading: true,
     error: null
+  });
+  const [brokerStatus, setBrokerStatus] = useState({
+    connectors: [],
+    health: [],
+    lastSyncAt: null
   });
   const { refresh: refreshModuleHealth } = useModuleHealth();
 
@@ -348,6 +347,23 @@ function App() {
     }
   }, []);
 
+  const refreshBrokerStatus = useCallback(async () => {
+    try {
+      const response = await fetchJson('/api/broker/status');
+      const connectorIds = Array.isArray(response?.status?.connectors)
+        ? response.status.connectors
+        : [];
+      const healthSnapshots = Array.isArray(response?.health) ? response.health : [];
+      setBrokerStatus({
+        connectors: connectorIds,
+        health: healthSnapshots,
+        lastSyncAt: response?.status?.lastSyncAt || null
+      });
+    } catch (error) {
+      console.warn('Failed to refresh broker status', error);
+    }
+  }, []);
+
   const loadEngineSnapshot = useCallback(async () => {
     setEngineSnapshot((prev) => ({ ...prev, loading: true }));
     try {
@@ -383,6 +399,12 @@ function App() {
     const timer = setInterval(refreshFeatureSnapshots, 90000);
     return () => clearInterval(timer);
   }, [refreshFeatureSnapshots]);
+
+  useEffect(() => {
+    refreshBrokerStatus();
+    const timer = setInterval(refreshBrokerStatus, 120000);
+    return () => clearInterval(timer);
+  }, [refreshBrokerStatus]);
 
   useEffect(() => {
     loadEngineSnapshot();
@@ -575,63 +597,6 @@ function App() {
       </header>
 
       <main className="dashboard__main">
-        <section className="dashboard__section dashboard__section--ops">
-          <div className="dashboard__row dashboard__row--hero">
-            <div className="dashboard__col dashboard__col--span-6">
-              <SignalEnginePanel snapshot={engineSnapshot} />
-            </div>
-            <div className="dashboard__col dashboard__col--span-6">
-              <SystemHealthSummary
-                snapshot={engineSnapshot}
-                featureSnapshots={featureSnapshots}
-                signals={signals}
-                events={eventFeed}
-              />
-            </div>
-          </div>
-          <div className="dashboard__row dashboard__row--ops-grid">
-            <div className="dashboard__col dashboard__col--span-7">
-              <ProviderAvailabilityTrend />
-            </div>
-            <div className="dashboard__col dashboard__col--span-5">
-              <LiveEventFeed events={eventFeed} />
-            </div>
-          </div>
-        </section>
-
-        <section className="dashboard__section dashboard__section--control">
-          <header className="section-header">
-            <div>
-              <h2 className="section-header__title">Execution Console</h2>
-              <p className="section-header__subtitle">Trigger signals, inspect fingerprints, and adjust regime safely</p>
-            </div>
-          </header>
-          <div className="dashboard__row">
-            <div className="dashboard__col dashboard__col--span-6">
-              <SignalEngineConsole
-                pairs={engineSnapshot.status?.pairs || []}
-                onSignalGenerated={handleSignalGenerated}
-              />
-            </div>
-            <div className="dashboard__col dashboard__col--span-6">
-              <FeatureSnapshotGrid snapshots={featureSnapshots} />
-            </div>
-          </div>
-        </section>
-
-        <section className="dashboard__section dashboard__section--trading">
-          <header className="section-header">
-            <div>
-              <h2 className="section-header__title">Portfolio Pulse</h2>
-              <p className="section-header__subtitle">Open exposure and recent closures in one clear view</p>
-            </div>
-          </header>
-          <TradesTable
-            activeTrades={activeTrades}
-            tradeHistory={tradeHistory}
-          />
-        </section>
-
         <section className="dashboard__section dashboard__section--sessions">
           <header className="section-header">
             <div>
@@ -664,14 +629,35 @@ function App() {
           </div>
         </section>
 
-        <section className="dashboard__section dashboard__section--signals">
+        <section className="dashboard__section dashboard__section--control">
           <header className="section-header">
             <div>
-              <h2 className="section-header__title">Signal Stream</h2>
-              <p className="section-header__subtitle">Most recent opportunities flowing from the engine</p>
+              <h2 className="section-header__title">Execution Console</h2>
+              <p className="section-header__subtitle">Trigger signals, inspect fingerprints, and adjust regime safely</p>
             </div>
           </header>
-          <SignalTicker signals={signals} />
+          <SignalEngineConsole
+            pairs={engineSnapshot.status?.pairs || []}
+            snapshots={featureSnapshots}
+            signals={signals}
+            onSignalGenerated={handleSignalGenerated}
+            brokerConnectors={brokerStatus.connectors}
+            brokerHealth={brokerStatus.health}
+            onRefreshBrokers={refreshBrokerStatus}
+          />
+        </section>
+
+        <section className="dashboard__section dashboard__section--ops">
+          <div className="dashboard__row dashboard__row--hero">
+            <div className="dashboard__col dashboard__col--span-6">
+              <SystemHealthSummary
+                snapshot={engineSnapshot}
+                featureSnapshots={featureSnapshots}
+                signals={signals}
+                events={eventFeed}
+              />
+            </div>
+          </div>
         </section>
       </main>
     </div>

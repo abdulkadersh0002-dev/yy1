@@ -4,6 +4,8 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
+import axios from 'axios';
+import RssFeedAggregator from '../../../src/services/rss-feed-aggregator.js';
 
 // Mock the RSS aggregator for testing without network
 const createMockAggregator = () => {
@@ -249,6 +251,46 @@ describe('RSS Feed Aggregator', () => {
           items[i - 1].timestamp >= items[i].timestamp,
           'Items should be sorted by timestamp descending'
         );
+      }
+    });
+  });
+
+  describe('External Provider Fallbacks', () => {
+    it('should safely handle Polygon 401 responses', async () => {
+      const aggregator = new RssFeedAggregator({ feeds: [], apiKeys: { polygon: 'live-key' } });
+      const originalAxiosGet = axios.get;
+
+      axios.get = async (url, config) => {
+        if (url.includes('polygon.io')) {
+          throw new Error('Request failed with status code 401');
+        }
+        return originalAxiosGet.call(axios, url, config);
+      };
+
+      try {
+        const items = await aggregator.fetchAll({ maxItems: 5 });
+        assert.deepStrictEqual(items, []);
+      } finally {
+        axios.get = originalAxiosGet;
+      }
+    });
+
+    it('should safely handle Finnhub 401 responses', async () => {
+      const aggregator = new RssFeedAggregator({ feeds: [], apiKeys: { finnhub: 'live-key' } });
+      const originalAxiosGet = axios.get;
+
+      axios.get = async (url, config) => {
+        if (url.includes('finnhub.io')) {
+          throw new Error('Request failed with status code 401');
+        }
+        return originalAxiosGet.call(axios, url, config);
+      };
+
+      try {
+        const items = await aggregator.fetchAll({ maxItems: 5 });
+        assert.deepStrictEqual(items, []);
+      } finally {
+        axios.get = originalAxiosGet;
       }
     });
   });

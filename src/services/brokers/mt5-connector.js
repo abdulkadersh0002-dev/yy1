@@ -47,6 +47,47 @@ class Mt5Connector extends BaseBrokerConnector {
     return this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : undefined;
   }
 
+  async connect(options = {}) {
+    const payload = {
+      accountMode: options.accountMode || this.accountMode,
+      accountNumber: options.accountNumber || this.expectedAccount,
+      forceReconnect: Boolean(options.forceReconnect)
+    };
+
+    const response = await this.http.post('/session/connect', payload, {
+      headers: this.authHeaders()
+    });
+
+    return response.data;
+  }
+
+  async disconnect(options = {}) {
+    const response = await this.http.post(
+      '/session/disconnect',
+      {
+        accountMode: options.accountMode || this.accountMode,
+        accountNumber: options.accountNumber || this.expectedAccount
+      },
+      {
+        headers: this.authHeaders()
+      }
+    );
+
+    return response.data;
+  }
+
+  async restart(options = {}) {
+    try {
+      await this.disconnect(options);
+    } catch (error) {
+      this.logger?.warn?.(
+        { err: error, broker: this.name },
+        'MT5 disconnect failed during restart, continuing'
+      );
+    }
+    return this.connect({ ...options, forceReconnect: true });
+  }
+
   async placeOrder(order) {
     try {
       const payload = {

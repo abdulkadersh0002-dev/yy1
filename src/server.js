@@ -81,6 +81,14 @@ const brokerRouter = new BrokerRouter({
         accountId: brokerConfig.oanda.accountId
       }
     : false,
+  mt4: brokerConfig.mt4?.enabled
+    ? {
+        accountMode: brokerConfig.mt4.accountMode || 'demo',
+        baseUrl: brokerConfig.mt4.baseUrl,
+        apiKey: brokerConfig.mt4.apiKey,
+        accountNumber: brokerConfig.mt4.accountNumber
+      }
+    : false,
   mt5: brokerConfig.mt5?.enabled
     ? {
         accountMode: brokerConfig.mt5.accountMode || 'demo',

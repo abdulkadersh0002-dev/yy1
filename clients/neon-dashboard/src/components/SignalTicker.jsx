@@ -122,24 +122,22 @@ function SignalTicker({ signals }) {
     );
   }
 
-  const marqueeItems = [...enrichedSignals, ...enrichedSignals];
-
   return (
-    <div className="signal-ticker" aria-label="Live trading signals ticker">
-      <div className="signal-ticker__gradient signal-ticker__gradient--left" aria-hidden="true" />
-      <div className="signal-ticker__gradient signal-ticker__gradient--right" aria-hidden="true" />
-      <div className="signal-ticker__track">
-        {marqueeItems.map((signal, index) => (
-          <div
-            key={`${signal.id}-${index}`}
-            className={`signal-ticker__item signal-ticker__item--${signal.directionClass}`}
-          >
-            <div className="signal-ticker__row signal-ticker__row--primary">
+    <div className="signal-ticker" role="list" aria-label="Latest trading signals">
+      {enrichedSignals.map((signal) => (
+        <article
+          key={signal.id}
+          className={`signal-ticker__item signal-ticker__item--${signal.directionClass}`}
+          role="listitem"
+        >
+          <header className="signal-ticker__header">
+            <div className="signal-ticker__identity">
               <span className="signal-ticker__pair">{signal.pair}</span>
-              <span className="signal-ticker__direction">{signal.direction}</span>
               {signal.timeframeLabel && (
                 <span className="signal-ticker__tag">{signal.timeframeLabel}</span>
               )}
+            </div>
+            <div className="signal-ticker__meta">
               <span
                 className={`signal-ticker__status signal-ticker__status--${signal.statusVariant}`}
               >
@@ -149,55 +147,61 @@ function SignalTicker({ signals }) {
                 {signal.relativeTime}
               </span>
             </div>
-            <div className="signal-ticker__row signal-ticker__row--metrics">
-              <span className="signal-ticker__metric">
-                <span className="signal-ticker__metric-label">ENTRY</span>
-                <span className="signal-ticker__metric-value">{signal.entryLabel}</span>
-              </span>
-              <span className="signal-ticker__metric">
-                <span className="signal-ticker__metric-label">TP</span>
-                <span className="signal-ticker__metric-value">{signal.takeProfitLabel}</span>
-              </span>
-              <span className="signal-ticker__metric">
-                <span className="signal-ticker__metric-label">SL</span>
-                <span className="signal-ticker__metric-value">{signal.stopLossLabel}</span>
-              </span>
-              <span className="signal-ticker__metric">
-                <span className="signal-ticker__metric-label">R:R</span>
-                <span className="signal-ticker__metric-value">{signal.riskRewardLabel}</span>
-              </span>
-              <span
-                className={`signal-ticker__metric signal-ticker__metric--pnl signal-ticker__metric--${signal.pnlVariant}`}
-                title={signal.profitLabel === 'PNL' ? 'Realized PnL' : 'Expected PnL'}
-              >
-                <span className="signal-ticker__metric-label">{signal.profitLabel}</span>
-                <span className="signal-ticker__metric-value">{signal.profitValue}</span>
-              </span>
-            </div>
-            <div className="signal-ticker__row signal-ticker__row--analysis">
-              <span className="signal-ticker__metric">
-                <span className="signal-ticker__metric-label">STRENGTH</span>
-                <span className="signal-ticker__metric-value">{signal.strengthLabel}</span>
-              </span>
-              <span className="signal-ticker__metric">
-                <span className="signal-ticker__metric-label">CONF</span>
-                <span className="signal-ticker__metric-value">{signal.confidenceLabel}</span>
-              </span>
-              <span className="signal-ticker__metric">
-                <span className="signal-ticker__metric-label">WIN%</span>
-                <span className="signal-ticker__metric-value">{signal.winRateLabel}</span>
-              </span>
-              <span className="signal-ticker__metric">
-                <span className="signal-ticker__metric-label">SCORE</span>
-                <span className="signal-ticker__metric-value">{signal.scoreLabel}</span>
-              </span>
-              {signal.strategy && (
-                <span className="signal-ticker__strategy">{signal.strategy}</span>
-              )}
-            </div>
+          </header>
+
+          <div className="signal-ticker__direction">
+            <span className="signal-ticker__direction-label">{signal.direction}</span>
+            {signal.strategy && (
+              <span className="signal-ticker__strategy">{signal.strategy}</span>
+            )}
           </div>
-        ))}
-      </div>
+
+          <div className="signal-ticker__metrics signal-ticker__metrics--primary">
+            <span className="signal-ticker__metric">
+              <span className="signal-ticker__metric-label">ENTRY</span>
+              <span className="signal-ticker__metric-value">{signal.entryLabel}</span>
+            </span>
+            <span className="signal-ticker__metric">
+              <span className="signal-ticker__metric-label">TP</span>
+              <span className="signal-ticker__metric-value">{signal.takeProfitLabel}</span>
+            </span>
+            <span className="signal-ticker__metric">
+              <span className="signal-ticker__metric-label">SL</span>
+              <span className="signal-ticker__metric-value">{signal.stopLossLabel}</span>
+            </span>
+            <span className="signal-ticker__metric">
+              <span className="signal-ticker__metric-label">R:R</span>
+              <span className="signal-ticker__metric-value">{signal.riskRewardLabel}</span>
+            </span>
+            <span
+              className={`signal-ticker__metric signal-ticker__metric--pnl signal-ticker__metric--${signal.pnlVariant}`}
+              title={signal.profitLabel === 'PNL' ? 'Realized PnL' : 'Expected PnL'}
+            >
+              <span className="signal-ticker__metric-label">{signal.profitLabel}</span>
+              <span className="signal-ticker__metric-value">{signal.profitValue}</span>
+            </span>
+          </div>
+
+          <div className="signal-ticker__metrics signal-ticker__metrics--secondary">
+            <span className="signal-ticker__metric">
+              <span className="signal-ticker__metric-label">STRENGTH</span>
+              <span className="signal-ticker__metric-value">{signal.strengthLabel}</span>
+            </span>
+            <span className="signal-ticker__metric">
+              <span className="signal-ticker__metric-label">CONF</span>
+              <span className="signal-ticker__metric-value">{signal.confidenceLabel}</span>
+            </span>
+            <span className="signal-ticker__metric">
+              <span className="signal-ticker__metric-label">WIN%</span>
+              <span className="signal-ticker__metric-value">{signal.winRateLabel}</span>
+            </span>
+            <span className="signal-ticker__metric">
+              <span className="signal-ticker__metric-label">SCORE</span>
+              <span className="signal-ticker__metric-value">{signal.scoreLabel}</span>
+            </span>
+          </div>
+        </article>
+      ))}
     </div>
   );
 }
