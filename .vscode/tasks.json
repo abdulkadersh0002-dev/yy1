@@ -1,0 +1,121 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "📦 Install Dependencies",
+      "type": "shell",
+      "command": "npm ci",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "🚀 Start Development Server",
+      "type": "shell",
+      "command": "npm start",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "🧪 Run Tests",
+      "type": "shell",
+      "command": "npm test",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "🔍 Run Linter",
+      "type": "shell",
+      "command": "npm run lint",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": ["$eslint-compact"]
+    },
+    {
+      "label": "🔧 Fix Linting Issues",
+      "type": "shell",
+      "command": "npm run lint:fix",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "✨ Format Code",
+      "type": "shell",
+      "command": "npm run format",
+      "group": "build",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "🐳 Build Docker Image",
+      "type": "shell",
+      "command": "docker build -t trading-system:latest .",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "▶️ Start Docker Compose",
+      "type": "shell",
+      "command": "docker-compose up -d",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "⏹️ Stop Docker Compose",
+      "type": "shell",
+      "command": "docker-compose down",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "📋 View Docker Logs",
+      "type": "shell",
+      "command": "docker-compose logs -f",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "🔒 Security Audit",
+      "type": "shell",
+      "command": "npm audit",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    }
+  ]
+}

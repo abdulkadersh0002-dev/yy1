@@ -1,0 +1,42 @@
+# Trading System API Tests
+# Use with REST Client extension in VS Code
+# Press Ctrl+Alt+R to execute a request
+
+@baseUrl = http://localhost:4101
+@apiKey = your-api-key-here
+
+### Health Check - Basic
+GET {{baseUrl}}/api/healthz
+
+### Health Check - Detailed
+GET {{baseUrl}}/api/healthz?detailed=true
+
+### Get System Metrics
+GET {{baseUrl}}/api/metrics
+
+### Get Current Signals
+GET {{baseUrl}}/api/signals
+Authorization: Bearer {{apiKey}}
+
+### EA Bridge - Get Sessions
+GET {{baseUrl}}/api/broker/bridge/sessions
+Authorization: Bearer {{apiKey}}
+
+### EA Bridge - Get Statistics
+GET {{baseUrl}}/api/broker/bridge/statistics
+Authorization: Bearer {{apiKey}}
+
+### EA Bridge - Get Signal (MT5)
+GET {{baseUrl}}/api/broker/bridge/mt5/signal/get
+Authorization: Bearer {{apiKey}}
+
+### EA Bridge - Connect Session (MT5)
+POST {{baseUrl}}/api/broker/bridge/mt5/session/connect
+Content-Type: application/json
+Authorization: Bearer {{apiKey}}
+
+{
+  "accountNumber": "12345678",
+  "serverName": "MetaQuotes-Demo",
+  "version": "1.0.0"
+}
