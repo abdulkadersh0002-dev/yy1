@@ -151,22 +151,25 @@ function printEtlSummary(summary) {
   console.log(` Price sources     : ${summary.priceSources}`);
   summary.priceResults.forEach((result) => {
     console.log(
-      `   • ${result.label}: processed ${result.processed}, persisted ${result.persisted}, skipped ${result.skipped}` +
-        (result.error ? `, error: ${result.error}` : '')
+      `   • ${result.label}: processed ${result.processed}, persisted ${result.persisted}, skipped ${result.skipped}${
+        result.error ? `, error: ${result.error}` : ''
+      }`
     );
   });
   console.log(` Macro sources     : ${summary.macroSources}`);
   summary.macroResults.forEach((result) => {
     console.log(
-      `   • ${result.label}: processed ${result.processed}, persisted ${result.persisted}, skipped ${result.skipped}` +
-        (result.error ? `, error: ${result.error}` : '')
+      `   • ${result.label}: processed ${result.processed}, persisted ${result.persisted}, skipped ${result.skipped}${
+        result.error ? `, error: ${result.error}` : ''
+      }`
     );
   });
   console.log(` News sources      : ${summary.newsSources}`);
   summary.newsResults.forEach((result) => {
     console.log(
-      `   • ${result.label}: processed ${result.processed}, persisted ${result.persisted}, skipped ${result.skipped}` +
-        (result.error ? `, error: ${result.error}` : '')
+      `   • ${result.label}: processed ${result.processed}, persisted ${result.persisted}, skipped ${result.skipped}${
+        result.error ? `, error: ${result.error}` : ''
+      }`
     );
   });
   if (summary.featureNormalization) {

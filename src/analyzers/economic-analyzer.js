@@ -27,7 +27,9 @@ class EconomicAnalyzer {
   async analyzeCurrency(currency) {
     const cacheKey = `eco_${currency}`;
     const cached = this.getCached(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const analysis = {
       currency,
@@ -248,7 +250,7 @@ class EconomicAnalyzer {
    */
   calculateEconomicScore(indicators) {
     let score = 0;
-    let weights = {
+    const weights = {
       gdp: 0.25,
       inflation: 0.2,
       interestRate: 0.25,
@@ -310,10 +312,18 @@ class EconomicAnalyzer {
    * Determine economic sentiment
    */
   determineEconomicSentiment(score) {
-    if (score > 30) return 'very_bullish';
-    if (score > 10) return 'bullish';
-    if (score > -10) return 'neutral';
-    if (score > -30) return 'bearish';
+    if (score > 30) {
+      return 'very_bullish';
+    }
+    if (score > 10) {
+      return 'bullish';
+    }
+    if (score > -10) {
+      return 'neutral';
+    }
+    if (score > -30) {
+      return 'bearish';
+    }
     return 'very_bearish';
   }
 
@@ -321,7 +331,9 @@ class EconomicAnalyzer {
    * Calculate change between data points
    */
   calculateChange(data) {
-    if (data.length < 2) return 0;
+    if (data.length < 2) {
+      return 0;
+    }
     const latest = Number.parseFloat(data[0].value);
     const previous = Number.parseFloat(data[1].value);
     if (!Number.isFinite(latest) || !Number.isFinite(previous) || previous === 0) {

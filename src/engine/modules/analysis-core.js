@@ -841,9 +841,15 @@ export const analysisCore = {
     }
 
     const statusPriority = (status) => {
-      if (status === 'critical') return 3;
-      if (status === 'degraded') return 2;
-      if (status === 'healthy') return 1;
+      if (status === 'critical') {
+        return 3;
+      }
+      if (status === 'degraded') {
+        return 2;
+      }
+      if (status === 'healthy') {
+        return 1;
+      }
       return 0;
     };
     const additionStatusPriority = statusPriority(addition.status);
@@ -854,9 +860,15 @@ export const analysisCore = {
         : (primary.status ?? addition.status ?? null);
 
     const recommendationPriority = (value) => {
-      if (value === 'block') return 3;
-      if (value === 'caution') return 2;
-      if (value === 'monitor') return 1;
+      if (value === 'block') {
+        return 3;
+      }
+      if (value === 'caution') {
+        return 2;
+      }
+      if (value === 'monitor') {
+        return 1;
+      }
       return 0;
     };
     const additionRecommendationPriority = recommendationPriority(addition.recommendation);

@@ -119,7 +119,9 @@ class EnhancedNewsAnalyzer {
   async analyzeNews(pair) {
     const cacheKey = `news_${pair}`;
     const cached = this.getCached(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const metadata = getPairMetadata(pair);
     const [baseCurrency, quoteCurrency] = this.splitPair(pair, metadata);
@@ -1116,7 +1118,9 @@ class EnhancedNewsAnalyzer {
    * Calculate overall sentiment from news array
    */
   calculateSentiment(newsArray) {
-    if (!newsArray || newsArray.length === 0) return 0;
+    if (!newsArray || newsArray.length === 0) {
+      return 0;
+    }
 
     const totalScore = newsArray.reduce((sum, news) => sum + (news.score || 0), 0);
     const totalImpact = newsArray.reduce((sum, news) => sum + (news.impact || 1), 0);
@@ -1142,11 +1146,21 @@ class EnhancedNewsAnalyzer {
    * Determine trading direction from sentiment
    */
   determineDirection(sentiment, impact) {
-    if (impact < 20) return 'neutral';
-    if (sentiment > 15) return 'strong_buy';
-    if (sentiment > 5) return 'buy';
-    if (sentiment < -15) return 'strong_sell';
-    if (sentiment < -5) return 'sell';
+    if (impact < 20) {
+      return 'neutral';
+    }
+    if (sentiment > 15) {
+      return 'strong_buy';
+    }
+    if (sentiment > 5) {
+      return 'buy';
+    }
+    if (sentiment < -15) {
+      return 'strong_sell';
+    }
+    if (sentiment < -5) {
+      return 'sell';
+    }
     return 'neutral';
   }
 

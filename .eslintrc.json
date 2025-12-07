@@ -8,7 +8,7 @@
     "ecmaVersion": 2022,
     "sourceType": "module"
   },
-  "ignorePatterns": ["node_modules/", "dist/", "coverage/"],
+  "ignorePatterns": ["node_modules/", "dist/", "coverage/", "build/"],
   "extends": ["eslint:recommended"],
   "rules": {
     "no-unused-vars": [
@@ -20,7 +20,26 @@
     ],
     "no-console": "off",
     "no-extra-boolean-cast": "off",
-    "no-control-regex": "off"
+    "no-control-regex": "off",
+    "prefer-const": "error",
+    "no-var": "error",
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "curly": ["error", "all"],
+    "no-throw-literal": "error",
+    "prefer-arrow-callback": "warn",
+    "prefer-template": "warn",
+    "no-duplicate-imports": "error",
+    "no-useless-return": "error"
   },
-  "overrides": []
+  "overrides": [
+    {
+      "files": ["tests/**/*.test.js", "tests/**/*.spec.js"],
+      "env": {
+        "node": true
+      },
+      "rules": {
+        "no-unused-expressions": "off"
+      }
+    }
+  ]
 }

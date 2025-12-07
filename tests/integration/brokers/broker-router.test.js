@@ -29,7 +29,9 @@ const createMockBroker = (name, options = {}) => ({
   },
 
   async getPositions() {
-    if (!this.isConnected) return [];
+    if (!this.isConnected) {
+      return [];
+    }
     return [
       {
         id: `${name}-POS-1`,

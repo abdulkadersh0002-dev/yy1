@@ -212,7 +212,9 @@ class AdaptiveScorer {
       const buyVotes = Number(technical.directionSummary.BUY || 0);
       const sellVotes = Number(technical.directionSummary.SELL || 0);
       const total = buyVotes + sellVotes + Number(technical.directionSummary.NEUTRAL || 0);
-      if (total === 0) return 0;
+      if (total === 0) {
+        return 0;
+      }
       return (buyVotes - sellVotes) / total;
     })();
 
@@ -254,15 +256,25 @@ class AdaptiveScorer {
   }
 
   static sigmoid(x) {
-    if (x < -50) return 0;
-    if (x > 50) return 1;
+    if (x < -50) {
+      return 0;
+    }
+    if (x > 50) {
+      return 1;
+    }
     return 1 / (1 + Math.exp(-x));
   }
 
   static directionToSigned(direction) {
-    if (!direction) return 0;
-    if (direction === 'BUY') return 1;
-    if (direction === 'SELL') return -1;
+    if (!direction) {
+      return 0;
+    }
+    if (direction === 'BUY') {
+      return 1;
+    }
+    if (direction === 'SELL') {
+      return -1;
+    }
     return 0;
   }
 

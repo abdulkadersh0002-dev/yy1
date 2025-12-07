@@ -99,7 +99,9 @@ class TradeManager {
    * Check for new trading signals
    */
   async checkForNewSignals() {
-    if (!this.autoTradingEnabled) return;
+    if (!this.autoTradingEnabled) {
+      return;
+    }
 
     logger.debug({ module: 'TradeManager' }, 'Checking for new trading signals...');
 
@@ -165,7 +167,9 @@ class TradeManager {
    * Monitor active trades
    */
   async monitorActiveTrades() {
-    if (!this.autoTradingEnabled) return;
+    if (!this.autoTradingEnabled) {
+      return;
+    }
 
     try {
       await this.tradingEngine.manageActiveTrades();

@@ -40,7 +40,9 @@ const createMockAggregator = () => {
 
     getCached(key) {
       const cached = this.cache.get(key);
-      if (!cached) return null;
+      if (!cached) {
+        return null;
+      }
       if (Date.now() - cached.timestamp < this.cacheTtlMs) {
         return cached.value;
       }
@@ -53,7 +55,9 @@ const createMockAggregator = () => {
     },
 
     matchesKeywords(item, keywords) {
-      if (!keywords || keywords.length === 0) return true;
+      if (!keywords || keywords.length === 0) {
+        return true;
+      }
       const haystack = `${item.headline} ${item.summary || ''} ${item.source}`.toLowerCase();
       return keywords.some((keyword) => haystack.includes(keyword));
     },

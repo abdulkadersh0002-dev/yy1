@@ -275,7 +275,9 @@ export function createTradeDTO(raw) {
 }
 
 export function normalizeEconomicAnalysis(raw) {
-  if (!raw) return null;
+  if (!raw) {
+    return null;
+  }
   return {
     currency: String(raw.currency || ''),
     timestamp: Number.isFinite(raw.timestamp) ? raw.timestamp : Date.now(),
@@ -287,7 +289,9 @@ export function normalizeEconomicAnalysis(raw) {
 }
 
 export function normalizeNewsAnalysis(raw) {
-  if (!raw) return null;
+  if (!raw) {
+    return null;
+  }
   return {
     pair: String(raw.pair || ''),
     timestamp: Number.isFinite(raw.timestamp) ? raw.timestamp : Date.now(),
@@ -308,7 +312,9 @@ export function normalizeNewsAnalysis(raw) {
 }
 
 export function normalizeTechnicalAnalysis(raw) {
-  if (!raw) return null;
+  if (!raw) {
+    return null;
+  }
   const timeframes = raw.timeframes || {};
   const normalizedFrames = {};
   Object.entries(timeframes).forEach(([tf, value]) => {

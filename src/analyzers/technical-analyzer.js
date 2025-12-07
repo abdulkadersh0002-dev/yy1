@@ -24,7 +24,9 @@ class TechnicalAnalyzer {
   async analyzeTechnical(pair, timeframes = ['M15', 'H1', 'H4', 'D1']) {
     const cacheKey = `tech_${pair}_${timeframes.join('_')}`;
     const cached = this.getCached(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     try {
       const analysis = {
@@ -405,15 +407,20 @@ class TechnicalAnalyzer {
    * Calculate RSI (Relative Strength Index)
    */
   calculateRSI(data, period = 14) {
-    if (data.length < period + 1) return null;
+    if (data.length < period + 1) {
+      return null;
+    }
 
     let gains = 0;
     let losses = 0;
 
     for (let i = 1; i <= period; i++) {
       const change = data[i].close - data[i - 1].close;
-      if (change > 0) gains += change;
-      else losses += Math.abs(change);
+      if (change > 0) {
+        gains += change;
+      } else {
+        losses += Math.abs(change);
+      }
     }
 
     let avgGain = gains / period;
@@ -464,7 +471,9 @@ class TechnicalAnalyzer {
    * Calculate Bollinger Bands
    */
   calculateBollingerBands(data, period = 20, stdDev = 2) {
-    if (data.length < period) return null;
+    if (data.length < period) {
+      return null;
+    }
 
     const slice = data.slice(-period);
     const sma = slice.reduce((sum, candle) => sum + candle.close, 0) / period;
@@ -550,7 +559,9 @@ class TechnicalAnalyzer {
    * Calculate ATR (Average True Range)
    */
   calculateATR(data, period = 14) {
-    if (data.length < period + 1) return null;
+    if (data.length < period + 1) {
+      return null;
+    }
 
     const trueRanges = [];
     for (let i = 1; i < data.length; i++) {
@@ -576,7 +587,9 @@ class TechnicalAnalyzer {
    * Calculate ADX (Average Directional Index)
    */
   calculateADX(data, period = 14) {
-    if (data.length < period + 1) return null;
+    if (data.length < period + 1) {
+      return null;
+    }
 
     // Simplified ADX calculation
     let plusDM = 0;
@@ -586,12 +599,18 @@ class TechnicalAnalyzer {
       const highDiff = data[i].high - data[i - 1].high;
       const lowDiff = data[i - 1].low - data[i].low;
 
-      if (highDiff > lowDiff && highDiff > 0) plusDM += highDiff;
-      if (lowDiff > highDiff && lowDiff > 0) minusDM += lowDiff;
+      if (highDiff > lowDiff && highDiff > 0) {
+        plusDM += highDiff;
+      }
+      if (lowDiff > highDiff && lowDiff > 0) {
+        minusDM += lowDiff;
+      }
     }
 
     const atr = this.calculateATR(data, period);
-    if (!atr) return null;
+    if (!atr) {
+      return null;
+    }
 
     const plusDI = (plusDM / period / atr.value) * 100;
     const minusDI = (minusDM / period / atr.value) * 100;
@@ -611,7 +630,9 @@ class TechnicalAnalyzer {
    * Calculate Ichimoku Cloud
    */
   calculateIchimoku(data) {
-    if (data.length < 52) return null;
+    if (data.length < 52) {
+      return null;
+    }
 
     const getHL = (period) => {
       const slice = data.slice(-period);
@@ -645,7 +666,9 @@ class TechnicalAnalyzer {
    * Calculate Fibonacci Retracement Levels
    */
   calculateFibonacci(data) {
-    if (data.length < 20) return null;
+    if (data.length < 20) {
+      return null;
+    }
 
     const prices = data.map((c) => c.close);
     const high = Math.max(...prices);
@@ -686,7 +709,9 @@ class TechnicalAnalyzer {
    * Detect candlestick patterns
    */
   detectPatterns(data) {
-    if (data.length < 3) return [];
+    if (data.length < 3) {
+      return [];
+    }
 
     const patterns = [];
     const recent = data.slice(-5);
@@ -814,7 +839,9 @@ class TechnicalAnalyzer {
   isSpinningTop(candle) {
     const body = Math.abs(candle.close - candle.open);
     const range = candle.high - candle.low;
-    if (range === 0) return false;
+    if (range === 0) {
+      return false;
+    }
     const upperShadow = candle.high - Math.max(candle.open, candle.close);
     const lowerShadow = Math.min(candle.open, candle.close) - candle.low;
     return (
@@ -823,69 +850,109 @@ class TechnicalAnalyzer {
   }
 
   isBullishHarami(prev, current) {
-    if (!prev || !current) return false;
+    if (!prev || !current) {
+      return false;
+    }
     const prevBearish = prev.close < prev.open;
     const currentBullish = current.close > current.open;
     const bodyPrev = Math.abs(prev.close - prev.open);
     const bodyCurr = Math.abs(current.close - current.open);
-    if (!prevBearish || !currentBullish || bodyPrev === 0) return false;
+    if (!prevBearish || !currentBullish || bodyPrev === 0) {
+      return false;
+    }
     return bodyCurr <= bodyPrev * 0.6 && current.open >= prev.close && current.close <= prev.open;
   }
 
   isBearishHarami(prev, current) {
-    if (!prev || !current) return false;
+    if (!prev || !current) {
+      return false;
+    }
     const prevBullish = prev.close > prev.open;
     const currentBearish = current.close < current.open;
     const bodyPrev = Math.abs(prev.close - prev.open);
     const bodyCurr = Math.abs(current.close - current.open);
-    if (!prevBullish || !currentBearish || bodyPrev === 0) return false;
+    if (!prevBullish || !currentBearish || bodyPrev === 0) {
+      return false;
+    }
     return bodyCurr <= bodyPrev * 0.6 && current.open <= prev.close && current.close >= prev.open;
   }
 
   isPiercingLine(prev, current) {
-    if (!prev || !current) return false;
-    if (!(prev.close < prev.open && current.close > current.open)) return false;
+    if (!prev || !current) {
+      return false;
+    }
+    if (!(prev.close < prev.open && current.close > current.open)) {
+      return false;
+    }
     const prevBody = Math.abs(prev.open - prev.close);
-    if (prevBody === 0) return false;
+    if (prevBody === 0) {
+      return false;
+    }
     const midpoint = prev.open - prevBody / 2;
     return current.open <= prev.close && current.close > midpoint && current.close < prev.open;
   }
 
   isDarkCloudCover(prev, current) {
-    if (!prev || !current) return false;
-    if (!(prev.close > prev.open && current.close < current.open)) return false;
+    if (!prev || !current) {
+      return false;
+    }
+    if (!(prev.close > prev.open && current.close < current.open)) {
+      return false;
+    }
     const prevBody = Math.abs(prev.close - prev.open);
-    if (prevBody === 0) return false;
+    if (prevBody === 0) {
+      return false;
+    }
     const midpoint = prev.open + prevBody / 2;
     return current.open >= prev.close && current.close < midpoint && current.close > prev.open;
   }
 
   isThreeWhiteSoldiers(candles) {
-    if (!Array.isArray(candles) || candles.length !== 3) return false;
+    if (!Array.isArray(candles) || candles.length !== 3) {
+      return false;
+    }
     const bodies = candles.map((c) => Math.abs(c.close - c.open));
-    if (bodies.some((body) => body === 0)) return false;
+    if (bodies.some((body) => body === 0)) {
+      return false;
+    }
     const bullishRun = candles.every((candle, idx) => {
-      if (candle.close <= candle.open) return false;
-      if (idx === 0) return true;
+      if (candle.close <= candle.open) {
+        return false;
+      }
+      if (idx === 0) {
+        return true;
+      }
       const prev = candles[idx - 1];
       return candle.open <= prev.close && candle.open >= prev.open && candle.close > prev.close;
     });
-    if (!bullishRun) return false;
+    if (!bullishRun) {
+      return false;
+    }
     const avgBody = bodies.reduce((a, b) => a + b, 0) / bodies.length;
     return bodies.every((body) => body >= avgBody * 0.7);
   }
 
   isThreeBlackCrows(candles) {
-    if (!Array.isArray(candles) || candles.length !== 3) return false;
+    if (!Array.isArray(candles) || candles.length !== 3) {
+      return false;
+    }
     const bodies = candles.map((c) => Math.abs(c.close - c.open));
-    if (bodies.some((body) => body === 0)) return false;
+    if (bodies.some((body) => body === 0)) {
+      return false;
+    }
     const bearishRun = candles.every((candle, idx) => {
-      if (candle.close >= candle.open) return false;
-      if (idx === 0) return true;
+      if (candle.close >= candle.open) {
+        return false;
+      }
+      if (idx === 0) {
+        return true;
+      }
       const prev = candles[idx - 1];
       return candle.open >= prev.close && candle.open <= prev.open && candle.close < prev.close;
     });
-    if (!bearishRun) return false;
+    if (!bearishRun) {
+      return false;
+    }
     const avgBody = bodies.reduce((a, b) => a + b, 0) / bodies.length;
     return bodies.every((body) => body >= avgBody * 0.7);
   }
@@ -925,59 +992,99 @@ class TechnicalAnalyzer {
     // Moving averages
     if (analysis.indicators.sma) {
       Object.values(analysis.indicators.sma).forEach((sma) => {
-        if (!sma) return;
-        if (sma.signal === 'bullish') score += 10;
-        if (sma.signal === 'bearish') score -= 10;
+        if (!sma) {
+          return;
+        }
+        if (sma.signal === 'bullish') {
+          score += 10;
+        }
+        if (sma.signal === 'bearish') {
+          score -= 10;
+        }
       });
     }
 
     if (analysis.indicators.ema) {
       Object.values(analysis.indicators.ema).forEach((ema) => {
-        if (!ema) return;
-        if (ema.signal === 'bullish') score += 8;
-        if (ema.signal === 'bearish') score -= 8;
+        if (!ema) {
+          return;
+        }
+        if (ema.signal === 'bullish') {
+          score += 8;
+        }
+        if (ema.signal === 'bearish') {
+          score -= 8;
+        }
       });
     }
 
     // RSI
     if (analysis.indicators.rsi) {
-      if (analysis.indicators.rsi.signal === 'oversold') score += 15;
-      if (analysis.indicators.rsi.signal === 'overbought') score -= 15;
+      if (analysis.indicators.rsi.signal === 'oversold') {
+        score += 15;
+      }
+      if (analysis.indicators.rsi.signal === 'overbought') {
+        score -= 15;
+      }
     }
 
     // MACD
     if (analysis.indicators.macd) {
-      if (analysis.indicators.macd.crossover === 'bullish') score += 18;
-      if (analysis.indicators.macd.crossover === 'bearish') score -= 18;
+      if (analysis.indicators.macd.crossover === 'bullish') {
+        score += 18;
+      }
+      if (analysis.indicators.macd.crossover === 'bearish') {
+        score -= 18;
+      }
     }
 
     // Bollinger Bands
     if (analysis.indicators.bollinger) {
       const signal = analysis.indicators.bollinger.signal;
-      if (signal === 'oversold') score += 12;
-      if (signal === 'overbought') score -= 12;
+      if (signal === 'oversold') {
+        score += 12;
+      }
+      if (signal === 'overbought') {
+        score -= 12;
+      }
     }
 
     // Stochastic
     if (analysis.indicators.stochastic) {
       const stoch = analysis.indicators.stochastic;
-      if (stoch.signal === 'oversold') score += 9;
-      if (stoch.signal === 'overbought') score -= 9;
-      if (stoch.crossover === 'bullish') score += 4;
-      if (stoch.crossover === 'bearish') score -= 4;
+      if (stoch.signal === 'oversold') {
+        score += 9;
+      }
+      if (stoch.signal === 'overbought') {
+        score -= 9;
+      }
+      if (stoch.crossover === 'bullish') {
+        score += 4;
+      }
+      if (stoch.crossover === 'bearish') {
+        score -= 4;
+      }
     }
 
     // Patterns
     analysis.patterns.forEach((pattern) => {
-      if (pattern.signal === 'bullish') score += pattern.strength / 5;
-      if (pattern.signal === 'bearish') score -= pattern.strength / 5;
+      if (pattern.signal === 'bullish') {
+        score += pattern.strength / 5;
+      }
+      if (pattern.signal === 'bearish') {
+        score -= pattern.strength / 5;
+      }
     });
 
     // Ichimoku
     if (analysis.indicators.ichimoku) {
       const signal = analysis.indicators.ichimoku.signal;
-      if (signal === 'bullish') score += 14;
-      if (signal === 'bearish') score -= 14;
+      if (signal === 'bullish') {
+        score += 14;
+      }
+      if (signal === 'bearish') {
+        score -= 14;
+      }
     }
 
     // Fibonacci proximity
@@ -987,16 +1094,24 @@ class TechnicalAnalyzer {
       typeof analysis.lastPrice === 'number'
     ) {
       const nearest = analysis.indicators.fibonacci.nearest.level;
-      if (nearest >= 61.8) score += 6; // Near deeper retracement support
-      if (nearest <= 38.2) score -= 6; // Near resistance zone
+      if (nearest >= 61.8) {
+        score += 6;
+      } // Near deeper retracement support
+      if (nearest <= 38.2) {
+        score -= 6;
+      } // Near resistance zone
     }
 
     // ADX (trend strength)
     if (analysis.indicators.adx) {
       const adx = analysis.indicators.adx;
       const trendBoost = adx.trend === 'strong' ? 1.35 : adx.trend === 'moderate' ? 1.15 : 1;
-      if (adx.direction === 'bullish') score *= trendBoost;
-      if (adx.direction === 'bearish') score *= trendBoost;
+      if (adx.direction === 'bullish') {
+        score *= trendBoost;
+      }
+      if (adx.direction === 'bearish') {
+        score *= trendBoost;
+      }
     }
 
     // Momentum boost from recent price change
@@ -1069,10 +1184,18 @@ class TechnicalAnalyzer {
    * Determine overall trend
    */
   determineTrend(score) {
-    if (score > 40) return 'strong_bullish';
-    if (score > 15) return 'bullish';
-    if (score < -40) return 'strong_bearish';
-    if (score < -15) return 'bearish';
+    if (score > 40) {
+      return 'strong_bullish';
+    }
+    if (score > 15) {
+      return 'bullish';
+    }
+    if (score < -40) {
+      return 'strong_bearish';
+    }
+    if (score < -15) {
+      return 'bearish';
+    }
     return 'neutral';
   }
 
@@ -1105,8 +1228,9 @@ class TechnicalAnalyzer {
     const bandwidth = Number.isFinite(bb?.bandwidth)
       ? bb.bandwidth
       : (() => {
-          if (!bb || typeof bb.upper !== 'number' || typeof bb.lower !== 'number' || !bb.middle)
+          if (!bb || typeof bb.upper !== 'number' || typeof bb.lower !== 'number' || !bb.middle) {
             return null;
+          }
           const mid = bb.middle;
           const width = bb.upper - bb.lower;
           return mid !== 0 ? (width / mid) * 100 : null;
@@ -1202,7 +1326,9 @@ class TechnicalAnalyzer {
       const tag =
         magnitude > thresholdHigh ? 'volatile' : magnitude < thresholdLow ? 'calm' : 'normal';
       if (!current || current.state !== tag) {
-        if (current) clusters.push(current);
+        if (current) {
+          clusters.push(current);
+        }
         current = {
           state: tag,
           start: prev.time,
@@ -1217,7 +1343,9 @@ class TechnicalAnalyzer {
           (current.avgMagnitude * (current.count - 1) + magnitude) / current.count;
       }
     }
-    if (current) clusters.push(current);
+    if (current) {
+      clusters.push(current);
+    }
 
     const latestCluster = clusters[clusters.length - 1];
     const state = latestCluster ? latestCluster.state : 'normal';
@@ -1436,17 +1564,26 @@ class TechnicalAnalyzer {
 
     for (let i = 1; i <= period; i++) {
       const change = data[i].close - data[i - 1].close;
-      if (change > 0) gains += change;
-      else losses += Math.abs(change);
+      if (change > 0) {
+        gains += change;
+      } else {
+        losses += Math.abs(change);
+      }
     }
 
     let avgGain = gains / period;
     let avgLoss = losses / period;
 
     const computeRsi = (gain, loss) => {
-      if (loss === 0 && gain === 0) return 50;
-      if (loss === 0) return 100;
-      if (gain === 0) return 0;
+      if (loss === 0 && gain === 0) {
+        return 50;
+      }
+      if (loss === 0) {
+        return 100;
+      }
+      if (gain === 0) {
+        return 0;
+      }
       const rs = gain / loss;
       return 100 - 100 / (1 + rs);
     };
@@ -1632,8 +1769,12 @@ class TechnicalAnalyzer {
     }
 
     const trendScore = entries.reduce((acc, entry) => {
-      if (entry.state === 'trend') return acc + entry.confidence;
-      if (entry.state === 'range') return acc - entry.confidence;
+      if (entry.state === 'trend') {
+        return acc + entry.confidence;
+      }
+      if (entry.state === 'range') {
+        return acc - entry.confidence;
+      }
       return acc;
     }, 0);
     const averageConfidence =
@@ -1647,17 +1788,23 @@ class TechnicalAnalyzer {
     );
     const avgBandwidth = (() => {
       const vals = entries.map((e) => e.bandwidth).filter((v) => Number.isFinite(v));
-      if (vals.length === 0) return null;
+      if (vals.length === 0) {
+        return null;
+      }
       return Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2));
     })();
     const avgSlope = (() => {
       const vals = entries.map((e) => e.slope).filter((v) => Number.isFinite(v));
-      if (vals.length === 0) return null;
+      if (vals.length === 0) {
+        return null;
+      }
       return Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(4));
     })();
     const avgSlopeAngle = (() => {
       const vals = entries.map((e) => e.slopeAngle).filter((v) => Number.isFinite(v));
-      if (vals.length === 0) return null;
+      if (vals.length === 0) {
+        return null;
+      }
       return Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2));
     })();
 
@@ -1700,8 +1847,12 @@ class TechnicalAnalyzer {
     }
 
     const score = entries.reduce((acc, entry) => {
-      if (entry.state === 'volatile') return acc + 2 * (entry.count || 1);
-      if (entry.state === 'calm') return acc - 1 * (entry.count || 1);
+      if (entry.state === 'volatile') {
+        return acc + 2 * (entry.count || 1);
+      }
+      if (entry.state === 'calm') {
+        return acc - 1 * (entry.count || 1);
+      }
       return acc;
     }, 0);
 
@@ -1786,8 +1937,12 @@ class TechnicalAnalyzer {
     const averagePressure =
       entries.reduce((acc, entry) => acc + (Number(entry.pressure) || 0), 0) / entries.length;
     const stateScore = entries.reduce((acc, entry) => {
-      if (entry.state === 'buying') return acc + 1;
-      if (entry.state === 'selling') return acc - 1;
+      if (entry.state === 'buying') {
+        return acc + 1;
+      }
+      if (entry.state === 'selling') {
+        return acc - 1;
+      }
       return acc;
     }, 0);
     const avgVolumeRate = entries
@@ -1824,7 +1979,9 @@ class TechnicalAnalyzer {
    * Helper: Calculate EMA value
    */
   calculateEMAValue(data, period) {
-    if (data.length < period) return 0;
+    if (data.length < period) {
+      return 0;
+    }
 
     const multiplier = 2 / (period + 1);
     let ema = data.slice(0, period).reduce((sum, candle) => sum + candle.close, 0) / period;

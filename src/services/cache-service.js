@@ -57,7 +57,7 @@ class CacheStats {
       deletes: this.deletes,
       evictions: this.evictions,
       expirations: this.expirations,
-      hitRate: (this.hitRate * 100).toFixed(2) + '%'
+      hitRate: `${(this.hitRate * 100).toFixed(2)}%`
     };
   }
 }
@@ -155,7 +155,9 @@ export default class CacheService {
     const fullKey = this._key(key);
     const entry = this.cache.get(fullKey);
 
-    if (!entry) return false;
+    if (!entry) {
+      return false;
+    }
     if (entry.isExpired()) {
       this.cache.delete(fullKey);
       this.stats.expirations++;
@@ -236,7 +238,9 @@ export default class CacheService {
     let oldestKey = null;
 
     for (const [key, entry] of this.cache.entries()) {
-      if (!key.startsWith(prefix)) continue;
+      if (!key.startsWith(prefix)) {
+        continue;
+      }
 
       if (!oldestEntry || entry.lastAccessed < oldestEntry.lastAccessed) {
         oldestEntry = entry;

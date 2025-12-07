@@ -13,16 +13,24 @@ const createMockProvider = (options = {}) => {
     cooldownMs: options.cooldownMs || 5000,
 
     isConfigured() {
-      if (!this.apiKey) return false;
+      if (!this.apiKey) {
+        return false;
+      }
       const keyStr = String(this.apiKey).toLowerCase();
-      if (keyStr === 'free' || keyStr === 'demo' || keyStr === '') return false;
+      if (keyStr === 'free' || keyStr === 'demo' || keyStr === '') {
+        return false;
+      }
       return true;
     },
 
     formatPair(pair) {
-      if (!pair) return null;
+      if (!pair) {
+        return null;
+      }
       const normalized = pair.toUpperCase().replace(/[^A-Z]/g, '');
-      if (normalized.length !== 6) return null;
+      if (normalized.length !== 6) {
+        return null;
+      }
       return `${normalized.slice(0, 3)}/${normalized.slice(3)}`;
     },
 
@@ -41,7 +49,9 @@ const createMockProvider = (options = {}) => {
     },
 
     normalizeQuote(data) {
-      if (!data || !data.close) return null;
+      if (!data || !data.close) {
+        return null;
+      }
       return {
         open: parseFloat(data.open),
         high: parseFloat(data.high),
@@ -53,7 +63,9 @@ const createMockProvider = (options = {}) => {
     },
 
     normalizeBars(values) {
-      if (!Array.isArray(values)) return [];
+      if (!Array.isArray(values)) {
+        return [];
+      }
       return values.map((bar) => ({
         datetime: bar.datetime,
         open: parseFloat(bar.open),
@@ -65,10 +77,14 @@ const createMockProvider = (options = {}) => {
     },
 
     async fetchQuote({ pair }) {
-      if (!this.isConfigured()) return null;
+      if (!this.isConfigured()) {
+        return null;
+      }
 
       const symbol = this.formatPair(pair);
-      if (!symbol) return null;
+      if (!symbol) {
+        return null;
+      }
 
       // Mock response
       return this.normalizeQuote({
@@ -81,10 +97,14 @@ const createMockProvider = (options = {}) => {
     },
 
     async fetchBars({ pair, timeframe: _timeframe, bars }) {
-      if (!this.isConfigured()) return null;
+      if (!this.isConfigured()) {
+        return null;
+      }
 
       const symbol = this.formatPair(pair);
-      if (!symbol) return null;
+      if (!symbol) {
+        return null;
+      }
 
       // Mock response with requested number of bars
       const mockBars = [];

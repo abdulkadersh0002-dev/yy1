@@ -165,9 +165,15 @@ export class CircuitBreaker {
    * @returns {boolean} True if requests are allowed
    */
   isAllowed() {
-    if (this.state === STATES.CLOSED) return true;
-    if (this.state === STATES.HALF_OPEN) return true;
-    if (this.state === STATES.OPEN && Date.now() >= this.nextAttempt) return true;
+    if (this.state === STATES.CLOSED) {
+      return true;
+    }
+    if (this.state === STATES.HALF_OPEN) {
+      return true;
+    }
+    if (this.state === STATES.OPEN && Date.now() >= this.nextAttempt) {
+      return true;
+    }
     return false;
   }
 

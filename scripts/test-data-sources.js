@@ -145,14 +145,14 @@ async function testTwelveData() {
 }
 
 async function main() {
-  console.log('\n' + '='.repeat(60));
+  console.log(`\n${'='.repeat(60)}`);
   console.log('🔍 DATA SOURCES CONNECTIVITY TEST');
   console.log('='.repeat(60));
 
   const rssResult = await testRssFeeds();
   const twelveDataResult = await testTwelveData();
 
-  console.log('\n' + '='.repeat(60));
+  console.log(`\n${'='.repeat(60)}`);
   console.log('📋 SUMMARY');
   console.log('='.repeat(60));
   console.log(`RSS Feeds:    ${rssResult ? '✅ WORKING' : '❌ FAILED'}`);

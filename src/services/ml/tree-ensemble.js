@@ -8,8 +8,12 @@ const clamp = (value, min, max) => {
 };
 
 const sigmoid = (x) => {
-  if (x < -50) return 0;
-  if (x > 50) return 1;
+  if (x < -50) {
+    return 0;
+  }
+  if (x > 50) {
+    return 1;
+  }
   return 1 / (1 + Math.exp(-x));
 };
 

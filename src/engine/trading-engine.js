@@ -600,12 +600,16 @@ class TradingEngine {
     };
 
     const clampWeight = (value) => {
-      if (!Number.isFinite(value)) return 0.5;
+      if (!Number.isFinite(value)) {
+        return 0.5;
+      }
       return Number(Math.max(0, Math.min(1.5, value)).toFixed(3));
     };
 
     const pushReason = (category, code, description, weight = 0.6, data = {}) => {
-      if (!categories[category]) return;
+      if (!categories[category]) {
+        return;
+      }
       categories[category].push({
         code,
         description,

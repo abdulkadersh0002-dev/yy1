@@ -266,10 +266,18 @@ class AdaptiveThresholdManager {
       const probability = Number(sample.probability ?? sample.modelProbability ?? 0.5);
       const label = sample.label ? 1 : 0;
       const prediction = probability >= threshold ? 1 : 0;
-      if (prediction === 1 && label === 1) tp += 1;
-      if (prediction === 1 && label === 0) fp += 1;
-      if (prediction === 0 && label === 0) tn += 1;
-      if (prediction === 0 && label === 1) fn += 1;
+      if (prediction === 1 && label === 1) {
+        tp += 1;
+      }
+      if (prediction === 1 && label === 0) {
+        fp += 1;
+      }
+      if (prediction === 0 && label === 0) {
+        tn += 1;
+      }
+      if (prediction === 0 && label === 1) {
+        fn += 1;
+      }
     });
 
     const precision = tp + fp === 0 ? 0 : tp / (tp + fp);

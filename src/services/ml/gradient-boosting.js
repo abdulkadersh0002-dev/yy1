@@ -10,8 +10,12 @@ class GradientBoostingClassifier {
   }
 
   static sigmoid(x) {
-    if (x < -50) return 0;
-    if (x > 50) return 1;
+    if (x < -50) {
+      return 0;
+    }
+    if (x > 50) {
+      return 1;
+    }
     return 1 / (1 + Math.exp(-x));
   }
 
@@ -136,7 +140,9 @@ class GradientBoostingClassifier {
   }
 
   _evaluateTree(tree, features) {
-    if (!tree) return 0;
+    if (!tree) {
+      return 0;
+    }
     const value = Number(features[tree.feature] ?? 0);
     return value <= tree.threshold ? tree.left : tree.right;
   }

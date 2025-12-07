@@ -391,8 +391,12 @@ export const dataQualityGuard = {
         if (pctMove > spikeThreshold(normalizedTf)) {
           report.spikeCount++;
         }
-        if (currClose > maxPrice) maxPrice = currClose;
-        if (currClose < minPrice) minPrice = currClose;
+        if (currClose > maxPrice) {
+          maxPrice = currClose;
+        }
+        if (currClose < minPrice) {
+          minPrice = currClose;
+        }
       }
 
       const prevTs = Number(prev?.timestamp ?? prev?.time ?? prev?.datetime ?? prev?.date);
@@ -482,7 +486,9 @@ export const dataQualityGuard = {
     const sanityPenalty = report.sanityIssues.length > 0 ? 15 : 0;
 
     let score = 100 - spikePenalty - gapPenalty - misalignPenalty - stalePenalty - sanityPenalty;
-    if (score < 0) score = 0;
+    if (score < 0) {
+      score = 0;
+    }
     report.score = Number(score.toFixed(1));
 
     if (report.spikeCount > 0) {
