@@ -26,10 +26,7 @@ export function notFound(res, error = 'Not found', extra = {}) {
 }
 
 export function serverError(res, error, extra = {}) {
-  const message =
-    typeof error === 'string'
-      ? error
-      : error?.message || 'Internal server error';
+  const message = typeof error === 'string' ? error : error?.message || 'Internal server error';
 
   const payload = {
     success: false,

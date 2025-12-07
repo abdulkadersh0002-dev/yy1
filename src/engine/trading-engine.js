@@ -261,10 +261,7 @@ class TradingEngine {
       return { type: 'provider', category: 'Provider/API failure', context };
     }
 
-    if (
-      message.includes('ANALYZER') ||
-      /ANALYZER|ANALYSIS|SCORER|MODEL/i.test(message + name)
-    ) {
+    if (message.includes('ANALYZER') || /ANALYZER|ANALYSIS|SCORER|MODEL/i.test(message + name)) {
       return { type: 'analyzer', category: 'Analyzer failure', context };
     }
 

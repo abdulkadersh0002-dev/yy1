@@ -243,10 +243,7 @@ export const executionEngine = {
       trade.brokerRoute = payload.broker || routing.defaultBroker || null;
       return { success: true, order: result.order };
     } catch (error) {
-      this.logger?.error?.(
-        { module: 'ExecutionEngine', err: error },
-        'Broker order commit failed'
-      );
+      this.logger?.error?.({ module: 'ExecutionEngine', err: error }, 'Broker order commit failed');
       return { success: false, error: error.message };
     }
   },
@@ -290,10 +287,7 @@ export const executionEngine = {
       }
       return this.brokerRouter.closePosition(payload);
     } catch (error) {
-      this.logger?.error?.(
-        { module: 'ExecutionEngine', err: error },
-        'Broker close failed'
-      );
+      this.logger?.error?.({ module: 'ExecutionEngine', err: error }, 'Broker close failed');
       return { success: false, error: error.message };
     }
   }

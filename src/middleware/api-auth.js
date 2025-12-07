@@ -91,9 +91,7 @@ const pathMatches = (req, matcher) => {
 export const createApiAuthMiddleware = (options = {}) => {
   const securityConfig = appConfig.security?.apiAuth || {};
 
-  const enabled =
-    options.enabled ??
-    (securityConfig.enabled ?? true);
+  const enabled = options.enabled ?? securityConfig.enabled ?? true;
   const secretManager = options.secretManager;
   const logger = options.logger || console;
   const auditLogger = options.auditLogger || null;

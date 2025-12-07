@@ -145,15 +145,14 @@ class TradeManager {
           }
         }
       } catch (error) {
-        const classified =
-          this.tradingEngine.classifyError?.(error, {
-            scope: 'TradeManager.checkForNewSignals',
-            pair
-          }) || {
-            type: 'unknown',
-            category: 'Unknown engine error',
-            context: { scope: 'TradeManager.checkForNewSignals', pair }
-          };
+        const classified = this.tradingEngine.classifyError?.(error, {
+          scope: 'TradeManager.checkForNewSignals',
+          pair
+        }) || {
+          type: 'unknown',
+          category: 'Unknown engine error',
+          context: { scope: 'TradeManager.checkForNewSignals', pair }
+        };
         logger.error(
           { module: 'TradeManager', pair, err: error, errorType: classified.type },
           'Error checking signal for pair'
@@ -171,14 +170,13 @@ class TradeManager {
     try {
       await this.tradingEngine.manageActiveTrades();
     } catch (error) {
-      const classified =
-        this.tradingEngine.classifyError?.(error, {
-          scope: 'TradeManager.monitorActiveTrades'
-        }) || {
-          type: 'unknown',
-          category: 'Unknown engine error',
-          context: { scope: 'TradeManager.monitorActiveTrades' }
-        };
+      const classified = this.tradingEngine.classifyError?.(error, {
+        scope: 'TradeManager.monitorActiveTrades'
+      }) || {
+        type: 'unknown',
+        category: 'Unknown engine error',
+        context: { scope: 'TradeManager.monitorActiveTrades' }
+      };
       logger.error(
         { module: 'TradeManager', err: error, errorType: classified.type },
         'Error monitoring trades'
