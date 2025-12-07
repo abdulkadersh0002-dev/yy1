@@ -145,6 +145,58 @@ const DEFAULT_FEEDS = [
     ],
     category: 'markets',
     priority: 1
+  },
+  // === ECONOMIC CALENDAR & DATA (FREE) ===
+  {
+    id: 'trading-economics',
+    name: 'Trading Economics',
+    url: [
+      'https://tradingeconomics.com/rss/calendar.aspx',
+      'https://news.google.com/rss/search?q=site:tradingeconomics.com+economic+calendar&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'economic-calendar',
+    priority: 1
+  },
+  {
+    id: 'forex-factory',
+    name: 'Forex Factory',
+    url: [
+      'https://news.google.com/rss/search?q=site:forexfactory.com+calendar&hl=en-US&gl=US&ceid=US:en',
+      'https://news.google.com/rss/search?q=Forex+Factory+economic+data&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'economic-calendar',
+    priority: 1
+  },
+  {
+    id: 'myfxbook',
+    name: 'Myfxbook Economic Calendar',
+    url: [
+      'https://news.google.com/rss/search?q=site:myfxbook.com+economic&hl=en-US&gl=US&ceid=US:en',
+      'https://news.google.com/rss/search?q=Myfxbook+calendar&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'economic-calendar',
+    priority: 2
+  },
+  // === SENTIMENT & ANALYSIS (FREE) ===
+  {
+    id: 'sentiment-trader',
+    name: 'Sentiment Trader',
+    url: [
+      'https://news.google.com/rss/search?q=market+sentiment+forex&hl=en-US&gl=US&ceid=US:en',
+      'https://news.google.com/rss/search?q=fear+greed+index&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'sentiment',
+    priority: 2
+  },
+  {
+    id: 'commitment-of-traders',
+    name: 'COT Reports',
+    url: [
+      'https://news.google.com/rss/search?q=CFTC+commitment+of+traders&hl=en-US&gl=US&ceid=US:en',
+      'https://news.google.com/rss/search?q=COT+report+forex&hl=en-US&gl=US&ceid=US:en'
+    ],
+    category: 'sentiment',
+    priority: 2
   }
 ];
 

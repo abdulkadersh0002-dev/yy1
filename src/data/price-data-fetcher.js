@@ -46,18 +46,20 @@ const DEFAULT_LATENCY_TARGETS = {
   alphaVantage: 2400
 };
 
+// Optimized cache TTLs for real data within API limits
+// Longer timeframes don't need frequent updates
 const DEFAULT_CACHE_TTLS = {
-  M1: 8_000,
-  M5: 20_000,
-  M15: 45_000,
-  M30: 60_000,
-  H1: 120_000,
-  H2: 150_000,
-  H4: 300_000,
-  H6: 420_000,
-  H12: 540_000,
-  D1: 600_000,
-  W1: 1_200_000
+  M1: 45_000,        // 45s (was 8s) - M1 rarely used for forex signals
+  M5: 4_60_000,      // 4.6min (was 20s) - Still responsive for scalping
+  M15: 12_00_000,    // 12min (was 45s) - Primary timeframe for signals
+  M30: 25_00_000,    // 25min (was 1min) - Intermediate timeframe
+  H1: 50_00_000,     // 50min (was 2min) - Hourly updates sufficient
+  H2: 90_00_000,     // 1.5h (was 2.5min) - Multi-hour perspective
+  H4: 3_000_000,     // 3h (was 5min) - Daily perspective
+  H6: 5_000_000,     // 5h (was 7min) - Extended view
+  H12: 10_000_000,   // 10h (was 9min) - Half-day view
+  D1: 18_000_000,    // 18h (was 10min) - Daily candles stable
+  W1: 1_200_000      // 20min (unchanged) - Weekly updates rare
 };
 
 const TIMEFRAME_ALIASES = {
