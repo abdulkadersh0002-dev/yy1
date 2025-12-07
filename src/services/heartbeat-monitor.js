@@ -94,8 +94,8 @@ class HeartbeatMonitor {
       const normalized = provider.toLowerCase();
       const hasKey = Boolean(
         this.apiKeyConfig[provider] &&
-          this.apiKeyConfig[provider] !== 'demo' &&
-          this.apiKeyConfig[provider] !== 'free'
+        this.apiKeyConfig[provider] !== 'demo' &&
+        this.apiKeyConfig[provider] !== 'free'
       );
       const isDisabled = disabledProviders.has(normalized);
       const enabled = hasKey && !isDisabled;

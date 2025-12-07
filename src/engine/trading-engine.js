@@ -769,11 +769,11 @@ class TradingEngine {
       dataQualityContext || (dataQuality ? this.deriveDataQualityContext(dataQuality) : null);
     const hasQualitySignal = Boolean(
       qualityDetails &&
-        (qualityDetails.score != null ||
-          qualityDetails.status ||
-          qualityDetails.recommendation ||
-          (Array.isArray(qualityDetails.issues) && qualityDetails.issues.length > 0) ||
-          directionPreQuality)
+      (qualityDetails.score != null ||
+        qualityDetails.status ||
+        qualityDetails.recommendation ||
+        (Array.isArray(qualityDetails.issues) && qualityDetails.issues.length > 0) ||
+        directionPreQuality)
     );
 
     if (hasQualitySignal) {

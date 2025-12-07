@@ -1,4 +1,24 @@
+# Dependencies
 node_modules/
+
+# Build outputs
 dist/
-coverage/
 build/
+coverage/
+reports/
+
+# Logs
+logs/
+*.log
+
+# Lock files (don't format)
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Temporary files
+tmp/
+temp/
+
+# External/vendor code
+clients/neon-dashboard/dist/

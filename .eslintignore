@@ -1,4 +1,18 @@
+# Dependencies
 node_modules/
+
+# Build outputs
 dist/
-coverage/
 build/
+coverage/
+reports/
+
+# Logs
+logs/
+
+# Temporary files
+tmp/
+temp/
+
+# External/vendor code
+clients/neon-dashboard/dist/
