@@ -11,12 +11,14 @@ import autoTradingRoutes from '../../routes/auto-trading-routes.js';
 import configRoutes from '../../routes/config-routes.js';
 import brokerRoutes from '../../routes/broker-routes.js';
 import featureRoutes from '../../routes/feature-routes.js';
+import eaBridgeRoutes from '../../routes/ea-bridge-routes.js';
 
 export function createHttpApp({
   tradingEngine,
   tradeManager,
   heartbeatMonitor,
   brokerRouter,
+  eaBridgeService,
   secretManager,
   auditLogger,
   logger,
@@ -143,6 +145,19 @@ export function createHttpApp({
       tradingEngine,
       logger,
       requireBasicRead
+    })
+  );
+
+  // EA Bridge routes (MT4/MT5 Expert Advisor communication)
+  app.use(
+    '/api',
+    eaBridgeRoutes({
+      eaBridgeService,
+      tradingEngine,
+      brokerRouter,
+      auditLogger,
+      logger,
+      requireBrokerWrite: [sensitiveRateLimiter, requireBrokerWrite]
     })
   );
 

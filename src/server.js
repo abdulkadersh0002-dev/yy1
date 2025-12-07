@@ -13,6 +13,7 @@ import RiskReportService from './services/alerting/risk-report-service.js';
 import PerformanceDigestService from './services/alerting/performance-digest-service.js';
 import BrokerRouter from './services/brokers/broker-router.js';
 import BrokerReconciliationService from './services/brokers/reconciliation-service.js';
+import EaBridgeService from './services/brokers/ea-bridge-service.js';
 import SecretManager from './services/security/secret-manager.js';
 import AuditLogger from './services/logging/audit-logger.js';
 import { metrics as metricsRegistry } from './services/metrics.js';
@@ -172,6 +173,14 @@ if (config.brokerRouting?.enabled) {
 const tradeManager = new TradeManager(tradingEngine);
 const heartbeatMonitor = new HeartbeatMonitor({ tradingEngine, tradeManager });
 
+// Initialize EA Bridge Service for MT4/MT5 Expert Advisor communication
+const eaBridgeService = new EaBridgeService({
+  tradingEngine,
+  brokerRouter,
+  logger
+});
+logger.info('EA Bridge Service initialized for intelligent MT4/MT5 integration');
+
 // Initialize optional services
 let riskReportService;
 let brokerReconciliationService;
@@ -304,6 +313,7 @@ const {
   tradeManager,
   heartbeatMonitor,
   brokerRouter,
+  eaBridgeService,
   secretManager,
   auditLogger,
   logger,
@@ -319,4 +329,4 @@ const {
   }
 });
 
-export { app, server, tradingEngine, tradeManager, brokerRouter };
+export { app, server, tradingEngine, tradeManager, brokerRouter, eaBridgeService };
