@@ -24,6 +24,7 @@
     "deploy:stage": "node scripts/deploy/create-staging-bundle.js",
     "ci:quality-gates": "node scripts/ci/quality-gates.js",
     "ratings": "node scripts/show-ratings.js",
+    "optimize": "node scripts/optimize-for-100.js",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",
     "format:check": "prettier --check \"**/*.{js,json,md}\"",
