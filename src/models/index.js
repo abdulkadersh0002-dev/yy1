@@ -24,7 +24,6 @@ export {
   TradeSchema,
   EconomicAnalysisSchema,
   NewsAnalysisSchema,
-  TechnicalAnalysisSchema,
   createTradingSignalDTO,
   createTradeDTO,
   normalizeEconomicAnalysis,

@@ -46,7 +46,7 @@ export class SignalValidator {
 
     const passed = Object.values(checks).every((check) => check.passed);
     const warnings = Object.entries(checks)
-      .filter(([_, check]) => check.warning)
+      .filter(([_checkName, check]) => check.warning)
       .map(([name, check]) => ({ stage: name, message: check.warning }));
 
     const result = {

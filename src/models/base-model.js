@@ -119,7 +119,12 @@ class BaseModel {
    */
   clone() {
     const Constructor = this.constructor;
-    return new Constructor(JSON.parse(JSON.stringify(this._data)));
+    // Use structuredClone if available (Node 17+), fallback to JSON for compatibility
+    const clonedData =
+      typeof structuredClone !== 'undefined'
+        ? structuredClone(this._data)
+        : JSON.parse(JSON.stringify(this._data));
+    return new Constructor(clonedData);
   }
 }
 
