@@ -12,9 +12,224 @@ class TradingDashboard {
     init() {
         console.log('🚀 Initializing Trading Dashboard...');
         this.setupEventListeners();
+        this.initializeClocks();
+        this.initializePriceTicker();
         this.connectWebSocket();
         this.loadInitialData();
         this.startAutoUpdate();
+    }
+
+    // Market Clocks Management
+    initializeClocks() {
+        this.updateClocks();
+        // Update clocks every second
+        setInterval(() => this.updateClocks(), 1000);
+    }
+
+    updateClocks() {
+        const now = new Date();
+        
+        // New York (EST/EDT)
+        const nyTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+        this.updateClock('clockNewYork', nyTime);
+        this.updateSession('sessionNewYork', nyTime, { open: 13, close: 21 }); // 13:00-21:00 UTC
+        
+        // London (GMT/BST)
+        const londonTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/London' }));
+        this.updateClock('clockLondon', londonTime);
+        this.updateSession('sessionLondon', londonTime, { open: 8, close: 16 }); // 08:00-16:00 UTC
+        
+        // Tokyo (JST)
+        const tokyoTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+        this.updateClock('clockTokyo', tokyoTime);
+        this.updateSession('sessionTokyo', tokyoTime, { open: 0, close: 8 }); // 00:00-08:00 UTC
+        
+        // Sydney (AEDT/AEST)
+        const sydneyTime = new Date(now.toLocaleString('en-US', { timeZone: 'Australia/Sydney' }));
+        this.updateClock('clockSydney', sydneyTime);
+        this.updateSession('sessionSydney', sydneyTime, { open: 22, close: 6 }); // 22:00-06:00 UTC (next day)
+    }
+
+    updateClock(elementId, time) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            const hours = String(time.getHours()).padStart(2, '0');
+            const minutes = String(time.getMinutes()).padStart(2, '0');
+            const seconds = String(time.getSeconds()).padStart(2, '0');
+            element.textContent = `${hours}:${minutes}:${seconds}`;
+        }
+    }
+
+    updateSession(sessionId, localTime, session) {
+        const element = document.getElementById(sessionId);
+        if (!element) return;
+
+        const now = new Date();
+        const utcHour = now.getUTCHours();
+        
+        let isOpen = false;
+        if (session.open < session.close) {
+            isOpen = utcHour >= session.open && utcHour < session.close;
+        } else {
+            // Spans midnight
+            isOpen = utcHour >= session.open || utcHour < session.close;
+        }
+
+        const statusSpan = element.querySelector('.session-status');
+        const timeSpan = element.querySelector('.session-time');
+        
+        if (statusSpan) {
+            if (isOpen) {
+                statusSpan.className = 'session-status active';
+                statusSpan.textContent = 'Active';
+                
+                // Calculate time until close
+                let hoursUntilClose = session.close - utcHour;
+                if (hoursUntilClose < 0) hoursUntilClose += 24;
+                if (timeSpan) {
+                    timeSpan.textContent = `Closes in ${hoursUntilClose}h`;
+                }
+            } else {
+                statusSpan.className = 'session-status closed';
+                statusSpan.textContent = 'Closed';
+                
+                // Calculate time until open
+                let hoursUntilOpen = session.open - utcHour;
+                if (hoursUntilOpen < 0) hoursUntilOpen += 24;
+                if (timeSpan) {
+                    timeSpan.textContent = `Opens in ${hoursUntilOpen}h`;
+                }
+            }
+        }
+    }
+
+    // Price Ticker Management
+    initializePriceTicker() {
+        this.priceData = new Map();
+        this.loadPricesFromEA();
+        
+        // Refresh prices every 5 seconds
+        setInterval(() => this.loadPricesFromEA(), 5000);
+        
+        // Refresh button
+        const refreshBtn = document.getElementById('refreshPrices');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this.loadPricesFromEA());
+        }
+    }
+
+    async loadPricesFromEA() {
+        try {
+            // Get prices from EA bridge
+            const response = await fetch(`${this.apiBaseUrl}/api/ea/prices`);
+            
+            if (response.ok) {
+                const data = await response.json();
+                this.updatePriceTicker(data);
+                this.updatePriceSourceStatus(true);
+            } else {
+                // If EA not connected, show demo prices
+                this.updatePriceSourceStatus(false);
+            }
+        } catch (error) {
+            console.log('EA not connected, showing demo prices');
+            this.updatePriceSourceStatus(false);
+        }
+    }
+
+    updatePriceTicker(priceData) {
+        const tickerContent = document.getElementById('tickerContent');
+        if (!tickerContent) return;
+
+        // Clear existing content
+        tickerContent.innerHTML = '';
+        
+        // Common pairs to display
+        const pairs = ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD', 'EURGBP'];
+        
+        pairs.forEach(pair => {
+            const price = priceData[pair] || this.generateDemoPrice(pair);
+            const change = this.calculateChange(pair, price);
+            
+            const tickerItem = document.createElement('div');
+            tickerItem.className = 'ticker-item';
+            tickerItem.innerHTML = `
+                <span class="pair-name">${pair}</span>
+                <span class="pair-price">${price.toFixed(5)}</span>
+                <span class="pair-change ${change >= 0 ? 'positive' : 'negative'}">
+                    ${change >= 0 ? '+' : ''}${change.toFixed(2)}%
+                </span>
+            `;
+            tickerContent.appendChild(tickerItem);
+            
+            // Store current price for change calculation
+            this.priceData.set(pair, price);
+        });
+
+        // Duplicate for seamless scroll
+        pairs.forEach(pair => {
+            const price = priceData[pair] || this.generateDemoPrice(pair);
+            const change = this.calculateChange(pair, price);
+            
+            const tickerItem = document.createElement('div');
+            tickerItem.className = 'ticker-item';
+            tickerItem.innerHTML = `
+                <span class="pair-name">${pair}</span>
+                <span class="pair-price">${price.toFixed(5)}</span>
+                <span class="pair-change ${change >= 0 ? 'positive' : 'negative'}">
+                    ${change >= 0 ? '+' : ''}${change.toFixed(2)}%
+                </span>
+            `;
+            tickerContent.appendChild(tickerItem);
+        });
+    }
+
+    generateDemoPrice(pair) {
+        // Demo prices for display when EA not connected
+        const demoPrices = {
+            'EURUSD': 1.08945,
+            'GBPUSD': 1.27234,
+            'USDJPY': 149.872,
+            'AUDUSD': 0.65123,
+            'USDCAD': 1.36789,
+            'USDCHF': 0.88234,
+            'NZDUSD': 0.60123,
+            'EURGBP': 0.85654
+        };
+        return demoPrices[pair] || 1.0;
+    }
+
+    calculateChange(pair, currentPrice) {
+        const previousPrice = this.priceData.get(pair);
+        if (!previousPrice) return 0;
+        
+        const change = ((currentPrice - previousPrice) / previousPrice) * 100;
+        return change;
+    }
+
+    updatePriceSourceStatus(connected) {
+        const sourceElement = document.getElementById('priceSource');
+        if (!sourceElement) return;
+
+        const dot = sourceElement.querySelector('.source-dot');
+        
+        if (connected) {
+            sourceElement.innerHTML = `
+                <span class="source-dot pulse"></span>
+                MT4/MT5 EA Connected
+            `;
+            if (dot) {
+                dot.style.background = 'var(--neon-green)';
+            }
+        } else {
+            sourceElement.innerHTML = `
+                <span class="source-dot"></span>
+                EA Disconnected (Demo Prices)
+            `;
+            if (dot) {
+                dot.style.background = 'var(--neon-yellow)';
+            }
+        }
     }
 
     setupEventListeners() {

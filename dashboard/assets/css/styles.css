@@ -278,6 +278,250 @@ body::before {
     box-shadow: 0 0 15px var(--neon-red);
 }
 
+/* Market Clocks */
+.market-clocks {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.clock-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.clock-card:hover {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 25px rgba(0, 240, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+.clock-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.clock-icon {
+    font-size: 24px;
+}
+
+.clock-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.clock-time {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 15px rgba(0, 240, 255, 0.5);
+    margin-bottom: 12px;
+}
+
+.clock-session {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.session-status {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 20px;
+    display: inline-block;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.session-status.active {
+    background: rgba(0, 255, 136, 0.2);
+    color: var(--neon-green);
+    border: 1px solid var(--neon-green);
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+}
+
+.session-status.closed {
+    background: rgba(112, 112, 136, 0.2);
+    color: var(--text-muted);
+    border: 1px solid var(--text-muted);
+}
+
+.session-time {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* Price Ticker */
+.price-ticker {
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 15px 20px;
+    margin-bottom: 25px;
+    overflow: hidden;
+}
+
+.ticker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.ticker-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ticker-icon {
+    font-size: 20px;
+}
+
+.ticker-title > span:nth-child(2) {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+    letter-spacing: 2px;
+}
+
+.ticker-source {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 4px 12px;
+    background: rgba(0, 255, 136, 0.1);
+    border-radius: 12px;
+    border: 1px solid rgba(0, 255, 136, 0.3);
+}
+
+.source-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--neon-green);
+}
+
+.ticker-controls {
+    display: flex;
+    gap: 10px;
+}
+
+.ticker-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.ticker-btn:hover {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+    transform: rotate(180deg);
+}
+
+.ticker-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+
+.ticker-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+.ticker-content {
+    display: flex;
+    gap: 20px;
+    animation: tickerScroll 30s linear infinite;
+}
+
+@keyframes tickerScroll {
+    0% {
+        transform: translateX(0);
+    }
+    100% {
+        transform: translateX(-50%);
+    }
+}
+
+.ticker-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 12px 20px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    white-space: nowrap;
+    transition: all 0.3s ease;
+    min-width: 200px;
+}
+
+.ticker-item:hover {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+    animation-play-state: paused;
+}
+
+.pair-name {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+
+.pair-price {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.pair-change {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+
+.pair-change.positive {
+    color: var(--neon-green);
+    background: rgba(0, 255, 136, 0.1);
+}
+
+.pair-change.negative {
+    color: var(--neon-red);
+    background: rgba(255, 0, 85, 0.1);
+}
+
 /* Auto Trading Banner */
 .auto-trading-banner {
     margin-bottom: 30px;
@@ -1049,6 +1293,14 @@ canvas {
     }
 }
 
+/* Tablet Responsive */
+@media (max-width: 1200px) {
+    .market-clocks {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Mobile Responsive */
 @media (max-width: 768px) {
     .dashboard-container {
         flex-direction: column;
@@ -1057,6 +1309,28 @@ canvas {
     .sidebar {
         width: 100%;
         padding: 15px;
+    }
+    
+    .market-clocks {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+    
+    .clock-card {
+        padding: 15px;
+    }
+    
+    .clock-time {
+        font-size: 22px;
+    }
+    
+    .ticker-content {
+        animation: tickerScroll 20s linear infinite;
+    }
+    
+    .ticker-item {
+        min-width: 150px;
+        padding: 10px 15px;
     }
     
     .stats-grid {
@@ -1075,6 +1349,20 @@ canvas {
     .banner-content {
         flex-direction: column;
         gap: 20px;
+    }
+}
+
+@media (max-width: 480px) {
+    .market-clocks {
+        grid-template-columns: 1fr;
+    }
+    
+    .clock-icon {
+        font-size: 20px;
+    }
+    
+    .clock-time {
+        font-size: 24px;
     }
 }
 

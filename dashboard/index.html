@@ -79,6 +79,106 @@
                 </div>
             </header>
 
+            <!-- Market Clocks (4 Sessions) -->
+            <section class="market-clocks">
+                <div class="clock-card" data-timezone="America/New_York">
+                    <div class="clock-header">
+                        <span class="clock-icon">🗽</span>
+                        <span class="clock-name">New York</span>
+                    </div>
+                    <div class="clock-time" id="clockNewYork">12:00:00</div>
+                    <div class="clock-session" id="sessionNewYork">
+                        <span class="session-status closed">Closed</span>
+                        <span class="session-time">Opens in 5h 30m</span>
+                    </div>
+                </div>
+                <div class="clock-card" data-timezone="Europe/London">
+                    <div class="clock-header">
+                        <span class="clock-icon">🇬🇧</span>
+                        <span class="clock-name">London</span>
+                    </div>
+                    <div class="clock-time" id="clockLondon">17:00:00</div>
+                    <div class="clock-session" id="sessionLondon">
+                        <span class="session-status active">Active</span>
+                        <span class="session-time">Closes in 1h 30m</span>
+                    </div>
+                </div>
+                <div class="clock-card" data-timezone="Asia/Tokyo">
+                    <div class="clock-header">
+                        <span class="clock-icon">🗾</span>
+                        <span class="clock-name">Tokyo</span>
+                    </div>
+                    <div class="clock-time" id="clockTokyo">02:00:00</div>
+                    <div class="clock-session" id="sessionTokyo">
+                        <span class="session-status closed">Closed</span>
+                        <span class="session-time">Opens in 7h</span>
+                    </div>
+                </div>
+                <div class="clock-card" data-timezone="Australia/Sydney">
+                    <div class="clock-header">
+                        <span class="clock-icon">🦘</span>
+                        <span class="clock-name">Sydney</span>
+                    </div>
+                    <div class="clock-time" id="clockSydney">04:00:00</div>
+                    <div class="clock-session" id="sessionSydney">
+                        <span class="session-status closed">Closed</span>
+                        <span class="session-time">Opens tomorrow</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Live Price Ticker -->
+            <section class="price-ticker">
+                <div class="ticker-header">
+                    <div class="ticker-title">
+                        <span class="ticker-icon">💹</span>
+                        <span>LIVE PRICES</span>
+                        <span class="ticker-source" id="priceSource">
+                            <span class="source-dot pulse"></span>
+                            MT4/MT5 EA Connected
+                        </span>
+                    </div>
+                    <div class="ticker-controls">
+                        <button class="ticker-btn" id="refreshPrices" title="Refresh">🔄</button>
+                    </div>
+                </div>
+                <div class="ticker-scroll">
+                    <div class="ticker-content" id="tickerContent">
+                        <!-- Prices will be populated dynamically -->
+                        <div class="ticker-item">
+                            <span class="pair-name">EURUSD</span>
+                            <span class="pair-price">1.08945</span>
+                            <span class="pair-change positive">+0.12%</span>
+                        </div>
+                        <div class="ticker-item">
+                            <span class="pair-name">GBPUSD</span>
+                            <span class="pair-price">1.27234</span>
+                            <span class="pair-change negative">-0.08%</span>
+                        </div>
+                        <div class="ticker-item">
+                            <span class="pair-name">USDJPY</span>
+                            <span class="pair-price">149.872</span>
+                            <span class="pair-change positive">+0.25%</span>
+                        </div>
+                        <div class="ticker-item">
+                            <span class="pair-name">AUDUSD</span>
+                            <span class="pair-price">0.65123</span>
+                            <span class="pair-change positive">+0.15%</span>
+                        </div>
+                        <div class="ticker-item">
+                            <span class="pair-name">USDCAD</span>
+                            <span class="pair-price">1.36789</span>
+                            <span class="pair-change negative">-0.05%</span>
+                        </div>
+                        <div class="ticker-item">
+                            <span class="pair-name">USDCHF</span>
+                            <span class="pair-price">0.88234</span>
+                            <span class="pair-change positive">+0.18%</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Auto Trading Toggle (Top Banner) -->
             <section class="auto-trading-banner">
                 <div class="banner-content">
