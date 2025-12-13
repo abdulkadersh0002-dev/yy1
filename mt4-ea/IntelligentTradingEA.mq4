@@ -9,7 +9,7 @@
 #property strict
 
 //--- Input parameters
-input string ServerURL = "http://localhost:4101";  // Server URL
+input string ServerURL = "http://127.0.0.1:5002";  // Server URL
 input int    UpdateIntervalSeconds = 15;            // Price update interval (seconds)
 input bool   AutoTrade = true;                     // Enable auto-trading
 input double MaxRiskPercent = 2.0;                 // Maximum risk per trade (%)

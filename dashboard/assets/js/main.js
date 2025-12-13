@@ -3,7 +3,7 @@
 
 class TradingDashboard {
     constructor() {
-        this.apiBaseUrl = window.location.origin;
+        this.apiBaseUrl = 'http://127.0.0.1:5002';
         this.ws = null;
         this.updateInterval = null;
         this.init();
@@ -274,8 +274,7 @@ class TradingDashboard {
 
     connectWebSocket() {
         try {
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+            const wsUrl = 'ws://127.0.0.1:5002/ws';
             
             this.ws = new WebSocket(wsUrl);
 

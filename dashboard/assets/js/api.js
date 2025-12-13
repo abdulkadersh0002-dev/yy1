@@ -3,7 +3,7 @@
 
 class TradingAPI {
     constructor(baseUrl = '') {
-        this.baseUrl = baseUrl || window.location.origin;
+        this.baseUrl = baseUrl || 'http://127.0.0.1:5002';
         this.headers = {
             'Content-Type': 'application/json'
         };
