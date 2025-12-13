@@ -23,6 +23,7 @@
     "backtest:run": "node scripts/backtest/run-backtests.js",
     "deploy:stage": "node scripts/deploy/create-staging-bundle.js",
     "ci:quality-gates": "node scripts/ci/quality-gates.js",
+    "ratings": "node scripts/show-ratings.js",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",
     "format:check": "prettier --check \"**/*.{js,json,md}\"",
