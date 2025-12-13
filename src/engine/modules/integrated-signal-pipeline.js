@@ -192,7 +192,11 @@ export class IntegratedSignalPipeline {
     const stopLoss = this.calculateStopLoss(entry, direction, sources);
     const takeProfit = this.calculateTakeProfit(entry, direction, sources);
     
+    // Generate unique ID for tracking
+    const signalId = `${analysis.pair}_${direction}_${Date.now()}`;
+    
     return {
+      id: signalId,
       pair: analysis.pair,
       direction,
       strength,
@@ -216,7 +220,11 @@ export class IntegratedSignalPipeline {
     const validated = [];
     
     for (const signal of candidateSignals) {
-      const validationResult = this.validator.validate(signal, context);
+      // Ensure validation result is awaited if async
+      let validationResult = this.validator.validate(signal, context);
+      if (validationResult && typeof validationResult.then === 'function') {
+        validationResult = await validationResult;
+      }
       
       if (validationResult.valid) {
         validated.push({

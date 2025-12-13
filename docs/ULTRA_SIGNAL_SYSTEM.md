@@ -277,11 +277,13 @@ With ultra-strict settings:
 
 ### Win Rate Projections
 
-| Configuration | Expected Win Rate | R:R Ratio | Expected Return |
-|---------------|-------------------|-----------|-----------------|
-| Ultra-Strict  | 85-95%            | 2.5:1     | +100-200%/year  |
-| Balanced      | 70-85%            | 2.0:1     | +60-120%/year   |
-| Standard      | 55-70%            | 1.5:1     | +20-60%/year    |
+| Configuration | Expected Win Rate | R:R Ratio | Expected Return* |
+|---------------|-------------------|-----------|------------------|
+| Ultra-Strict  | 85-95%            | 2.5:1     | +50-100%/year    |
+| Balanced      | 70-85%            | 2.0:1     | +30-70%/year     |
+| Standard      | 55-70%            | 1.5:1     | +15-40%/year     |
+
+*Returns are theoretical and depend on market conditions, slippage, spreads, proper risk management, and consistent execution. Actual results may vary significantly.
 
 ### Time to Results
 
