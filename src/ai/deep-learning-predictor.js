@@ -179,7 +179,7 @@ export class DeepLearningPredictor {
    * Calculate Fibonacci retracement features
    */
   calculateFibonacciFeatures(candles) {
-    if (candles.length < 2) return [0, 0, 0, 0];
+    if (candles.length < 2) {return [0, 0, 0, 0];}
 
     const high = Math.max(...candles.map(c => c.high));
     const low = Math.min(...candles.map(c => c.low));
@@ -213,7 +213,7 @@ export class DeepLearningPredictor {
    * Detect candlestick patterns (binary features)
    */
   detectCandlestickPatterns(candles) {
-    if (candles.length < 2) return [0, 0, 0, 0, 0];
+    if (candles.length < 2) {return [0, 0, 0, 0, 0];}
 
     const current = candles[candles.length - 1];
     const prev = candles[candles.length - 2];
@@ -236,7 +236,7 @@ export class DeepLearningPredictor {
    * Detect market regime
    */
   detectMarketRegime(candles) {
-    if (candles.length < 10) return [0, 0, 0];
+    if (candles.length < 10) {return [0, 0, 0];}
 
     const closes = candles.map(c => c.close);
     const returns = closes.slice(1).map((c, i) => (c - closes[i]) / closes[i]);

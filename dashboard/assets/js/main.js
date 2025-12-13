@@ -62,7 +62,7 @@ class TradingDashboard {
 
     updateSession(sessionId, localTime, session) {
         const element = document.getElementById(sessionId);
-        if (!element) return;
+        if (!element) {return;}
 
         const now = new Date();
         const utcHour = now.getUTCHours();
@@ -85,7 +85,7 @@ class TradingDashboard {
                 
                 // Calculate time until close
                 let hoursUntilClose = session.close - utcHour;
-                if (hoursUntilClose < 0) hoursUntilClose += 24;
+                if (hoursUntilClose < 0) {hoursUntilClose += 24;}
                 if (timeSpan) {
                     timeSpan.textContent = `Closes in ${hoursUntilClose}h`;
                 }
@@ -95,7 +95,7 @@ class TradingDashboard {
                 
                 // Calculate time until open
                 let hoursUntilOpen = session.open - utcHour;
-                if (hoursUntilOpen < 0) hoursUntilOpen += 24;
+                if (hoursUntilOpen < 0) {hoursUntilOpen += 24;}
                 if (timeSpan) {
                     timeSpan.textContent = `Opens in ${hoursUntilOpen}h`;
                 }
@@ -139,7 +139,7 @@ class TradingDashboard {
 
     updatePriceTicker(priceData) {
         const tickerContent = document.getElementById('tickerContent');
-        if (!tickerContent) return;
+        if (!tickerContent) {return;}
 
         // Clear existing content
         tickerContent.innerHTML = '';
@@ -201,7 +201,7 @@ class TradingDashboard {
 
     calculateChange(pair, currentPrice) {
         const previousPrice = this.priceData.get(pair);
-        if (!previousPrice) return 0;
+        if (!previousPrice) {return 0;}
         
         const change = ((currentPrice - previousPrice) / previousPrice) * 100;
         return change;
@@ -209,7 +209,7 @@ class TradingDashboard {
 
     updatePriceSourceStatus(connected) {
         const sourceElement = document.getElementById('priceSource');
-        if (!sourceElement) return;
+        if (!sourceElement) {return;}
 
         const dot = sourceElement.querySelector('.source-dot');
         
@@ -401,7 +401,7 @@ class TradingDashboard {
 
     renderSignals(signals) {
         const container = document.getElementById('signalsContainer');
-        if (!container || !signals || signals.length === 0) return;
+        if (!container || !signals || signals.length === 0) {return;}
 
         // If we have sample signals in HTML, keep them for now
         // In production, you would replace with actual signals
@@ -410,7 +410,7 @@ class TradingDashboard {
 
     renderActiveTrades(trades) {
         const tbody = document.getElementById('activeTradesBody');
-        if (!tbody) return;
+        if (!tbody) {return;}
 
         if (trades.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 30px;">No active trades</td></tr>';

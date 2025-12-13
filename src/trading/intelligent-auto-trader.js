@@ -322,7 +322,7 @@ export class IntelligentAutoTrader {
     const currentTime = `${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}`;
 
     for (const [session, config] of Object.entries(this.config.tradingSessions)) {
-      if (!config.enabled) continue;
+      if (!config.enabled) {continue;}
 
       if (currentTime >= config.start && currentTime <= config.end) {
         return true;
@@ -348,7 +348,7 @@ export class IntelligentAutoTrader {
    * Check if stop loss is hit
    */
   isStopLossHit(trade, currentPrice) {
-    if (!trade.stopLoss) return false;
+    if (!trade.stopLoss) {return false;}
 
     return trade.direction === 'BUY'
       ? currentPrice <= trade.stopLoss
@@ -359,7 +359,7 @@ export class IntelligentAutoTrader {
    * Check if take profit is hit
    */
   isTakeProfitHit(trade, currentPrice) {
-    if (!trade.takeProfit) return false;
+    if (!trade.takeProfit) {return false;}
 
     return trade.direction === 'BUY'
       ? currentPrice >= trade.takeProfit

@@ -353,7 +353,7 @@ export class SignalDeliveryService {
     return {
       ...this.stats,
       successRate: this.stats.totalSignals > 0
-        ? ((this.stats.totalSignals - this.stats.failedDeliveries) / this.stats.totalSignals * 100).toFixed(2) + '%'
+        ? `${((this.stats.totalSignals - this.stats.failedDeliveries) / this.stats.totalSignals * 100).toFixed(2)  }%`
         : '0%'
     };
   }

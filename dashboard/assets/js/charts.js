@@ -15,7 +15,7 @@ class DashboardCharts {
 
     createPerformanceChart() {
         const canvas = document.getElementById('performanceChart');
-        if (!canvas) return;
+        if (!canvas) {return;}
 
         const ctx = canvas.getContext('2d');
         
@@ -71,7 +71,7 @@ class DashboardCharts {
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
 
-        if (!data || data.length === 0) return;
+        if (!data || data.length === 0) {return;}
 
         // Calculate scaling
         const padding = 40;
@@ -168,7 +168,7 @@ class DashboardCharts {
     }
 
     drawSparkline(element, data) {
-        if (!element) return;
+        if (!element) {return;}
 
         // Create canvas for sparkline
         const canvas = document.createElement('canvas');

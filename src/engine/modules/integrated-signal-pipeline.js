@@ -158,7 +158,7 @@ export class IntegratedSignalPipeline {
     
     for (const pair of pairs) {
       const analysis = multiSourceAnalysis[pair];
-      if (!analysis) continue;
+      if (!analysis) {continue;}
       
       const signal = this.createSignalFromAnalysis(analysis);
       if (signal) {
@@ -185,7 +185,7 @@ export class IntegratedSignalPipeline {
     
     // Determine direction based on source agreement
     const direction = this.determineDirection(sources);
-    if (!direction) return null;
+    if (!direction) {return null;}
     
     // Calculate entry, stop loss, and take profit
     const entry = this.calculateEntry(analysis.pair, direction, sources);
@@ -388,12 +388,12 @@ export class IntegratedSignalPipeline {
   calculateSignalStrength(sources) {
     const strengths = [];
     
-    if (sources.technical?.strength) strengths.push(sources.technical.strength);
-    if (sources.news?.strength) strengths.push(sources.news.strength);
-    if (sources.economic?.strength) strengths.push(sources.economic.strength);
-    if (sources.rss?.strength) strengths.push(sources.rss.strength);
+    if (sources.technical?.strength) {strengths.push(sources.technical.strength);}
+    if (sources.news?.strength) {strengths.push(sources.news.strength);}
+    if (sources.economic?.strength) {strengths.push(sources.economic.strength);}
+    if (sources.rss?.strength) {strengths.push(sources.rss.strength);}
     
-    if (strengths.length === 0) return 50;
+    if (strengths.length === 0) {return 50;}
     
     return strengths.reduce((sum, s) => sum + s, 0) / strengths.length;
   }
@@ -401,12 +401,12 @@ export class IntegratedSignalPipeline {
   calculateSignalConfidence(sources) {
     const confidences = [];
     
-    if (sources.technical?.confidence) confidences.push(sources.technical.confidence);
-    if (sources.news?.confidence) confidences.push(sources.news.confidence);
-    if (sources.economic?.confidence) confidences.push(sources.economic.confidence);
-    if (sources.rss?.confidence) confidences.push(sources.rss.confidence);
+    if (sources.technical?.confidence) {confidences.push(sources.technical.confidence);}
+    if (sources.news?.confidence) {confidences.push(sources.news.confidence);}
+    if (sources.economic?.confidence) {confidences.push(sources.economic.confidence);}
+    if (sources.rss?.confidence) {confidences.push(sources.rss.confidence);}
     
-    if (confidences.length === 0) return 50;
+    if (confidences.length === 0) {return 50;}
     
     return confidences.reduce((sum, c) => sum + c, 0) / confidences.length;
   }
@@ -423,8 +423,8 @@ export class IntegratedSignalPipeline {
       }
     });
     
-    if (directions.BUY >= this.config.minSourceAgreement) return 'BUY';
-    if (directions.SELL >= this.config.minSourceAgreement) return 'SELL';
+    if (directions.BUY >= this.config.minSourceAgreement) {return 'BUY';}
+    if (directions.SELL >= this.config.minSourceAgreement) {return 'SELL';}
     
     return null;
   }
@@ -432,8 +432,8 @@ export class IntegratedSignalPipeline {
   calculateEntry(pair, direction, sources) {
     // Get latest price from sources
     const prices = [];
-    if (sources.technical?.latestPrice) prices.push(sources.technical.latestPrice);
-    if (sources.rss?.entry?.price) prices.push(sources.rss.entry.price);
+    if (sources.technical?.latestPrice) {prices.push(sources.technical.latestPrice);}
+    if (sources.rss?.entry?.price) {prices.push(sources.rss.entry.price);}
     
     const avgPrice = prices.length > 0 
       ? prices.reduce((sum, p) => sum + p, 0) / prices.length 
@@ -474,7 +474,7 @@ export class IntegratedSignalPipeline {
 
   calculateSourceAgreement(sources) {
     const total = Object.keys(sources).length;
-    if (total === 0) return 0;
+    if (total === 0) {return 0;}
     
     const directions = {};
     Object.values(sources).forEach(source => {
@@ -523,7 +523,7 @@ export class IntegratedSignalPipeline {
    */
   recordOutcome(signalId, outcome) {
     const signal = this.signalHistory.find(s => s.id === signalId);
-    if (!signal) return;
+    if (!signal) {return;}
     
     signal.outcome = outcome;
     signal.closedAt = Date.now();

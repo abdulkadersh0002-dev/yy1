@@ -137,7 +137,7 @@ export class BacktestEngine {
     const pipValue = 10; // Standard lot
     const stopLossPips = Math.abs(entryPrice - stopLoss) * 10000;
     
-    if (stopLossPips === 0) return 0;
+    if (stopLossPips === 0) {return 0;}
 
     const positionSize = riskAmount / (stopLossPips * pipValue);
     return Math.min(positionSize, capital / entryPrice); // Don't exceed capital
@@ -327,14 +327,14 @@ export class BacktestEngine {
       overview: {
         initialCapital: this.config.initialCapital,
         finalCapital,
-        totalReturn: totalReturn.toFixed(2) + '%',
+        totalReturn: `${totalReturn.toFixed(2)  }%`,
         totalPnL: totalPnL.toFixed(2),
         totalTrades: this.trades.length,
         winningTrades: wins.length,
         losingTrades: losses.length
       },
       performance: {
-        winRate: ((wins.length / this.trades.length) * 100).toFixed(2) + '%',
+        winRate: `${((wins.length / this.trades.length) * 100).toFixed(2)  }%`,
         profitFactor: (grossProfit / (grossLoss || 1)).toFixed(2),
         avgWin: (grossProfit / (wins.length || 1)).toFixed(2),
         avgLoss: (grossLoss / (losses.length || 1)).toFixed(2),
@@ -343,7 +343,7 @@ export class BacktestEngine {
         largestLoss: Math.min(...losses.map(t => t.pnl), 0).toFixed(2)
       },
       riskMetrics: {
-        maxDrawdown: (maxDrawdown * 100).toFixed(2) + '%',
+        maxDrawdown: `${(maxDrawdown * 100).toFixed(2)  }%`,
         sharpeRatio: sharpeRatio.toFixed(2),
         sortinoRatio: sortinoRatio.toFixed(2),
         calmarRatio: calmarRatio.toFixed(2)
@@ -373,7 +373,7 @@ export class BacktestEngine {
    * Get trading days from trades
    */
   getTradingDays() {
-    if (this.trades.length === 0) return 1;
+    if (this.trades.length === 0) {return 1;}
     
     const firstTrade = new Date(this.trades[0].entryTime);
     const lastTrade = new Date(this.trades[this.trades.length - 1].exitTime);

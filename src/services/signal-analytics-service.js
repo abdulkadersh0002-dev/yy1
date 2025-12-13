@@ -187,7 +187,7 @@ export class SignalAnalyticsService {
       activeCount: this.realtimeData.activeSignals.size,
       performance: {
         ...this.realtimeData.performance,
-        winRate: this.realtimeData.performance.winRate.toFixed(2) + '%',
+        winRate: `${this.realtimeData.performance.winRate.toFixed(2)  }%`,
         profitFactor: this.realtimeData.performance.profitFactor.toFixed(2)
       },
       byPair: Object.fromEntries(
@@ -195,7 +195,7 @@ export class SignalAnalyticsService {
           pair,
           {
             ...stats,
-            winRate: stats.winRate.toFixed(2) + '%'
+            winRate: `${stats.winRate.toFixed(2)  }%`
           }
         ])
       ),
@@ -271,7 +271,7 @@ export class SignalAnalyticsService {
         totalSignals: stats.totalSignals,
         wins: stats.wins,
         losses: stats.losses,
-        winRate: stats.winRate.toFixed(2) + '%',
+        winRate: `${stats.winRate.toFixed(2)  }%`,
         totalProfit: stats.totalProfit.toFixed(2),
         averageProfit: stats.wins > 0 ? (stats.totalProfit / stats.wins).toFixed(2) : '0.00'
       });
@@ -306,11 +306,11 @@ export class SignalAnalyticsService {
 
     completed.forEach(signal => {
       let range;
-      if (signal.qualityScore >= 90) range = 'excellent (90-100)';
-      else if (signal.qualityScore >= 80) range = 'great (80-89)';
-      else if (signal.qualityScore >= 70) range = 'good (70-79)';
-      else if (signal.qualityScore >= 60) range = 'average (60-69)';
-      else range = 'below-average (<60)';
+      if (signal.qualityScore >= 90) {range = 'excellent (90-100)';}
+      else if (signal.qualityScore >= 80) {range = 'great (80-89)';}
+      else if (signal.qualityScore >= 70) {range = 'good (70-79)';}
+      else if (signal.qualityScore >= 60) {range = 'average (60-69)';}
+      else {range = 'below-average (<60)';}
 
       qualityRanges[range].signals++;
       if (signal.outcome === 'WIN') {
@@ -322,7 +322,7 @@ export class SignalAnalyticsService {
     Object.keys(qualityRanges).forEach(range => {
       const data = qualityRanges[range];
       data.winRate = data.signals > 0
-        ? ((data.wins / data.signals) * 100).toFixed(2) + '%'
+        ? `${((data.wins / data.signals) * 100).toFixed(2)  }%`
         : '0%';
     });
 
@@ -337,7 +337,7 @@ export class SignalAnalyticsService {
    */
   updateQualityMetrics() {
     const signals = Array.from(this.realtimeData.activeSignals.values());
-    if (signals.length === 0) return;
+    if (signals.length === 0) {return;}
 
     const totalWinProb = signals.reduce((sum, s) => sum + (s.winProbability || 0), 0);
     const totalQuality = signals.reduce((sum, s) => sum + (s.qualityScore || 0), 0);

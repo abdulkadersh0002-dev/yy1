@@ -286,7 +286,7 @@ export class UltraSignalFilter {
    */
   estimateWinProbability(filterStages, signal) {
     // Base probability from signal strength/confidence
-    let baseProbability = (signal.strength + signal.confidence) / 200;
+    const baseProbability = (signal.strength + signal.confidence) / 200;
     
     // Adjust based on filter stages
     const stageMultipliers = {
@@ -315,11 +315,11 @@ export class UltraSignalFilter {
    * Generate trading recommendation
    */
   generateRecommendation(allPassed, winProbability, confidence) {
-    if (!allPassed) return 'REJECT';
+    if (!allPassed) {return 'REJECT';}
     
-    if (winProbability >= 0.90 && confidence >= 90) return 'STRONG_BUY';
-    if (winProbability >= 0.85 && confidence >= 85) return 'BUY';
-    if (winProbability >= 0.80 && confidence >= 75) return 'CONSIDER';
+    if (winProbability >= 0.90 && confidence >= 90) {return 'STRONG_BUY';}
+    if (winProbability >= 0.85 && confidence >= 85) {return 'BUY';}
+    if (winProbability >= 0.80 && confidence >= 75) {return 'CONSIDER';}
     
     return 'REJECT';
   }
@@ -409,7 +409,7 @@ export class UltraSignalFilter {
     const tech = analysis.technical || {};
     const momentum = tech.momentum || 50;
     
-    if (signal.direction === 'BUY') return momentum > 60;
+    if (signal.direction === 'BUY') {return momentum > 60;}
     return momentum < 40;
   }
 
@@ -422,7 +422,7 @@ export class UltraSignalFilter {
   checkKeyLevels(signal, analysis) {
     // Check if entry is near key support/resistance
     const tech = analysis.technical || {};
-    if (!tech.keyLevels || !signal.entry) return false;
+    if (!tech.keyLevels || !signal.entry) {return false;}
     
     const entry = signal.entry.price;
     const nearLevel = tech.keyLevels.some(level => {
@@ -436,7 +436,7 @@ export class UltraSignalFilter {
   checkMAAlignment(signal, analysis) {
     // Check if price is above/below moving averages appropriately
     const tech = analysis.technical || {};
-    if (!tech.movingAverages) return false;
+    if (!tech.movingAverages) {return false;}
     
     const mas = tech.movingAverages;
     if (signal.direction === 'BUY') {
@@ -462,7 +462,7 @@ export class UltraSignalFilter {
   checkFibonacciAlignment(signal, analysis) {
     // Check if near Fibonacci retracement levels
     const tech = analysis.technical || {};
-    if (!tech.fibonacci || !signal.entry) return false;
+    if (!tech.fibonacci || !signal.entry) {return false;}
     
     const entry = signal.entry.price;
     const fibLevels = [0.236, 0.382, 0.500, 0.618, 0.786];
@@ -474,7 +474,7 @@ export class UltraSignalFilter {
   }
 
   calculateRR(signal) {
-    if (!signal.entry || !signal.stopLoss || !signal.takeProfit) return 0;
+    if (!signal.entry || !signal.stopLoss || !signal.takeProfit) {return 0;}
     
     const risk = Math.abs(signal.entry.price - signal.stopLoss);
     const reward = Math.abs(signal.takeProfit - signal.entry.price);
@@ -501,7 +501,7 @@ export class UltraSignalFilter {
 
   isStopLossTight(signal) {
     // Check if stop loss is reasonable (not too tight, not too wide)
-    if (!signal.entry || !signal.stopLoss) return false;
+    if (!signal.entry || !signal.stopLoss) {return false;}
     
     const stopDistance = Math.abs(signal.entry.price - signal.stopLoss);
     const pipValue = this.getPipValue(signal.pair);
@@ -512,7 +512,7 @@ export class UltraSignalFilter {
 
   isTakeProfitRealistic(signal, analysis) {
     // Check if take profit is achievable
-    if (!signal.entry || !signal.takeProfit) return false;
+    if (!signal.entry || !signal.takeProfit) {return false;}
     
     const tpDistance = Math.abs(signal.takeProfit - signal.entry.price);
     const pipValue = this.getPipValue(signal.pair);
@@ -523,7 +523,7 @@ export class UltraSignalFilter {
 
   getPipValue(pair) {
     // Simplified pip value calculation
-    if (pair.includes('JPY')) return 0.01;
+    if (pair.includes('JPY')) {return 0.01;}
     return 0.0001;
   }
 
@@ -545,7 +545,7 @@ export class UltraSignalFilter {
   }
 
   calculatePatternStrength(patterns) {
-    if (patterns.length === 0) return 70; // Default
+    if (patterns.length === 0) {return 70;} // Default
     
     const avgStrength = patterns.reduce((sum, p) => sum + (p.strength || 50), 0) / patterns.length;
     return avgStrength;
