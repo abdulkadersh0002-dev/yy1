@@ -25,7 +25,9 @@ export class RSSSignalGenerator {
    * @param {Array} prices - Price data from EA
    */
   updatePrices(prices) {
-    if (!Array.isArray(prices)) return;
+    if (!Array.isArray(prices)) {
+      return;
+    }
 
     prices.forEach((priceData) => {
       this.priceCache.set(priceData.pair, {
@@ -133,7 +135,7 @@ export class RSSSignalGenerator {
 
       // Filter relevant news
       const relevantNews = newsItems.filter((item) => {
-        const text = (item.title + ' ' + (item.summary || '')).toLowerCase();
+        const text = `${item.title} ${item.summary || ''}`.toLowerCase();
         return (
           text.includes(base.toLowerCase()) ||
           text.includes(quote.toLowerCase()) ||
@@ -147,7 +149,7 @@ export class RSSSignalGenerator {
       let neutralScore = 0;
 
       relevantNews.forEach((item) => {
-        const text = (item.title + ' ' + (item.summary || '')).toLowerCase();
+        const text = `${item.title} ${item.summary || ''}`.toLowerCase();
 
         // Bullish keywords
         const bullishKeywords = [
@@ -183,14 +185,20 @@ export class RSSSignalGenerator {
 
         // Count keyword matches
         bullishKeywords.forEach((keyword) => {
-          if (text.includes(keyword)) bullishScore += 1;
+          if (text.includes(keyword)) {
+            bullishScore += 1;
+          }
         });
 
         bearishKeywords.forEach((keyword) => {
-          if (text.includes(keyword)) bearishScore += 1;
+          if (text.includes(keyword)) {
+            bearishScore += 1;
+          }
         });
 
-        if (bullishScore === bearishScore) neutralScore += 1;
+        if (bullishScore === bearishScore) {
+          neutralScore += 1;
+        }
       });
 
       const total = bullishScore + bearishScore + neutralScore;
@@ -218,15 +226,19 @@ export class RSSSignalGenerator {
 
     for (const pair of pairs) {
       const sentiment = sentimentAnalysis[pair];
-      if (!sentiment || sentiment.confidence < minConfidence) continue;
+      if (!sentiment || sentiment.confidence < minConfidence) {
+        continue;
+      }
 
       const priceData = this.priceCache.get(pair);
-      if (!priceData) continue;
+      if (!priceData) {
+        continue;
+      }
 
       // Determine direction
       let direction = 'NEUTRAL';
       let strength = 0;
-      let confidence = sentiment.confidence;
+      const confidence = sentiment.confidence;
 
       if (sentiment.bullish > sentiment.bearish + 20) {
         direction = 'BUY';
@@ -236,7 +248,9 @@ export class RSSSignalGenerator {
         strength = Math.min(100, sentiment.bearish);
       }
 
-      if (direction === 'NEUTRAL') continue;
+      if (direction === 'NEUTRAL') {
+        continue;
+      }
 
       // Calculate entry, SL, TP
       const currentPrice = direction === 'BUY' ? priceData.ask : priceData.bid;

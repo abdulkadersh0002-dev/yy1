@@ -40,7 +40,7 @@ function checkEnvironment() {
   };
 
   let hasConfig = false;
-  let config = {};
+  const config = {};
 
   if (fs.existsSync(CONFIG_PATH)) {
     hasConfig = true;
@@ -61,7 +61,9 @@ function checkEnvironment() {
     const isSet = config[key] && config[key] !== 'your_key_here' && config[key].length > 10;
     const status = isSet ? '✅ Configured' : '❌ Missing';
     console.log(`  ${key.padEnd(30)} ${status}`);
-    if (isSet) apiKeysConfigured++;
+    if (isSet) {
+      apiKeysConfigured++;
+    }
   });
 
   const providerScore = (apiKeysConfigured / requiredKeys.length) * 100;
@@ -78,7 +80,9 @@ function checkEnvironment() {
     const status = isOptimal ? '✅ Optimal' : currentValue ? '⚠️  Suboptimal' : '❌ Not Set';
     const display = currentValue ? currentValue : 'Not Set';
     console.log(`  ${key.padEnd(30)} ${display.padEnd(15)} ${status}`);
-    if (isOptimal) settingsConfigured++;
+    if (isOptimal) {
+      settingsConfigured++;
+    }
   });
 
   const settingsScore = (settingsConfigured / Object.keys(optimalSettings).length) * 100;
@@ -281,7 +285,7 @@ function main() {
     console.log('📖 For detailed instructions, see:');
     console.log('   docs/RATING_OPTIMIZATION_GUIDE.md\n');
     console.log('💡 Pro Tip: Focus on one category at a time for best results!');
-    console.log('═'.repeat(60) + '\n');
+    console.log(`${'═'.repeat(60)}\n`);
   } catch (error) {
     console.error('Error running optimization check:', error.message);
     process.exit(1);

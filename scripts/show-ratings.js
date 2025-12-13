@@ -14,9 +14,9 @@ import {
  * Display application rating
  */
 function displayAppRating() {
-  console.log('\n' + '='.repeat(60));
+  console.log(`\n${'='.repeat(60)}`);
   console.log('APPLICATION RATING');
-  console.log('='.repeat(60) + '\n');
+  console.log(`${'='.repeat(60)}\n`);
 
   // Sample metrics - in production, these would come from actual system
   const metrics = {
@@ -51,7 +51,7 @@ function displayAppRating() {
 
   const appRating = calculateAppRating(metrics);
   console.log(getDetailedRatingReport(appRating));
-  console.log('\n' + '='.repeat(60) + '\n');
+  console.log(`\n${'='.repeat(60)}\n`);
 
   return appRating;
 }
@@ -62,7 +62,7 @@ function displayAppRating() {
 function displaySignalRatings() {
   console.log('='.repeat(60));
   console.log('SIGNAL RATING EXAMPLES');
-  console.log('='.repeat(60) + '\n');
+  console.log(`${'='.repeat(60)}\n`);
 
   // Example signals with different quality levels
   const signals = [
@@ -140,11 +140,11 @@ function displaySignalRatings() {
     console.log(
       `Strength: ${example.signal.strength}% | Confidence: ${example.signal.confidence}%`
     );
-    console.log('\n' + getDetailedRatingReport(signalRating));
+    console.log(`\n${getDetailedRatingReport(signalRating)}`);
     console.log('\n');
   });
 
-  console.log('='.repeat(60) + '\n');
+  console.log(`${'='.repeat(60)}\n`);
 }
 
 /**
@@ -153,7 +153,7 @@ function displaySignalRatings() {
 function displayRatingGuide() {
   console.log('='.repeat(60));
   console.log('RATING INTERPRETATION GUIDE');
-  console.log('='.repeat(60) + '\n');
+  console.log(`${'='.repeat(60)}\n`);
 
   console.log('Rating Scale:');
   console.log('  90-100: A+ to A  (Excellent) - Highly recommended');
@@ -180,7 +180,7 @@ function displayRatingGuide() {
   console.log('  - Freshness (5%): Signal age');
   console.log('  - Completeness (5%): Data completeness');
 
-  console.log('\n' + '='.repeat(60) + '\n');
+  console.log(`\n${'='.repeat(60)}\n`);
 }
 
 /**
@@ -213,7 +213,7 @@ function main() {
     console.log('  ✓ Risk management effectiveness');
     console.log('  ✓ Data quality and freshness');
     console.log('\nUse these ratings to make informed trading decisions.');
-    console.log('\n' + '='.repeat(60) + '\n');
+    console.log(`\n${'='.repeat(60)}\n`);
   } catch (error) {
     console.error('Error displaying ratings:', error.message);
     console.error(error.stack);

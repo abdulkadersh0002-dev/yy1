@@ -30,7 +30,7 @@ class HealthCheckService {
     }
 
     const startTime = Date.now();
-    
+
     try {
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Health check timeout')), check.timeout);
@@ -99,10 +99,10 @@ class HealthCheckService {
 
     return {
       memory: {
-        rss: (memUsage.rss / 1024 / 1024).toFixed(2) + ' MB',
-        heapTotal: (memUsage.heapTotal / 1024 / 1024).toFixed(2) + ' MB',
-        heapUsed: (memUsage.heapUsed / 1024 / 1024).toFixed(2) + ' MB',
-        heapUsedPercent: ((memUsage.heapUsed / memUsage.heapTotal) * 100).toFixed(2) + '%'
+        rss: `${(memUsage.rss / 1024 / 1024).toFixed(2)} MB`,
+        heapTotal: `${(memUsage.heapTotal / 1024 / 1024).toFixed(2)} MB`,
+        heapUsed: `${(memUsage.heapUsed / 1024 / 1024).toFixed(2)} MB`,
+        heapUsedPercent: `${((memUsage.heapUsed / memUsage.heapTotal) * 100).toFixed(2)}%`
       },
       cpu: { user: cpuUsage.user, system: cpuUsage.system },
       uptime: { process: Math.floor(process.uptime()) },
@@ -123,7 +123,7 @@ export function createHealthCheckEndpoint(dependencies) {
   return async (req, res) => {
     const detailed = req.query.detailed === 'true';
     const results = await healthCheck.runAllChecks();
-    
+
     const response = {
       status: results.healthy ? 'healthy' : 'unhealthy',
       timestamp: results.timestamp,

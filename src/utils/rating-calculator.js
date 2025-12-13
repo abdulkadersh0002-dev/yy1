@@ -198,10 +198,18 @@ function calculateRiskRewardRating(signal) {
   }
 
   // Rate R:R ratio (1.5 = 50%, 2.0 = 66%, 3.0 = 85%, 4.0+ = 100%)
-  if (rrRatio >= 4) return 100;
-  if (rrRatio >= 3) return 85;
-  if (rrRatio >= 2) return 66;
-  if (rrRatio >= 1.5) return 50;
+  if (rrRatio >= 4) {
+    return 100;
+  }
+  if (rrRatio >= 3) {
+    return 85;
+  }
+  if (rrRatio >= 2) {
+    return 66;
+  }
+  if (rrRatio >= 1.5) {
+    return 50;
+  }
   return Math.max(0, (rrRatio / 1.5) * 50);
 }
 
@@ -211,7 +219,9 @@ function calculateRiskRewardRating(signal) {
  * @returns {number} Rating 0-100
  */
 function calculateFreshnessRating(signal) {
-  if (!signal.timestamp) return 50;
+  if (!signal.timestamp) {
+    return 50;
+  }
 
   const age = Date.now() - signal.timestamp;
   const ageMinutes = age / (1000 * 60);
@@ -220,10 +230,18 @@ function calculateFreshnessRating(signal) {
   // 5 minutes = 80%
   // 10 minutes = 50%
   // 30+ minutes = 0%
-  if (ageMinutes < 1) return 100;
-  if (ageMinutes < 5) return 100 - (ageMinutes - 1) * 5;
-  if (ageMinutes < 10) return 80 - (ageMinutes - 5) * 6;
-  if (ageMinutes < 30) return 50 - (ageMinutes - 10) * 2.5;
+  if (ageMinutes < 1) {
+    return 100;
+  }
+  if (ageMinutes < 5) {
+    return 100 - (ageMinutes - 1) * 5;
+  }
+  if (ageMinutes < 10) {
+    return 80 - (ageMinutes - 5) * 6;
+  }
+  if (ageMinutes < 30) {
+    return 50 - (ageMinutes - 10) * 2.5;
+  }
   return 0;
 }
 
@@ -240,7 +258,9 @@ function calculateCompletenessRating(signal) {
   const required = ['pair', 'direction', 'strength', 'confidence', 'finalScore'];
   required.forEach((field) => {
     maxScore += 15;
-    if (signal[field] !== undefined && signal[field] !== null) score += 15;
+    if (signal[field] !== undefined && signal[field] !== null) {
+      score += 15;
+    }
   });
 
   // Entry data
@@ -266,7 +286,9 @@ function calculateCompletenessRating(signal) {
  * @returns {number} Normalized score 0-100
  */
 function normalizeScore(value, min, max) {
-  if (max === min) return 50;
+  if (max === min) {
+    return 50;
+  }
   return Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
 }
 
@@ -276,17 +298,39 @@ function normalizeScore(value, min, max) {
  * @returns {string} Letter grade
  */
 function getRatingGrade(rating) {
-  if (rating >= 90) return 'A+';
-  if (rating >= 85) return 'A';
-  if (rating >= 80) return 'A-';
-  if (rating >= 75) return 'B+';
-  if (rating >= 70) return 'B';
-  if (rating >= 65) return 'B-';
-  if (rating >= 60) return 'C+';
-  if (rating >= 55) return 'C';
-  if (rating >= 50) return 'C-';
-  if (rating >= 45) return 'D+';
-  if (rating >= 40) return 'D';
+  if (rating >= 90) {
+    return 'A+';
+  }
+  if (rating >= 85) {
+    return 'A';
+  }
+  if (rating >= 80) {
+    return 'A-';
+  }
+  if (rating >= 75) {
+    return 'B+';
+  }
+  if (rating >= 70) {
+    return 'B';
+  }
+  if (rating >= 65) {
+    return 'B-';
+  }
+  if (rating >= 60) {
+    return 'C+';
+  }
+  if (rating >= 55) {
+    return 'C';
+  }
+  if (rating >= 50) {
+    return 'C-';
+  }
+  if (rating >= 45) {
+    return 'D+';
+  }
+  if (rating >= 40) {
+    return 'D';
+  }
   return 'F';
 }
 
@@ -296,12 +340,24 @@ function getRatingGrade(rating) {
  * @returns {string} Status
  */
 function getRatingStatus(rating) {
-  if (rating >= 90) return 'Excellent';
-  if (rating >= 80) return 'Very Good';
-  if (rating >= 70) return 'Good';
-  if (rating >= 60) return 'Fair';
-  if (rating >= 50) return 'Average';
-  if (rating >= 40) return 'Below Average';
+  if (rating >= 90) {
+    return 'Excellent';
+  }
+  if (rating >= 80) {
+    return 'Very Good';
+  }
+  if (rating >= 70) {
+    return 'Good';
+  }
+  if (rating >= 60) {
+    return 'Fair';
+  }
+  if (rating >= 50) {
+    return 'Average';
+  }
+  if (rating >= 40) {
+    return 'Below Average';
+  }
   return 'Poor';
 }
 
@@ -313,16 +369,16 @@ function getRatingStatus(rating) {
  */
 function getSignalRecommendation(rating, signal) {
   if (rating >= 80) {
-    return 'STRONG ' + signal.direction;
+    return `STRONG ${signal.direction}`;
   }
   if (rating >= 70) {
-    return 'MODERATE ' + signal.direction;
+    return `MODERATE ${signal.direction}`;
   }
   if (rating >= 60) {
-    return 'WEAK ' + signal.direction;
+    return `WEAK ${signal.direction}`;
   }
   if (rating >= 50) {
-    return 'CONSIDER ' + signal.direction;
+    return `CONSIDER ${signal.direction}`;
   }
   return 'AVOID';
 }
