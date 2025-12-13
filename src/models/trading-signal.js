@@ -168,7 +168,7 @@ class TradingSignal extends BaseModel {
    */
   hasRiskManagement() {
     const rm = this.get('riskManagement');
-    return rm && (rm.positionSize || rm.riskAmount || rm.accountRiskPercentage);
+    return Boolean(rm && (rm.positionSize || rm.riskAmount || rm.accountRiskPercentage));
   }
 
   /**
