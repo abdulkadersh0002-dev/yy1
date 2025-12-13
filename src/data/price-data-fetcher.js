@@ -10,8 +10,6 @@ import { appConfig } from '../app/config.js';
 import {
   getPairMetadata,
   getProviderSymbol,
-  getSyntheticBasePrice,
-  getSyntheticVolatility,
   getPipSize
 } from '../config/pair-catalog.js';
 
