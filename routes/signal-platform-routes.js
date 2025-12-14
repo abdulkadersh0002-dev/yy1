@@ -9,7 +9,7 @@ export function createSignalPlatformRoutes({
   signalDeliveryService,
   signalAnalyticsService,
   masterOrchestrator,
-  logger
+  logger,
 }) {
   const router = express.Router();
 
@@ -20,20 +20,20 @@ export function createSignalPlatformRoutes({
   router.get('/live', async (req, res) => {
     try {
       const analytics = signalAnalyticsService.getRealTimeAnalytics();
-      
+
       res.json({
         success: true,
         data: {
           activeSignals: analytics.activeSignals,
           count: analytics.activeCount,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       });
     } catch (error) {
       logger?.error?.({ err: error }, 'Failed to get live signals');
       res.status(500).json({
         success: false,
-        error: 'Failed to retrieve live signals'
+        error: 'Failed to retrieve live signals',
       });
     }
   });
@@ -45,16 +45,16 @@ export function createSignalPlatformRoutes({
   router.get('/analytics', async (req, res) => {
     try {
       const analytics = signalAnalyticsService.getRealTimeAnalytics();
-      
+
       res.json({
         success: true,
-        data: analytics
+        data: analytics,
       });
     } catch (error) {
       logger?.error?.({ err: error }, 'Failed to get analytics');
       res.status(500).json({
         success: false,
-        error: 'Failed to retrieve analytics'
+        error: 'Failed to retrieve analytics',
       });
     }
   });
@@ -70,22 +70,24 @@ export function createSignalPlatformRoutes({
         outcome: req.query.outcome,
         startDate: req.query.startDate,
         endDate: req.query.endDate,
-        minWinProbability: req.query.minWinProbability ? parseFloat(req.query.minWinProbability) : undefined,
+        minWinProbability: req.query.minWinProbability
+          ? parseFloat(req.query.minWinProbability)
+          : undefined,
         limit: req.query.limit ? parseInt(req.query.limit) : 100,
-        offset: req.query.offset ? parseInt(req.query.offset) : 0
+        offset: req.query.offset ? parseInt(req.query.offset) : 0,
       };
 
       const history = await signalAnalyticsService.getSignalHistory(filters);
-      
+
       res.json({
         success: true,
-        data: history
+        data: history,
       });
     } catch (error) {
       logger?.error?.({ err: error }, 'Failed to get signal history');
       res.status(500).json({
         success: false,
-        error: 'Failed to retrieve signal history'
+        error: 'Failed to retrieve signal history',
       });
     }
   });
@@ -97,16 +99,16 @@ export function createSignalPlatformRoutes({
   router.get('/performance/by-pair', async (req, res) => {
     try {
       const performance = signalAnalyticsService.getPerformanceByPair();
-      
+
       res.json({
         success: true,
-        data: performance
+        data: performance,
       });
     } catch (error) {
       logger?.error?.({ err: error }, 'Failed to get performance by pair');
       res.status(500).json({
         success: false,
-        error: 'Failed to retrieve performance data'
+        error: 'Failed to retrieve performance data',
       });
     }
   });
@@ -118,16 +120,16 @@ export function createSignalPlatformRoutes({
   router.get('/quality-analysis', async (req, res) => {
     try {
       const analysis = signalAnalyticsService.getQualityAnalysis();
-      
+
       res.json({
         success: true,
-        data: analysis
+        data: analysis,
       });
     } catch (error) {
       logger?.error?.({ err: error }, 'Failed to get quality analysis');
       res.status(500).json({
         success: false,
-        error: 'Failed to retrieve quality analysis'
+        error: 'Failed to retrieve quality analysis',
       });
     }
   });
@@ -139,16 +141,16 @@ export function createSignalPlatformRoutes({
   router.get('/delivery-stats', async (req, res) => {
     try {
       const stats = signalDeliveryService.getStats();
-      
+
       res.json({
         success: true,
-        data: stats
+        data: stats,
       });
     } catch (error) {
-      logger?.error?.{ err: error }, 'Failed to get delivery stats');
+      logger?.error?.({ err: error }, 'Failed to get delivery stats');
       res.status(500).json({
         success: false,
-        error: 'Failed to retrieve delivery statistics'
+        error: 'Failed to retrieve delivery statistics',
       });
     }
   });
@@ -166,7 +168,7 @@ export function createSignalPlatformRoutes({
       if (!channels || typeof channels !== 'object') {
         return res.status(400).json({
           success: false,
-          error: 'Invalid channels configuration'
+          error: 'Invalid channels configuration',
         });
       }
 
@@ -174,13 +176,13 @@ export function createSignalPlatformRoutes({
       res.json({
         success: true,
         message: `Subscribed to signal ${signalId}`,
-        channels
+        channels,
       });
     } catch (error) {
       logger?.error?.({ err: error }, 'Failed to subscribe to signal');
       res.status(500).json({
         success: false,
-        error: 'Failed to subscribe'
+        error: 'Failed to subscribe',
       });
     }
   });
@@ -191,9 +193,9 @@ export function createSignalPlatformRoutes({
    */
   router.get('/platform/status', async (req, res) => {
     try {
-      const status = await masterOrchestrator?.getStatus?.() || {
+      const status = (await masterOrchestrator?.getStatus?.()) || {
         status: 'unknown',
-        message: 'Master orchestrator not available'
+        message: 'Master orchestrator not available',
       };
 
       const analytics = signalAnalyticsService.getRealTimeAnalytics();
@@ -205,17 +207,17 @@ export function createSignalPlatformRoutes({
           platform: status,
           signals: {
             active: analytics.activeCount,
-            performance: analytics.performance
+            performance: analytics.performance,
           },
           delivery: deliveryStats,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       });
     } catch (error) {
       logger?.error?.({ err: error }, 'Failed to get platform status');
       res.status(500).json({
         success: false,
-        error: 'Failed to retrieve platform status'
+        error: 'Failed to retrieve platform status',
       });
     }
   });
@@ -229,7 +231,7 @@ export function createSignalPlatformRoutes({
       success: true,
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      uptime: process.uptime()
+      uptime: process.uptime(),
     });
   });
 

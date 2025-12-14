@@ -28,7 +28,7 @@ export class MigrationRunner {
         executed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
     `;
-    
+
     await db.query(query);
     logger.info('Migrations table initialized');
   }
@@ -38,7 +38,9 @@ export class MigrationRunner {
    */
   async getExecutedMigrations() {
     try {
-      const result = await db.query('SELECT migration_name FROM schema_migrations ORDER BY migration_name');
+      const result = await db.query(
+        'SELECT migration_name FROM schema_migrations ORDER BY migration_name'
+      );
       return result.rows.map(row => row.migration_name);
     } catch (error) {
       return [];
@@ -51,15 +53,15 @@ export class MigrationRunner {
   async getMigrationFiles() {
     try {
       const files = await readdir(this.migrationsPath);
-      return files
-        .filter(f => f.endsWith('.sql'))
-        .sort();
+      return files.filter(f => f.endsWith('.sql')).sort();
     } catch (error) {
-      logger.error('Failed to read migrations directory', { error: error.message });
+      logger.error('Failed to read migrations directory', {
+        error: error.message,
+      });
       return [];
     }
   }
-  
+
   // Export as function for compatibility
   static async getMigrationFiles() {
     const runner = new MigrationRunner();
@@ -71,21 +73,21 @@ export class MigrationRunner {
    */
   async executeMigration(filename) {
     const filePath = join(this.migrationsPath, filename);
-    
+
     try {
       const sql = await readFile(filePath, 'utf-8');
-      
-      await db.transaction(async (client) => {
+
+      await db.transaction(async client => {
         // Execute migration SQL
         await client.query(sql);
-        
+
         // Record migration
         await client.query(
           'INSERT INTO schema_migrations (migration_name) VALUES ($1)',
           [filename]
         );
       });
-      
+
       logger.info(`Migration executed: ${filename}`);
       return true;
     } catch (error) {
@@ -101,10 +103,10 @@ export class MigrationRunner {
     try {
       // Initialize migrations table
       await this.initializeMigrationsTable();
-      
+
       // Get executed and pending migrations
       const executedMigrations = await this.getExecutedMigrations();
-      const allMigrations = await getMigrationFiles();
+      const allMigrations = await this.getMigrationFiles();
       const pendingMigrations = allMigrations.filter(
         m => !executedMigrations.includes(m)
       );
@@ -114,7 +116,7 @@ export class MigrationRunner {
         return {
           executed: 0,
           pending: 0,
-          total: allMigrations.length
+          total: allMigrations.length,
         };
       }
 
@@ -128,11 +130,11 @@ export class MigrationRunner {
       }
 
       logger.info(`Executed ${executedCount} migrations successfully`);
-      
+
       return {
         executed: executedCount,
         pending: 0,
-        total: allMigrations.length
+        total: allMigrations.length,
       };
     } catch (error) {
       logger.error('Migration runner failed', { error: error.message });
@@ -146,7 +148,7 @@ export class MigrationRunner {
   async getStatus() {
     try {
       await this.initializeMigrationsTable();
-      
+
       const executedMigrations = await this.getExecutedMigrations();
       const allMigrations = await this.getMigrationFiles();
       const pendingMigrations = allMigrations.filter(
@@ -158,7 +160,7 @@ export class MigrationRunner {
         executed: executedMigrations.length,
         pending: pendingMigrations.length,
         executedList: executedMigrations,
-        pendingList: pendingMigrations
+        pendingList: pendingMigrations,
       };
     } catch (error) {
       logger.error('Failed to get migration status', { error: error.message });
