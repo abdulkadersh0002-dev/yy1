@@ -15,6 +15,7 @@
     "test:coverage": "node --experimental-test-coverage --test tests/unit/**/*.test.js",
     "test:data-sources": "node scripts/test-data-sources.js",
     "db:migrate": "node scripts/run-migrations.js",
+    "db:migrate:windows": "node scripts/migrate-database-windows.js",
     "validate:providers": "node scripts/validate-providers.js",
     "train:adaptive-scorer": "node scripts/train-adaptive-scorer.js",
     "news:rss": "node scripts/fetch-rss-feeds.js",

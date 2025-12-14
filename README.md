@@ -4,6 +4,8 @@
 
 An advanced AI-powered automated trading system with economic, news, and technical analysis capabilities. Designed for production-grade reliability, scalability, and security.
 
+> **🪟 Windows Users:** See the dedicated [Windows Setup Guide](docs/WINDOWS_SETUP.md) for platform-specific instructions including PostgreSQL installation and database migration steps.
+
 ## 📋 Table of Contents
 
 - [Features](#-features)
@@ -63,19 +65,30 @@ npm start
 npm ci
 ```
 
-### Database Setup (Optional)
+### Database Setup (PostgreSQL)
 
-If you want to enable persistence, set up TimescaleDB:
+#### Linux/Mac
 
 ```bash
-# Start TimescaleDB with Docker
-docker compose up -d timescaledb
+# Create PostgreSQL database
+sudo -u postgres psql -c "CREATE DATABASE signals_strategy;"
+sudo -u postgres psql -c "CREATE USER signals_user WITH PASSWORD 'changeme';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE signals_strategy TO signals_user;"
 
 # Run migrations
 npm run db:migrate
 ```
 
-See [db/README.md](./db/README.md) for detailed database setup instructions.
+#### Windows
+
+```powershell
+# Use Windows-specific migration command
+npm run db:migrate:windows
+```
+
+**Windows users should follow the complete [Windows Setup Guide](docs/WINDOWS_SETUP.md) for detailed PostgreSQL installation and configuration steps.**
+
+See [DATABASE_COMPLETE.md](./docs/DATABASE_COMPLETE.md) for detailed database documentation.
 
 ## ⚙️ Configuration
 
