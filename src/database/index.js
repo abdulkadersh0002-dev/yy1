@@ -6,6 +6,7 @@
 import db from './connection.js';
 import { TradeRepository } from './repositories/TradeRepository.js';
 import { SignalRepository } from './repositories/SignalRepository.js';
+import migrationRunner from './migrations.js';
 
 // Initialize repositories
 export const tradeRepository = new TradeRepository();
@@ -20,7 +21,7 @@ export async function initializeDatabase() {
     
     if (initialized) {
       // Optionally run migrations here
-      // await runMigrations();
+      // await migrationRunner.runMigrations();
       return true;
     }
     
@@ -52,10 +53,17 @@ export function getDatabaseHealth() {
 // Export database connection
 export { db };
 
+// Export migration runner
+export { migrationRunner };
+
+// Export services
+export * from './services/index.js';
+
 export default {
   db,
   tradeRepository,
   signalRepository,
+  migrationRunner,
   initializeDatabase,
   closeDatabase,
   getDatabaseHealth
