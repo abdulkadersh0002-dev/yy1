@@ -1,15 +1,18 @@
 import { allowSyntheticData, requireRealTimeData } from '../config/runtime-flags.js';
 import { appConfig } from '../app/config.js';
 
+// Only TwelveData is required - all other providers are optional
+// RSS feeds provide news data for free without any API keys
 const REQUIRED_PROVIDERS = [
-  { envKey: 'TWELVE_DATA_API_KEY', label: 'Twelve Data', configKey: 'twelveData' },
-  { envKey: 'ALPHA_VANTAGE_API_KEY', label: 'Alpha Vantage', configKey: 'alphaVantage' },
-  { envKey: 'FINNHUB_API_KEY', label: 'Finnhub', configKey: 'finnhub' },
-  { envKey: 'POLYGON_API_KEY', label: 'Polygon', configKey: 'polygon' },
-  { envKey: 'NEWSAPI_KEY', label: 'NewsAPI', configKey: 'newsApi' }
+  { envKey: 'TWELVE_DATA_API_KEY', label: 'Twelve Data', configKey: 'twelveData' }
 ];
 
+// All additional providers are optional - not required for operation
 const AUXILIARY_PROVIDERS = [
+  { envKey: 'ALPHA_VANTAGE_API_KEY', label: 'Alpha Vantage', configKey: 'alphaVantage', optional: true },
+  { envKey: 'FINNHUB_API_KEY', label: 'Finnhub', configKey: 'finnhub', optional: true },
+  { envKey: 'POLYGON_API_KEY', label: 'Polygon', configKey: 'polygon', optional: true },
+  { envKey: 'NEWSAPI_KEY', label: 'NewsAPI', configKey: 'newsApi', optional: true },
   { envKey: 'FRED_API_KEY', label: 'FRED', configKey: 'fred', optional: true },
   {
     envKey: 'EXCHANGERATE_API_KEY',

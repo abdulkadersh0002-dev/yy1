@@ -22,14 +22,16 @@ An advanced AI-powered automated trading system with economic, news, and technic
 
 ## ✨ Features
 
-- **Multi-timeframe Technical Analysis** - Supports M1 to W1 timeframes
-- **Economic Calendar Integration** - Real-time economic event tracking
-- **News Sentiment Analysis** - AI-powered news sentiment scoring
-- **Multi-broker Support** - OANDA, MT5, and IBKR integration
-- **Risk Management** - Advanced position sizing and risk controls
-- **Real-time WebSocket Updates** - Live trade and signal broadcasting
-- **Prometheus Metrics** - Full observability with Grafana dashboards
-- **Health Monitoring** - Comprehensive health checks and alerting
+- **💰 100% Free Data Sources** - Only 2 API keys required (OpenAI + TwelveData), 19 free RSS news feeds
+- **🤖 AI-Powered Analysis** - OpenAI integration for intelligent signal generation
+- **📊 Multi-timeframe Technical Analysis** - Supports M1 to W1 timeframes
+- **📰 Free News Aggregation** - 19 RSS feeds from Reuters, Bloomberg, CNBC, Central Banks, and more
+- **📅 Economic Calendar Integration** - Real-time economic event tracking
+- **💹 Multi-broker Support** - OANDA, MT5, and IBKR integration
+- **🛡️ Advanced Risk Management** - Position sizing, drawdown limits, and correlation analysis
+- **⚡ Real-time WebSocket Updates** - Live trade and signal broadcasting
+- **📈 Prometheus Metrics** - Full observability with Grafana dashboards
+- **🏥 Health Monitoring** - Comprehensive health checks and alerting
 
 ## 🚀 Quick Start
 
@@ -107,17 +109,28 @@ cp .env.example .env
 | `PORT`     | Server port (default: 4101)                       |
 | `NODE_ENV` | Environment (`development`, `production`, `test`) |
 
-#### API Keys
+#### API Keys (Only 2 Required!)
 
-| Variable                | Description                       |
-| ----------------------- | --------------------------------- |
-| `TWELVE_DATA_API_KEY`   | TwelveData API key for price data |
-| `POLYGON_API_KEY`       | Polygon.io API key                |
-| `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key             |
-| `FINNHUB_API_KEY`       | Finnhub API key                   |
-| `NEWSAPI_KEY`           | NewsAPI key for news sentiment    |
-| `FRED_API_KEY`          | FRED API key for economic data    |
-| `OPENAI_API_KEY`        | OpenAI API key (optional)         |
+**✅ Required Keys:**
+| Variable                | Description                                          | Cost      |
+| ----------------------- | ---------------------------------------------------- | --------- |
+| `OPENAI_API_KEY`        | OpenAI API key for AI analysis                      | ~$3-6/month |
+| `TWELVE_DATA_API_KEY`   | TwelveData API key for price data (pre-configured)  | FREE      |
+
+**ℹ️ News Sources:** 
+- All news data comes from **19 free RSS feeds** including Reuters, Bloomberg, CNBC, ForexLive, DailyFX, and official Central Bank feeds
+- **No API keys required** for news data
+- See [FREE_DATA_SOURCES.md](./docs/FREE_DATA_SOURCES.md) for complete details
+
+**📝 Optional Keys (Not Required):**
+The following keys are optional backup providers - the app works perfectly without them:
+| Variable                | Description                       | Required |
+| ----------------------- | --------------------------------- | -------- |
+| `POLYGON_API_KEY`       | Polygon.io API key (backup)       | ❌ No    |
+| `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key (backup)    | ❌ No    |
+| `FINNHUB_API_KEY`       | Finnhub API key (backup)          | ❌ No    |
+| `NEWSAPI_KEY`           | NewsAPI key (backup)              | ❌ No    |
+| `FRED_API_KEY`          | FRED API key (backup)             | ❌ No    |
 
 #### Database Configuration
 
