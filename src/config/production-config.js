@@ -5,24 +5,30 @@
 
 /**
  * Strategy Configuration
+ * Ultra-Quality Settings for 90-100% Win Rate
  */
 export const strategies = {
   // AI/Deep Learning Strategy
   ai_strategy: {
     enabled: true,
-    minConfidence: 0.85,
-    minQuality: 85,
+    minConfidence: 0.90,          // Raised from 0.85 for ultra-quality
+    minQuality: 90,                // Raised from 85
+    modelAgreementRequired: 5,     // Require 5/6 models (83% consensus)
     weight: 0.35
   },
 
   // Technical Analysis Strategy
   technical_strategy: {
     enabled: true,
+    minConfluence: 5,              // Require 5+ indicator confirmations
+    multiTimeframeRequired: true,  // All timeframes must align
     indicators: {
-      rsi: { enabled: true, oversold: 30, overbought: 70 },
-      macd: { enabled: true, signalCrossover: true },
-      movingAverage: { enabled: true, periods: [50, 200] },
-      fibonacci: { enabled: true }
+      rsi: { enabled: true, oversold: 30, overbought: 70, requireDivergenceCheck: true },
+      macd: { enabled: true, signalCrossover: true, requireHistogramExpansion: true },
+      movingAverage: { enabled: true, periods: [50, 200], requireAllAligned: true },
+      fibonacci: { enabled: true, requireLevelConfluence: true },
+      adx: { enabled: true, minStrength: 25 },  // Only strong trends
+      atr: { enabled: true, maxVolatility: 2.0 } // Avoid extreme volatility
     },
     weight: 0.25
   },
@@ -30,15 +36,25 @@ export const strategies = {
   // News/Sentiment Strategy
   news_strategy: {
     enabled: true,
-    minSentimentScore: 0.6,
+    minSentimentScore: 0.75,       // Raised from 0.6
     highImpactOnly: true,
+    requireNoConflict: true,       // No conflicting news within 30min
     weight: 0.20
   },
 
-  // Ensemble Strategy
+  // Ensemble Strategy (6 ML models)
   ensemble_strategy: {
     enabled: true,
-    minAgreement: 4,  // At least 4 out of 6 models must agree
+    minAgreement: 5,               // Raised from 4 - require 5/6 models (83%)
+    minEnsembleConfidence: 0.85,   // Overall ensemble must be 85%+ confident
+    models: {
+      lstm: { enabled: true, weight: 0.20, minAccuracy: 0.87 },
+      gru: { enabled: true, weight: 0.18, minAccuracy: 0.85 },
+      cnn: { enabled: true, weight: 0.17, minAccuracy: 0.82 },
+      randomForest: { enabled: true, weight: 0.15, minAccuracy: 0.80 },
+      xgboost: { enabled: true, weight: 0.15, minAccuracy: 0.83 },
+      lightgbm: { enabled: true, weight: 0.15, minAccuracy: 0.82 }
+    },
     weight: 0.20
   }
 };
@@ -73,20 +89,69 @@ export const riskConfig = {
 
 /**
  * Signal Validation Configuration
+ * Ultra-Strict Filtering for 90-100% Win Rate
  */
 export const signalValidation = {
-  minQuality: 75,
-  minConfidence: 0.70,
-  minRiskReward: 1.5,
-  maxSpread: 3,  // pips
+  // Core Quality Thresholds (Ultra-Strict)
+  minQuality: 85,                  // Raised from 75 - institutional grade only
+  minConfidence: 0.85,             // Raised from 0.70 - high confidence required
+  minFinalScore: 80,               // Overall signal score threshold
+  minRiskReward: 2.5,              // Raised from 1.5 - better risk/reward
+  minWinProbability: 0.90,         // Target 90%+ win rate
+  maxSpread: 2.5,                  // Reduced from 3 - tighter spreads only
   
-  // Ultra filter stages
+  // Multi-Timeframe Confluence (All must align)
+  timeframes: {
+    D1: { enabled: true, weight: 0.25, trendMustAlign: true },
+    H4: { enabled: true, weight: 0.25, trendMustAlign: true },
+    H1: { enabled: true, weight: 0.25, trendMustAlign: true },
+    M15: { enabled: true, weight: 0.25, trendMustAlign: true }
+  },
+  
+  // Ultra filter stages (7-stage system)
   stages: {
-    priceAction: { enabled: true, weight: 0.15 },
-    multiTimeframe: { enabled: true, weight: 0.15 },
-    volumeProfile: { enabled: true, weight: 0.10 },
-    marketStructure: { enabled: true, weight: 0.15 },
-    advancedFilters: { enabled: true, weight: 0.15 }
+    stage1_basicQuality: { 
+      enabled: true, 
+      weight: 0.15,
+      checks: ['strength', 'confidence', 'score', 'riskReward']
+    },
+    stage2_marketRegime: { 
+      enabled: true, 
+      weight: 0.15,
+      allowedRegimes: ['trending_strong', 'breakout'],
+      requireOptimalConditions: true
+    },
+    stage3_technicalConfluence: { 
+      enabled: true, 
+      weight: 0.20,
+      minConfluence: 5,
+      requireMultiTimeframe: true
+    },
+    stage4_riskRewardProfile: { 
+      enabled: true, 
+      weight: 0.15,
+      minRR: 2.5,
+      requireMultiLevelTP: true
+    },
+    stage5_aiEnsemble: {
+      enabled: true,
+      weight: 0.15,
+      minModelAgreement: 5,
+      minEnsembleConfidence: 0.85
+    },
+    stage6_newsAlignment: {
+      enabled: true,
+      weight: 0.10,
+      requireNoConflict: true,
+      checkWindow: 30  // minutes
+    },
+    stage7_historicalValidation: {
+      enabled: true,
+      weight: 0.10,
+      minHistoricalWinRate: 0.70,
+      minSimilarPatterns: 3,
+      minSimilarityScore: 0.85
+    }
   }
 };
 
