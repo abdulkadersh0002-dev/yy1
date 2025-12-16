@@ -7,7 +7,13 @@ import {
   assertRealTimeDataAvailability
 } from '../config/runtime-flags.js';
 import { appConfig } from '../app/config.js';
-import { getPairMetadata, getProviderSymbol, getPipSize } from '../config/pair-catalog.js';
+import {
+  getPairMetadata,
+  getProviderSymbol,
+  getSyntheticBasePrice,
+  getSyntheticVolatility,
+  getPipSize
+} from '../config/pair-catalog.js';
 
 const PROVIDERS = ['twelveData', 'polygon', 'finnhub', 'alphaVantage'];
 
@@ -43,17 +49,17 @@ const DEFAULT_LATENCY_TARGETS = {
 // Optimized cache TTLs for real data within API limits
 // Longer timeframes don't need frequent updates
 const DEFAULT_CACHE_TTLS = {
-  M1: 45_000, // 45s (was 8s) - M1 rarely used for forex signals
-  M5: 4_60_000, // 4.6min (was 20s) - Still responsive for scalping
-  M15: 12_00_000, // 12min (was 45s) - Primary timeframe for signals
-  M30: 25_00_000, // 25min (was 1min) - Intermediate timeframe
-  H1: 50_00_000, // 50min (was 2min) - Hourly updates sufficient
-  H2: 90_00_000, // 1.5h (was 2.5min) - Multi-hour perspective
-  H4: 3_000_000, // 3h (was 5min) - Daily perspective
-  H6: 5_000_000, // 5h (was 7min) - Extended view
-  H12: 10_000_000, // 10h (was 9min) - Half-day view
-  D1: 18_000_000, // 18h (was 10min) - Daily candles stable
-  W1: 1_200_000 // 20min (unchanged) - Weekly updates rare
+  M1: 45_000,        // 45s (was 8s) - M1 rarely used for forex signals
+  M5: 4_60_000,      // 4.6min (was 20s) - Still responsive for scalping
+  M15: 12_00_000,    // 12min (was 45s) - Primary timeframe for signals
+  M30: 25_00_000,    // 25min (was 1min) - Intermediate timeframe
+  H1: 50_00_000,     // 50min (was 2min) - Hourly updates sufficient
+  H2: 90_00_000,     // 1.5h (was 2.5min) - Multi-hour perspective
+  H4: 3_000_000,     // 3h (was 5min) - Daily perspective
+  H6: 5_000_000,     // 5h (was 7min) - Extended view
+  H12: 10_000_000,   // 10h (was 9min) - Half-day view
+  D1: 18_000_000,    // 18h (was 10min) - Daily candles stable
+  W1: 1_200_000      // 20min (unchanged) - Weekly updates rare
 };
 
 const TIMEFRAME_ALIASES = {
@@ -1739,10 +1745,35 @@ export default class PriceDataFetcher {
   }
 
   generateSimulatedData(pair, bars = 240, options = {}) {
-    // REMOVED: Synthetic data generation - production uses only real data
-    throw new Error(
-      'Synthetic data generation disabled in production. Use MT4/MT5 EA or real API data sources.'
-    );
+    const count = Math.max(2, Math.min(2000, Number.isInteger(bars) ? bars : 240));
+    const timeframe = normalizeTimeframe(options.timeframe || 'M15');
+    const timeframeMs = timeframeToMilliseconds(timeframe) || 60_000;
+    const basePrice = getSyntheticBasePrice(pair) || 1.0;
+    const volatility = getSyntheticVolatility(pair) || 0.0025;
+    const now = Date.now();
+    const series = [];
+    let price = basePrice;
+    for (let i = count - 1; i >= 0; i -= 1) {
+      const timestamp = now - i * timeframeMs;
+      const drift = (Math.random() - 0.5) * volatility;
+      const open = price;
+      price = Math.max(0.0001, price + drift);
+      const close = price;
+      const high = Math.max(open, close) + Math.random() * volatility * 0.6;
+      const low = Math.min(open, close) - Math.random() * volatility * 0.6;
+      const volume = Math.random() * 10_000 + 1_000;
+      series.push({
+        time: timestamp,
+        timestamp,
+        open: rounded(open, 6),
+        high: rounded(high, 6),
+        low: rounded(low, 6),
+        close: rounded(close, 6),
+        volume: rounded(volume, 0),
+        provider: 'synthetic'
+      });
+    }
+    return series;
   }
 
   getBasePriceForPair(pair) {
@@ -1756,15 +1787,30 @@ export default class PriceDataFetcher {
         return metadata.syntheticBasePrice;
       }
     }
-    // Removed getSyntheticBasePrice - use real data only
+    const synthetic = safeNumber(getSyntheticBasePrice(pair));
+    if (Number.isFinite(synthetic)) {
+      return synthetic;
+    }
     return 1;
   }
 
   generateSyntheticQuote(pair, options = {}) {
-    // REMOVED: Synthetic quote generation - production uses only real data
-    throw new Error(
-      'Synthetic quote generation disabled in production. Use MT4/MT5 EA or real API data sources.'
-    );
+    const basePrice = getSyntheticBasePrice(pair) || 1.0;
+    const volatility = getSyntheticVolatility(pair) || 0.0025;
+    const mid = basePrice + (Math.random() - 0.5) * volatility;
+    const spread = volatility * 0.2;
+    const bid = mid - spread / 2;
+    const ask = mid + spread / 2;
+    const pipSize = getPipSize(pair);
+    const spreadPips = Number.isFinite(pipSize) ? Number(((ask - bid) / pipSize).toFixed(3)) : null;
+    return {
+      provider: options.provider || 'synthetic',
+      bid: rounded(bid, 6),
+      ask: rounded(ask, 6),
+      mid: rounded(mid, 6),
+      spreadPips,
+      timestamp: Date.now()
+    };
   }
 
   scheduleRefresh(key, fn, ttlMs) {

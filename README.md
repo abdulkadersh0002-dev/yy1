@@ -1,97 +1,33 @@
-# 🎯 Intelligent Auto-Trading System - Ultra-Quality Edition
+# Intelligent Auto-Trading System
 
 [![CI](https://github.com/abdulkadersh0002-dev/my-app1/actions/workflows/ci.yml/badge.svg)](https://github.com/abdulkadersh0002-dev/my-app1/actions/workflows/ci.yml)
-[![Win Rate](https://img.shields.io/badge/Win_Rate-90--100%25-brightgreen)](docs/SIGNAL_QUALITY_GUIDE.md)
-[![API Keys Required](https://img.shields.io/badge/API_Keys-Only_2_Required-blue)](docs/FREE_DATA_SOURCES.md)
-[![Cost](https://img.shields.io/badge/Monthly_Cost-$3--6-green)](docs/FREE_DATA_SOURCES.md)
 
-An **institutional-grade AI-powered automated trading system** with 90-100% win rate capability through ultra-strict 7-stage signal filtering, 6-model ML ensemble, and multi-timeframe confluence requirements. Designed for professional traders who demand excellence.
-
-> **🎯 NEW:** Ultra-Quality Signal System - Achieve 90-100% win rate with advanced AI filtering and multi-timeframe analysis. See [Signal Quality Guide](docs/SIGNAL_QUALITY_GUIDE.md) for details.
-
-> **🪟 Windows Users:** See the dedicated [Windows Setup Guide](docs/WINDOWS_SETUP.md) for platform-specific instructions including PostgreSQL installation and database migration steps.
+An advanced AI-powered automated trading system with economic, news, and technical analysis capabilities. Designed for production-grade reliability, scalability, and security.
 
 ## 📋 Table of Contents
 
-- [Ultra-Quality Features](#-ultra-quality-features)
-- [Signal Quality System](#-signal-quality-system-90-100-win-rate)
+- [Features](#-features)
 - [Quick Start](#-quick-start)
 - [Installation](#-installation)
 - [Configuration](#-configuration)
 - [API Reference](#-api-reference)
+- [Docker](#-docker)
 - [Development](#-development)
 - [Testing](#-testing)
 - [Architecture](#-architecture)
-- [Documentation](#-documentation)
 - [Contributing](#-contributing)
 - [License](#-license)
 
-## ✨ Ultra-Quality Features
+## ✨ Features
 
-### 🎯 Signal Quality System (90-100% Win Rate)
-
-- **7-Stage Ultra Filtering** - Basic Quality → Market Regime → Technical Confluence → Risk/Reward → AI Ensemble → News Alignment → Historical Validation
-- **6-Model ML Ensemble** - LSTM, GRU, CNN, Random Forest, XGBoost, LightGBM with 83%+ consensus requirement
-- **Multi-Timeframe Confluence** - D1, H4, H1, M15 must all align for signal generation
-- **Pattern Matching** - 500+ historical patterns with 70%+ win rate validation
-- **Smart Position Sizing** - Fractional Kelly Criterion (25%) with confidence multipliers
-- **3-Level Take Profit** - 50% at 1.5R, 30% at 2.5R, 20% trailing at 4R+
-
-### 💰 Minimal Cost Setup
-
-- **💵 Total Cost: ~$3-6/month** (OpenAI API only)
-- **🆓 TwelveData: 100% FREE** (800 requests/day - price data)
-- **📰 News: 100% FREE** (19 RSS feeds - no API keys needed)
-- **📊 Only 2 API Keys Required** (OpenAI + TwelveData)
-- **❌ No Subscriptions** - No NewsAPI, AlphaVantage, or Polygon needed
-
-### 🤖 AI/ML Capabilities
-
-- **Deep Learning Models** - LSTM for pattern recognition (87-92% accuracy)
-- **Ensemble Voting** - 6 independent models with weighted consensus
-- **Adaptive Learning** - Models retrain based on performance
-- **Feature Engineering** - 80+ technical features extracted per signal
-- **Market Regime Detection** - Only trades optimal conditions
-
-### 📊 Technical Analysis
-
-- **Multi-Timeframe Analysis** - M1, M5, M15, M30, H1, H4, D1, W1
-- **50+ Technical Indicators** - RSI, MACD, Bollinger Bands, Fibonacci, ADX, ATR, Stochastic
-- **Volume Profile Analysis** - Order flow and liquidity assessment
-- **Support/Resistance** - Dynamic level identification
-- **Trend Detection** - Multi-timeframe trend strength calculation
-
-### 📰 Free News Sources (19 Feeds)
-
-- **Major Financial News:** Reuters, Bloomberg, CNBC, Yahoo Finance, MarketWatch, Financial Times
-- **Forex Specialists:** Investing.com, ForexLive, DailyFX, FXStreet, Forex Factory
-- **Central Banks:** ECB, Fed, BOE, BOJ, RBA, RBNZ, BOC, SNB (Official feeds)
-
-### 🛡️ Advanced Risk Management
-
-- **Position Sizing** - Fractional Kelly (25%) with confidence multipliers
-- **Stop-Loss Optimization** - Dynamic ATR-based + structure-based stops
-- **Multi-Level Exits** - 3-level take profit strategy for optimal risk/reward
-- **Daily/Weekly Limits** - 5% daily max loss, 10% weekly max loss
-- **Consecutive Loss Protection** - Automatic 60-minute cooldown after 3 losses
-- **Correlation Analysis** - Avoid over-exposure to correlated pairs
-- **Session-Based Limits** - Different rules for London, NY, Tokyo, Sydney
-
-### 📈 Performance Tracking
-
-- **PostgreSQL Database** - Complete trade history and signal tracking
-- **Performance Analytics** - Real-time win rate, drawdown, profit factor
-- **Pattern Library** - Historical pattern database with 500+ entries
-- **Adaptive Thresholds** - System learns and adjusts from every trade
-- **Detailed Logging** - Complete audit trail of all decisions
-
-### ⚡ Real-Time Features
-
-- **WebSocket Updates** - Live signal broadcasting and trade updates
-- **Health Monitoring** - Data freshness tracking for all sources
-- **Emergency Controls** - One-click stop trading, rollback, close all positions
-- **Dashboard Monitoring** - Professional web interface with live charts
-- **Alert System** - Configurable alerts for important events
+- **Multi-timeframe Technical Analysis** - Supports M1 to W1 timeframes
+- **Economic Calendar Integration** - Real-time economic event tracking
+- **News Sentiment Analysis** - AI-powered news sentiment scoring
+- **Multi-broker Support** - OANDA, MT5, and IBKR integration
+- **Risk Management** - Advanced position sizing and risk controls
+- **Real-time WebSocket Updates** - Live trade and signal broadcasting
+- **Prometheus Metrics** - Full observability with Grafana dashboards
+- **Health Monitoring** - Comprehensive health checks and alerting
 
 ## 🚀 Quick Start
 
@@ -127,30 +63,19 @@ npm start
 npm ci
 ```
 
-### Database Setup (PostgreSQL)
+### Database Setup (Optional)
 
-#### Linux/Mac
+If you want to enable persistence, set up TimescaleDB:
 
 ```bash
-# Create PostgreSQL database
-sudo -u postgres psql -c "CREATE DATABASE signals_strategy;"
-sudo -u postgres psql -c "CREATE USER signals_user WITH PASSWORD 'changeme';"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE signals_strategy TO signals_user;"
+# Start TimescaleDB with Docker
+docker compose up -d timescaledb
 
 # Run migrations
 npm run db:migrate
 ```
 
-#### Windows
-
-```powershell
-# Use Windows-specific migration command
-npm run db:migrate:windows
-```
-
-**Windows users should follow the complete [Windows Setup Guide](docs/WINDOWS_SETUP.md) for detailed PostgreSQL installation and configuration steps.**
-
-See [DATABASE_COMPLETE.md](./docs/DATABASE_COMPLETE.md) for detailed database documentation.
+See [db/README.md](./db/README.md) for detailed database setup instructions.
 
 ## ⚙️ Configuration
 
@@ -169,28 +94,17 @@ cp .env.example .env
 | `PORT`     | Server port (default: 4101)                       |
 | `NODE_ENV` | Environment (`development`, `production`, `test`) |
 
-#### API Keys (Only 2 Required!)
+#### API Keys
 
-**✅ Required Keys:**
-| Variable                | Description                                          | Cost      |
-| ----------------------- | ---------------------------------------------------- | --------- |
-| `OPENAI_API_KEY`        | OpenAI API key for AI analysis                      | ~$3-6/month |
-| `TWELVE_DATA_API_KEY`   | TwelveData API key for price data (pre-configured)  | FREE      |
-
-**ℹ️ News Sources:** 
-- All news data comes from **19 free RSS feeds** including Reuters, Bloomberg, CNBC, ForexLive, DailyFX, and official Central Bank feeds
-- **No API keys required** for news data
-- See [FREE_DATA_SOURCES.md](./docs/FREE_DATA_SOURCES.md) for complete details
-
-**📝 Optional Keys (Not Required):**
-The following keys are optional backup providers - the app works perfectly without them:
-| Variable                | Description                       | Required |
-| ----------------------- | --------------------------------- | -------- |
-| `POLYGON_API_KEY`       | Polygon.io API key (backup)       | ❌ No    |
-| `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key (backup)    | ❌ No    |
-| `FINNHUB_API_KEY`       | Finnhub API key (backup)          | ❌ No    |
-| `NEWSAPI_KEY`           | NewsAPI key (backup)              | ❌ No    |
-| `FRED_API_KEY`          | FRED API key (backup)             | ❌ No    |
+| Variable                | Description                       |
+| ----------------------- | --------------------------------- |
+| `TWELVE_DATA_API_KEY`   | TwelveData API key for price data |
+| `POLYGON_API_KEY`       | Polygon.io API key                |
+| `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key             |
+| `FINNHUB_API_KEY`       | Finnhub API key                   |
+| `NEWSAPI_KEY`           | NewsAPI key for news sentiment    |
+| `FRED_API_KEY`          | FRED API key for economic data    |
+| `OPENAI_API_KEY`        | OpenAI API key (optional)         |
 
 #### Database Configuration
 

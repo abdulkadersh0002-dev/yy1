@@ -542,6 +542,14 @@ export function getPricePrecision(pair) {
   );
 }
 
-// Synthetic functions removed - use real data only from MT4/MT5 EA or APIs
+export function getSyntheticBasePrice(pair) {
+  const metadata = getPairMetadata(pair);
+  return metadata?.syntheticBasePrice ?? 1;
+}
+
+export function getSyntheticVolatility(pair) {
+  const metadata = getPairMetadata(pair);
+  return metadata?.syntheticVolatility ?? 0.001;
+}
 
 export default pairCatalog;

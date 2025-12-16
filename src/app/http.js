@@ -7,11 +7,11 @@ import { createRateLimiter } from '../middleware/rate-limit.js';
 import { appConfig } from '../app/config.js';
 import healthRoutes from '../../routes/health-routes.js';
 import tradingRoutes from '../../routes/trading-routes.js';
-import autoTradingRoutes from '../../routes/auto-trader-routes.js';
+import autoTradingRoutes from '../../routes/auto-trading-routes.js';
 import configRoutes from '../../routes/config-routes.js';
 import brokerRoutes from '../../routes/broker-routes.js';
 import featureRoutes from '../../routes/feature-routes.js';
-import eaBridgeRoutes from '../../routes/ea-enhanced-routes.js';
+import eaBridgeRoutes from '../../routes/ea-bridge-routes.js';
 
 export function createHttpApp({
   tradingEngine,
