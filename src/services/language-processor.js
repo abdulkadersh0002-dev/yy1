@@ -101,6 +101,10 @@ export default class LanguageProcessor {
     }
     this.translationTimeoutMs = translationTimeoutMs;
     this.translationCache = new Map();
+
+    this.translationDisabledUntil = 0;
+    this.translationDisableLogCooldownMs = 60 * 1000;
+    this.translationDisableLastLoggedAt = 0;
   }
 
   detectLanguage(text) {
@@ -181,6 +185,16 @@ export default class LanguageProcessor {
       };
     }
 
+    const now = Date.now();
+    if (this.translationDisabledUntil && now < this.translationDisabledUntil) {
+      const normalizedText = typeof text === 'string' ? text.trim() : '';
+      return {
+        text: normalizedText,
+        changed: false,
+        provider: null
+      };
+    }
+
     const normalized = typeof text === 'string' ? text.trim() : '';
     if (!normalized) {
       return {
@@ -216,7 +230,27 @@ export default class LanguageProcessor {
       this.translationCache.set(cacheKey, response);
       return response;
     } catch (error) {
-      console.warn('Translation failed:', error.message || error);
+      const message = String(error?.message || error || 'unknown error');
+      const shouldBackoff =
+        /too many requests|\b429\b/i.test(message) || /timed out/i.test(message);
+
+      if (shouldBackoff) {
+        const backoffMs = 5 * 60 * 1000;
+        this.translationDisabledUntil = Date.now() + backoffMs;
+
+        if (
+          Date.now() - this.translationDisableLastLoggedAt >
+          this.translationDisableLogCooldownMs
+        ) {
+          this.translationDisableLastLoggedAt = Date.now();
+          console.warn(
+            `Translation temporarily disabled for ${Math.round(backoffMs / 1000)}s due to upstream throttling/timeouts.`
+          );
+        }
+      } else {
+        console.warn('Translation failed:', message);
+      }
+
       const fallback = {
         text: normalized,
         changed: false,

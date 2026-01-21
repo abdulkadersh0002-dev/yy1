@@ -2,10 +2,12 @@ import { useEffect, useRef } from 'react';
 import { getApiConfig } from '../utils/api.js';
 
 const RECONNECT_DELAY_MS = 5000;
+const CLOSE_IF_IDLE_DELAY_MS = 250;
 
 const listeners = new Set();
 let socket = null;
 let reconnectTimer = null;
+let closeIfIdleTimer = null;
 let currentConfig = null;
 
 const toEventPayload = (raw) => {
@@ -38,6 +40,10 @@ const notifyListeners = (event) => {
 };
 
 const closeSocket = () => {
+  if (closeIfIdleTimer) {
+    clearTimeout(closeIfIdleTimer);
+    closeIfIdleTimer = null;
+  }
   if (socket && typeof globalThis !== 'undefined') {
     try {
       socket.close();
@@ -46,6 +52,19 @@ const closeSocket = () => {
     }
   }
   socket = null;
+};
+
+const scheduleCloseIfIdle = () => {
+  if (closeIfIdleTimer || listeners.size > 0) {
+    return;
+  }
+
+  closeIfIdleTimer = setTimeout(() => {
+    closeIfIdleTimer = null;
+    if (listeners.size === 0) {
+      closeSocket();
+    }
+  }, CLOSE_IF_IDLE_DELAY_MS);
 };
 
 const scheduleReconnect = () => {
@@ -61,6 +80,11 @@ const scheduleReconnect = () => {
 const ensureSocket = () => {
   if (socket || listeners.size === 0) {
     return;
+  }
+
+  if (closeIfIdleTimer) {
+    clearTimeout(closeIfIdleTimer);
+    closeIfIdleTimer = null;
   }
 
   if (typeof globalThis === 'undefined' || typeof globalThis.WebSocket === 'undefined') {
@@ -141,7 +165,7 @@ export const useWebSocketFeed = (onEvent) => {
           clearTimeout(reconnectTimer);
           reconnectTimer = null;
         }
-        closeSocket();
+        scheduleCloseIfIdle();
         currentConfig = null;
       }
     };

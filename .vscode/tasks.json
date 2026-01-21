@@ -26,9 +26,156 @@
       "isBackground": true
     },
     {
+      "label": "🚀 Start Server + Dashboard",
+      "type": "shell",
+      "command": "npm run start:all",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "🚀 Start Server + Dashboard (ALL symbols)",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "set ALLOW_ALL_SYMBOLS=true&& npm run start:all"],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "🚀 Start Server + Dashboard (ALL symbols + Full Scan)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set ALLOW_ALL_SYMBOLS=true&& set EA_FULL_SCAN=true&& set EA_BACKGROUND_SIGNALS=true&& set EA_RESPECT_DASHBOARD_ACTIVE_SYMBOLS=false&& set EA_DASHBOARD_ALLOW_CANDIDATES=true&& set EA_SCAN_SYMBOLS_MAX=2000&& set VITE_ACTIVE_SYMBOLS_SYNC_MAX=2000&& set WS_MAX_RECENT_CANDIDATE_SIGNALS=500&& set VITE_MAX_CANDIDATE_ITEMS=500&& set VITE_CANDIDATE_TABLE_ROWS=200&& npm run start:all"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "🚀 Start Server + Dashboard (ALL symbols + AUTO trading)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        {
+          "label": "🛰️ Watch Auto-Trading Events (ws)",
+          "type": "shell",
+          "command": "node",
+          "args": ["scripts/diagnostics/watch-auto-trading.mjs", "http://127.0.0.1:4101"],
+          "isBackground": true,
+          "group": "test"
+        },
+        "set ALLOW_ALL_SYMBOLS=true&& set AUTO_TRADING_AUTOSTART=true&& npm run start:all"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "🚀 Start Server + Dashboard (SMART STRONG MT5 auto)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set ALLOW_ALL_SYMBOLS=false&& set AUTO_TRADING_ASSET_CLASSES=forex,metals&& set AUTO_TRADING_AUTOSTART=true&& set AUTO_TRADING_PRESET=smart_strong&& set AUTO_TRADING_FORCE_BROKER=mt5&& npm run start:all"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "🚀 Start Server + Dashboard (SMART STRONG MT5 auto + more entries)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set ALLOW_ALL_SYMBOLS=false&& set AUTO_TRADING_ASSET_CLASSES=forex,metals&& set AUTO_TRADING_AUTOSTART=true&& set AUTO_TRADING_PRESET=smart_strong&& set AUTO_TRADING_FORCE_BROKER=mt5&& set AUTO_TRADING_REALTIME_REQUIRE_LAYERS18=false&& set AUTO_TRADING_REALTIME_MIN_CONFIDENCE=70&& set AUTO_TRADING_REALTIME_MIN_STRENGTH=55&& set EA_SIGNAL_MIN_CONFIDENCE=70&& set EA_SIGNAL_MIN_STRENGTH=55&& set AUTO_TRADING_ENFORCE_HTF_ALIGNMENT=false&& set AUTO_TRADING_SMART_STRONG_ENTER_SCORE=40&& set EA_STRICT_SMART_CHECKLIST=false&& set SIGNAL_CONFLUENCE_ADVISORY_SMART_FAILS=true&& set SIGNAL_CONFLUENCE_MIN_SCORE=45&& set SIGNAL_HARD_MIN_CONFIDENCE=40&& npm run start:all"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "🚀 Start Server + Dashboard (FX+Metals STRONG AUTO v2)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set ALLOW_ALL_SYMBOLS=false&& set AUTO_TRADING_ASSET_CLASSES=forex,metals&& set AUTO_TRADING_AUTOSTART=true&& set AUTO_TRADING_PRESET=smart_strong&& set AUTO_TRADING_FORCE_BROKER=mt5&& set AUTO_TRADING_REALTIME_REQUIRE_LAYERS18=false&& set AUTO_TRADING_REALTIME_MIN_CONFIDENCE=70&& set AUTO_TRADING_REALTIME_MIN_STRENGTH=55&& set EA_SIGNAL_MIN_CONFIDENCE=70&& set EA_SIGNAL_MIN_STRENGTH=55&& set AUTO_TRADING_ENFORCE_HTF_ALIGNMENT=false&& set AUTO_TRADING_SMART_STRONG_ENTER_SCORE=40&& npm run start:all"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "🚀 Start Server + Dashboard (FX+Metals ACTIVE AUTO - more trades)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set ALLOW_ALL_SYMBOLS=false&& set AUTO_TRADING_ASSET_CLASSES=forex,metals&& set AUTO_TRADING_AUTOSTART=true&& set AUTO_TRADING_PRESET=smart_strong&& set AUTO_TRADING_FORCE_BROKER=mt5&& set AUTO_TRADING_REALTIME_REQUIRE_LAYERS18=false&& set AUTO_TRADING_REALTIME_MIN_CONFIDENCE=60&& set AUTO_TRADING_REALTIME_MIN_STRENGTH=45&& set EA_SIGNAL_MIN_CONFIDENCE=60&& set EA_SIGNAL_MIN_STRENGTH=45&& set AUTO_TRADING_ENFORCE_HTF_ALIGNMENT=false&& set AUTO_TRADING_SMART_STRONG_ENTER_SCORE=30&& set EA_STRICT_SMART_CHECKLIST=false&& set SIGNAL_CONFLUENCE_ADVISORY_SMART_FAILS=true&& set SIGNAL_CONFLUENCE_MIN_SCORE=40&& set SIGNAL_HARD_MIN_CONFIDENCE=40&& npm run start:all"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "🚀 Start Server + Dashboard (FX+Metals SMART AUTO - strong trades)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set ALLOW_ALL_SYMBOLS=false&& set AUTO_TRADING_ASSET_CLASSES=forex,metals&& set AUTO_TRADING_AUTOSTART=true&& set AUTO_TRADING_PRESET=smart_strong&& set AUTO_TRADING_PROFILE=aggressive&& set AUTO_TRADING_AGGRESSIVE_ENTER_SCORE=15&& set AUTO_TRADING_FORCE_BROKER=mt5&& set AUTO_TRADING_REALTIME_REQUIRE_LAYERS18=false&& set AUTO_TRADING_REALTIME_MIN_CONFIDENCE=48&& set AUTO_TRADING_REALTIME_MIN_STRENGTH=45&& set EA_SIGNAL_MIN_CONFIDENCE=48&& set EA_SIGNAL_MIN_STRENGTH=45&& set AUTO_TRADING_ENFORCE_HTF_ALIGNMENT=false&& set AUTO_TRADING_SMART_STRONG_ENTER_SCORE=32&& set EA_STRICT_SMART_CHECKLIST=false&& set SIGNAL_CONFLUENCE_ADVISORY_SMART_FAILS=true&& set SIGNAL_CONFLUENCE_MIN_SCORE=42&& set SIGNAL_HARD_MIN_CONFIDENCE=40&& npm run start:all"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
       "label": "🧪 Run Tests",
       "type": "shell",
       "command": "npm test",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "🔎 Auto-Trading Status (/api/status)",
+      "type": "shell",
+      "command": "curl.exe",
+      "args": ["-s", "http://127.0.0.1:4101/api/status"],
       "group": "test",
       "presentation": {
         "reveal": "always",
@@ -44,7 +191,7 @@
         "reveal": "always",
         "panel": "new"
       },
-      "problemMatcher": ["$eslint-compact"]
+      "problemMatcher": ["$eslint-stylish"]
     },
     {
       "label": "🔧 Fix Linting Issues",
@@ -59,53 +206,12 @@
     {
       "label": "✨ Format Code",
       "type": "shell",
-      "command": "npm run format",
+      "command": "npm run format:write",
       "group": "build",
       "presentation": {
         "reveal": "silent",
         "panel": "new"
       }
-    },
-    {
-      "label": "🐳 Build Docker Image",
-      "type": "shell",
-      "command": "docker build -t trading-system:latest .",
-      "group": "build",
-      "presentation": {
-        "reveal": "always",
-        "panel": "new"
-      }
-    },
-    {
-      "label": "▶️ Start Docker Compose",
-      "type": "shell",
-      "command": "docker-compose up -d",
-      "group": "build",
-      "presentation": {
-        "reveal": "always",
-        "panel": "new"
-      }
-    },
-    {
-      "label": "⏹️ Stop Docker Compose",
-      "type": "shell",
-      "command": "docker-compose down",
-      "group": "build",
-      "presentation": {
-        "reveal": "always",
-        "panel": "new"
-      }
-    },
-    {
-      "label": "📋 View Docker Logs",
-      "type": "shell",
-      "command": "docker-compose logs -f",
-      "group": "build",
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated"
-      },
-      "isBackground": true
     },
     {
       "label": "🔒 Security Audit",
@@ -116,6 +222,228 @@
         "reveal": "always",
         "panel": "new"
       }
+    },
+    {
+      "label": "🧹 Free Port 4101",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/free-ports.ps1",
+        "-Ports",
+        "4101"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "🔎 Check Backend Health + EA Quotes (fixed)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "curl -s -o NUL -w \"heartbeat:%{http_code}\\n\" http://127.0.0.1:4101/api/health/heartbeat && curl -s -o NUL -w \"quotes:%{http_code}\\n\" \"http://127.0.0.1:4101/api/broker/bridge/mt5/market/quotes?maxAgeMs=30000\""
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "group": "test"
+    },
+    {
+      "label": "🔎 EA Bridge Status (mt5)",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "curl -s \"http://127.0.0.1:4101/api/broker/bridge/status?broker=mt5\""],
+      "isBackground": false,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "group": "test"
+    },
+    {
+      "label": "🔎 EA Bridge Status (mt5, 10m)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "curl -s \"http://127.0.0.1:4101/api/broker/bridge/status?broker=mt5^&maxAgeMs=600000\""
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🔎 EA Agent Config (mt5)",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "curl -s \"http://127.0.0.1:4101/api/broker/bridge/mt5/agent/config\""],
+      "isBackground": false,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "group": "test"
+    },
+    {
+      "label": "🔎 EA Bridge Statistics",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "curl -s \"http://127.0.0.1:4101/api/broker/bridge/statistics\""],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🔎 Auto-Trading Readiness (mt5)",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "curl -s \"http://127.0.0.1:4101/api/auto-trading/readiness?broker=mt5\""],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🔎 Check EA Candles (BTCEUR M15)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "curl -s -i \"http://127.0.0.1:4101/api/broker/bridge/mt5/market/candles?symbol=BTCEUR^&timeframe=M15^&limit=5^&maxAgeMs=0\""
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧭 Audit Tape Signals (signal/get + reasons)",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "scripts/diagnostics/audit-tape-signals.mjs",
+        "--baseUrl",
+        "http://127.0.0.1:4101",
+        "--broker",
+        "mt5",
+        "--max",
+        "40"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "🛑 Kill Port 4101 Listener",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/free-ports.ps1",
+        "-Ports",
+        "4101"
+      ],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "🧹 Free Ports 4101+4173",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/free-ports.ps1",
+        "-Ports",
+        "4101,4173"
+      ],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "🚀 Start Backend (EA-only real)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set PORT=4101&& set REQUIRE_REALTIME_DATA=true&& set ALLOW_SYNTHETIC_DATA=false&& npm start"
+      ],
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "🚀 Start Backend (EA-only real + ALL symbols)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set PORT=4101&& set REQUIRE_REALTIME_DATA=true&& set ALLOW_SYNTHETIC_DATA=false&& set ALLOW_ALL_SYMBOLS=true&& npm start"
+      ],
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "🚀 Start Dashboard (dev)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set VITE_DEV_PROXY_TARGET=http://127.0.0.1:4101&& set VITE_API_BASE_URL=http://127.0.0.1:4101&& npm --prefix clients\\neon-dashboard run dev -- --host 127.0.0.1 --port 4173"
+      ],
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "🚀 Start Backend (4101)",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "set PORT=4101&& npm start"],
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "group": "build"
+    },
+    {
+      "label": "🚀 Start Backend (4101, legacy WAIT_MONITOR flag)",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "set PORT=4101&& npm start"],
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "group": "build"
     }
   ]
 }

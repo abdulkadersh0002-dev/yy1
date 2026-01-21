@@ -140,6 +140,38 @@ class Mt5Connector extends BaseBrokerConnector {
     }
   }
 
+  async modifyPosition(position = {}) {
+    try {
+      const ticket = position.ticket || position.id || null;
+      if (!ticket) {
+        return { success: false, error: 'Missing position ticket/id' };
+      }
+
+      const payload = {
+        ticket,
+        symbol: position.symbol,
+        stopLoss: position.stopLoss ?? null,
+        takeProfit: position.takeProfit ?? null,
+        comment: position.comment || 'auto-modify',
+        accountMode: this.accountMode,
+        accountNumber: position.accountNumber || this.expectedAccount
+      };
+
+      const response = await this.http.post('/positions/modify', payload, {
+        headers: this.authHeaders()
+      });
+
+      return {
+        success: Boolean(response.data?.success),
+        result: response.data || null,
+        error: response.data?.error || null
+      };
+    } catch (error) {
+      this.logger?.error?.({ err: error, broker: this.name }, 'MT5 modifyPosition failed');
+      return { success: false, error: error.message };
+    }
+  }
+
   async fetchOpenPositions() {
     try {
       const response = await this.http.get('/positions', {

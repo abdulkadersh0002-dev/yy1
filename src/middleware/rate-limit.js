@@ -29,7 +29,12 @@ export function createRateLimiter({
 
     if (existing.count >= max) {
       logger?.warn?.({ key, windowMs, max }, 'Rate limit exceeded');
-      return res.status(429).json({ success: false, error: 'Too many requests' });
+      const requestId = res?.locals?.requestId;
+      return res.status(429).json({
+        success: false,
+        error: 'Too many requests',
+        ...(requestId ? { requestId } : null)
+      });
     }
 
     existing.count += 1;

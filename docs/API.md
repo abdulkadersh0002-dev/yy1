@@ -4,9 +4,16 @@ This document provides detailed information about the Intelligent Auto-Trading S
 
 ## Base URL
 
-```
+```text
 http://localhost:4101/api
 ```
+
+## WebSocket
+
+The system broadcasts realtime events over WebSocket (used by the dashboard).
+
+- URL: `ws://localhost:4101/ws/trading`
+- Typical events: `signal`, `signals` (replay buffer on connect), `trade_opened`, `trade_closed`
 
 ## Authentication
 
@@ -81,11 +88,12 @@ Get detailed health status for all system modules.
 Get data provider availability and health status.
 
 **Query Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `timeframes` | string | Comma-separated timeframes to check (e.g., "M1,M5,H1") |
-| `qualityThreshold` | number | Minimum quality threshold (0-100) |
-| `requireHealthyQuality` | boolean | Require healthy quality (default: true) |
+
+| Parameter               | Type    | Description                                            |
+| ----------------------- | ------- | ------------------------------------------------------ |
+| `timeframes`            | string  | Comma-separated timeframes to check (e.g., `M1,M5,H1`) |
+| `qualityThreshold`      | number  | Minimum quality threshold (0-100)                      |
+| `requireHealthyQuality` | boolean | Require healthy quality (default: true)                |
 
 **Response:**
 
@@ -189,6 +197,8 @@ Get trading performance statistics.
 
 Generate a trading signal for a currency pair.
 
+Note: In EA-driven realtime mode, strong signals can be generated automatically from EA bars and streamed to the dashboard; this endpoint remains useful for manual/debug scenarios.
+
 **Request Body:**
 
 ```json
@@ -251,6 +261,31 @@ Generate signals for multiple currency pairs.
 
 Execute a trade based on generated signal.
 
+---
+
+### EA Bridge (MT5) Market Data
+
+These endpoints expose the EA-streamed quotes and candles used by the realtime runner and the dashboard auto-updates.
+
+#### GET /api/broker/bridge/mt5/market/quotes
+
+**Query Parameters:**
+
+| Parameter  | Type   | Description                       |
+| ---------- | ------ | --------------------------------- |
+| `maxAgeMs` | number | Cache tolerance; `0` forces fresh |
+
+#### GET /api/broker/bridge/mt5/market/candles
+
+**Query Parameters:**
+
+| Parameter   | Type   | Description                       |
+| ----------- | ------ | --------------------------------- |
+| `symbol`    | string | Symbol name (as streamed by EA)   |
+| `timeframe` | string | e.g. `M1`, `M5`, `M15`, `H1`      |
+| `limit`     | number | Max bars returned                 |
+| `maxAgeMs`  | number | Cache tolerance; `0` forces fresh |
+
 **Request Body:**
 
 ```json
@@ -312,9 +347,10 @@ Get all currently active trades.
 Get trade history.
 
 **Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `limit` | number | 50 | Maximum number of trades to return |
+
+| Parameter | Type   | Default | Description                        |
+| --------- | ------ | ------- | ---------------------------------- |
+| `limit`   | number | 50      | Maximum number of trades to return |
 
 **Response:**
 
@@ -345,8 +381,9 @@ Get trade history.
 Close a specific trade.
 
 **URL Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
+
+| Parameter | Type   | Description       |
+| --------- | ------ | ----------------- |
 | `tradeId` | string | Trade ID to close |
 
 **Response:**
@@ -609,10 +646,11 @@ Toggle broker kill switch.
 Get feature store summary.
 
 **Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `limit` | number | 25 | Maximum recent entries |
-| `snapshots` | number | 0 | Number of snapshots to include |
+
+| Parameter   | Type   | Default | Description                    |
+| ----------- | ------ | ------- | ------------------------------ |
+| `limit`     | number | 25      | Maximum recent entries         |
+| `snapshots` | number | 0       | Number of snapshots to include |
 
 **Response:**
 
@@ -635,16 +673,18 @@ Get feature store summary.
 Get features for a specific pair.
 
 **URL Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `pair` | string | Currency pair (e.g., EURUSD) |
+
+| Parameter | Type   | Description                  |
+| --------- | ------ | ---------------------------- |
+| `pair`    | string | Currency pair (e.g., EURUSD) |
 
 **Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `timeframe` | string | M15 | Timeframe |
-| `limit` | number | 50 | Maximum entries |
-| `snapshot` | boolean | false | Include snapshot |
+
+| Parameter   | Type    | Default | Description      |
+| ----------- | ------- | ------- | ---------------- |
+| `timeframe` | string  | M15     | Timeframe        |
+| `limit`     | number  | 50      | Maximum entries  |
+| `snapshot`  | boolean | false   | Include snapshot |
 
 **Response:**
 

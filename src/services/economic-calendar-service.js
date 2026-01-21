@@ -1,16 +1,26 @@
 import axios from 'axios';
 import RSSParser from 'rss-parser';
-import { assertRealTimeDataAvailability } from '../config/runtime-flags.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { getPairMetadata } from '../config/pair-catalog.js';
-import { getServiceToggles } from '../app/config-service.js';
+import { appConfig } from '../app/config.js';
+import { requireRealTimeData } from '../config/runtime-flags.js';
 
-const calendarConfig = getServiceToggles()?.economicCalendar || {};
+const calendarConfig = appConfig?.services?.economicCalendar || {};
 
 const DEFAULT_CALENDAR_RSS_URL =
   calendarConfig.rssUrl || 'https://nfs.faireconomy.media/ff_calendar_thisweek.xml';
 const DEFAULT_CALENDAR_JSON_URL =
   calendarConfig.jsonUrl || 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
-const DEFAULT_CALENDAR_RSS_TTL_MS = 10 * 60 * 1000;
+// Provider notes: calendar export is updated about once per hour; fetching more often risks blocks.
+const DEFAULT_CALENDAR_RSS_TTL_MS = 60 * 60 * 1000;
+const DEFAULT_DISK_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const DEFAULT_DISK_CACHE_PATH = path.join(
+  process.cwd(),
+  'data',
+  'cache',
+  'economic-calendar-feed.json'
+);
 
 class EconomicCalendarService {
   constructor(apiKeys = {}) {
@@ -18,11 +28,254 @@ class EconomicCalendarService {
     this.cache = new Map();
     this.cacheDurationMs = 5 * 60 * 1000; // 5 minutes to avoid hammering providers
     this.backoffUntil = new Map();
+    this.logCooldownMs = 60 * 1000;
+    this.lastErrorLogAt = new Map();
     this.calendarRssUrl = DEFAULT_CALENDAR_RSS_URL;
     this.calendarJsonUrl = DEFAULT_CALENDAR_JSON_URL;
     this.calendarRssTtlMs = DEFAULT_CALENDAR_RSS_TTL_MS;
     this.calendarFeedCache = { timestamp: 0, items: [] };
     this.rssParser = new RSSParser({ timeout: 10000 });
+
+    // Persist last known good calendar feed to disk so restarts (or 429s) don't force synthetic events.
+    this.diskCachePath = DEFAULT_DISK_CACHE_PATH;
+    this.diskCacheTtlMs = DEFAULT_DISK_CACHE_TTL_MS;
+  }
+
+  async readDiskCache() {
+    try {
+      const raw = await fs.readFile(this.diskCachePath, 'utf8');
+      const parsed = JSON.parse(raw);
+      const timestamp = Number(parsed?.timestamp);
+      const items = Array.isArray(parsed?.items) ? parsed.items : [];
+      if (!Number.isFinite(timestamp) || timestamp <= 0) {
+        return null;
+      }
+      if (Date.now() - timestamp > this.diskCacheTtlMs) {
+        return null;
+      }
+      if (!items.length) {
+        return null;
+      }
+      return { timestamp, items };
+    } catch {
+      return null;
+    }
+  }
+
+  async writeDiskCache(items) {
+    try {
+      const dir = path.dirname(this.diskCachePath);
+      await fs.mkdir(dir, { recursive: true });
+      const payload = { timestamp: Date.now(), items: Array.isArray(items) ? items : [] };
+      await fs.writeFile(this.diskCachePath, JSON.stringify(payload), 'utf8');
+    } catch {
+      // Best-effort cache; ignore failures.
+    }
+  }
+
+  isProbablyHtmlBody(bodyText, contentType = '') {
+    const type = String(contentType || '').toLowerCase();
+    if (type.includes('text/html')) {
+      return true;
+    }
+    const head = String(bodyText || '')
+      .trimStart()
+      .slice(0, 300)
+      .toLowerCase();
+    return (
+      head.startsWith('<!doctype html') ||
+      head.startsWith('<html') ||
+      (head.includes('<head') && head.includes('<body'))
+    );
+  }
+
+  isProbablyRssOrAtom(bodyText, contentType = '') {
+    const type = String(contentType || '').toLowerCase();
+    const text = String(bodyText || '').trimStart();
+    if (!text.startsWith('<')) {
+      return false;
+    }
+    if (type.includes('application/rss+xml') || type.includes('application/atom+xml')) {
+      return true;
+    }
+    if (type.includes('xml')) {
+      return /<rss\b|<rdf:RDF\b|<feed\b/i.test(text);
+    }
+    return /<rss\b|<rdf:RDF\b|<feed\b/i.test(text);
+  }
+
+  looksLikeForexFactoryCalendarXml(bodyText) {
+    const text = String(bodyText || '').trimStart();
+    if (!text.startsWith('<')) {
+      return false;
+    }
+    // The ForexFactory calendar export is XML but not RSS/Atom.
+    return /<weeklyevents\b|<event\b/i.test(text);
+  }
+
+  decodeXmlText(value) {
+    if (value == null) {
+      return '';
+    }
+    return String(value)
+      .replace(/^<!\[CDATA\[([\s\S]*?)\]\]>$/i, '$1')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .trim();
+  }
+
+  extractXmlTag(block, tagName) {
+    if (!block) {
+      return '';
+    }
+    const re = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'i');
+    const match = String(block).match(re);
+    return match ? this.decodeXmlText(match[1]) : '';
+  }
+
+  parseForexFactoryCalendarXml(xmlText) {
+    const xml = String(xmlText || '');
+    const events = [];
+    const eventRe = /<event\b[^>]*>([\s\S]*?)<\/event>/gi;
+    let match;
+    while ((match = eventRe.exec(xml))) {
+      const block = match[1];
+      const title = this.extractXmlTag(block, 'title') || this.extractXmlTag(block, 'event');
+      const currency =
+        this.extractXmlTag(block, 'country') ||
+        this.extractXmlTag(block, 'currency') ||
+        this.extractXmlTag(block, 'ff:currency');
+      const date = this.extractXmlTag(block, 'date');
+      const time = this.extractXmlTag(block, 'time');
+      const impact = this.extractXmlTag(block, 'impact');
+      const actual = this.extractXmlTag(block, 'actual');
+      const forecast = this.extractXmlTag(block, 'forecast');
+      const previous = this.extractXmlTag(block, 'previous');
+
+      const isoDate = this.coerceForexFactoryDateTime(date, time);
+      if (!currency || !isoDate) {
+        continue;
+      }
+
+      events.push({
+        title: title || 'Economic Event',
+        'ff:currency': currency,
+        isoDate,
+        impact,
+        actual: actual || null,
+        forecast: forecast || null,
+        previous: previous || null
+      });
+    }
+    return events;
+  }
+
+  coerceForexFactoryDateTime(dateValue, timeValue) {
+    const date = String(dateValue || '').trim();
+    if (!date) {
+      return null;
+    }
+    const time = String(timeValue || '').trim();
+
+    // Common FF forms include "All Day" or empty time.
+    const timePart = !time || /all\s*day/i.test(time) ? '00:00' : time;
+
+    // Try a few reasonable interpretations. Provider time zone can vary, but ISO is required.
+    const candidates = [
+      `${date} ${timePart} UTC`,
+      `${date} ${timePart} GMT`,
+      `${date} ${timePart}`,
+      date
+    ];
+
+    for (const candidate of candidates) {
+      const ts = Date.parse(candidate);
+      if (Number.isFinite(ts)) {
+        return new Date(ts).toISOString();
+      }
+    }
+    return null;
+  }
+
+  async fetchCalendarRssItems() {
+    if (!this.calendarRssUrl) {
+      return [];
+    }
+
+    if (this.isInBackoff('calendar:feed')) {
+      return [];
+    }
+
+    try {
+      const response = await axios.get(this.calendarRssUrl, {
+        timeout: 10000,
+        responseType: 'text',
+        validateStatus: () => true,
+        headers: {
+          Accept:
+            'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5',
+          'Accept-Language': 'en-US,en;q=0.8',
+          'User-Agent': 'SignalsGateway/1.0 (+https://localhost)'
+        }
+      });
+
+      const status = response?.status;
+      if (!Number.isFinite(status) || status < 200 || status >= 300) {
+        this.applyBackoff('calendar:feed', { response });
+        this.logErrorWithCooldown(
+          'calendar:rss',
+          `Economic calendar feed fetch failed: HTTP ${status || 'unknown'}`
+        );
+        return [];
+      }
+
+      const contentType = response?.headers?.['content-type'] || '';
+      const bodyText = typeof response?.data === 'string' ? response.data : '';
+      if (!bodyText) {
+        this.logErrorWithCooldown('calendar:rss', 'Economic calendar RSS fetch failed: empty body');
+        return [];
+      }
+
+      if (this.isProbablyHtmlBody(bodyText, contentType)) {
+        this.logErrorWithCooldown(
+          'calendar:rss',
+          `Economic calendar feed fetch failed: received HTML (${String(contentType) || 'unknown content-type'})`
+        );
+        return [];
+      }
+
+      if (this.isProbablyRssOrAtom(bodyText, contentType)) {
+        const feed = await this.rssParser.parseString(bodyText);
+        return Array.isArray(feed?.items) ? feed.items : [];
+      }
+
+      if (this.looksLikeForexFactoryCalendarXml(bodyText)) {
+        return this.parseForexFactoryCalendarXml(bodyText);
+      }
+
+      // Unknown XML/text response; fall back to JSON/Finnhub without noise.
+      return [];
+    } catch (error) {
+      this.applyBackoff('calendar:feed', error);
+      this.logErrorWithCooldown(
+        'calendar:rss',
+        `Economic calendar feed fetch failed: ${error?.message || 'unknown error'}`
+      );
+      return [];
+    }
+  }
+
+  logErrorWithCooldown(key, message) {
+    const now = Date.now();
+    const lastLogAt = this.lastErrorLogAt.get(key) || 0;
+    if (now - lastLogAt < this.logCooldownMs) {
+      return;
+    }
+    this.lastErrorLogAt.set(key, now);
+    console.warn(message);
   }
 
   async getEventsForPair(pair, options = {}) {
@@ -77,24 +330,21 @@ class EconomicCalendarService {
       return realEvents;
     }
 
-    assertRealTimeDataAvailability(
-      'EconomicCalendar',
-      `Finnhub returned no events for ${currency}`
-    );
+    // In strict real-time mode, never fabricate economic events.
+    // If providers are unavailable, return empty and let higher-level strict gating block trading.
+    if (requireRealTimeData()) {
+      return [];
+    }
+
     return this.buildSyntheticEvents(currency, daysAhead);
   }
 
   async fetchFromFinnhub(currency, from, to) {
     const key = this.apiKeys.finnhub;
     if (!this.isRealKey(key)) {
-      assertRealTimeDataAvailability('EconomicCalendar', 'Finnhub API key missing or invalid');
       return [];
     }
     if (this.isInBackoff('finnhub-calendar')) {
-      assertRealTimeDataAvailability(
-        'EconomicCalendar',
-        'Finnhub calendar provider in backoff state'
-      );
       return [];
     }
 
@@ -110,10 +360,6 @@ class EconomicCalendarService {
     } catch (error) {
       this.handleFinnhubError(error, currency);
       this.applyBackoff('finnhub-calendar', error);
-      assertRealTimeDataAvailability(
-        'EconomicCalendar',
-        error?.message || `Finnhub calendar request failed for ${currency}`
-      );
       return [];
     }
   }
@@ -137,34 +383,112 @@ class EconomicCalendarService {
   }
 
   async loadCalendarFeed() {
-    if (
-      this.calendarFeedCache.items.length > 0 &&
-      Date.now() - this.calendarFeedCache.timestamp < this.calendarRssTtlMs
-    ) {
-      return this.calendarFeedCache.items;
+    const now = Date.now();
+    const cachedTimestamp = Number(this.calendarFeedCache.timestamp || 0);
+    const cachedItems = Array.isArray(this.calendarFeedCache.items)
+      ? this.calendarFeedCache.items
+      : [];
+    const cacheAgeMs = cachedTimestamp > 0 ? now - cachedTimestamp : Number.POSITIVE_INFINITY;
+
+    // If we have a non-empty feed, respect the full provider TTL.
+    if (cachedTimestamp && cachedItems.length > 0 && cacheAgeMs < this.calendarRssTtlMs) {
+      return cachedItems;
     }
 
-    let items = [];
-    if (this.calendarRssUrl) {
-      try {
-        const feed = await this.rssParser.parseURL(this.calendarRssUrl);
-        items = Array.isArray(feed?.items) ? feed.items : [];
-      } catch (error) {
-        console.error('Economic calendar RSS fetch failed:', error.message);
+    // If the feed is empty, retry more frequently so we recover quickly after transient failures.
+    const EMPTY_FEED_RETRY_MS = 60 * 1000;
+    if (cachedTimestamp && cachedItems.length === 0 && cacheAgeMs < EMPTY_FEED_RETRY_MS) {
+      return cachedItems;
+    }
+
+    // On restarts, warm from disk before any network fetch to avoid repeated requests (and 429s).
+    // Treat disk warm as fresh for one TTL window; the provider updates about hourly anyway.
+    const existingItems = Array.isArray(this.calendarFeedCache.items)
+      ? this.calendarFeedCache.items
+      : [];
+    if (existingItems.length === 0) {
+      const diskWarm = await this.readDiskCache();
+      if (diskWarm?.items?.length) {
+        this.calendarFeedCache = { timestamp: Date.now(), items: diskWarm.items };
+        return this.calendarFeedCache.items;
       }
     }
 
-    if ((!items || items.length === 0) && this.calendarJsonUrl) {
-      items = await this.fetchCalendarJson();
+    let items = existingItems;
+    let fetchedItems = [];
+    if (this.calendarRssUrl) {
+      fetchedItems = await this.fetchCalendarRssItems();
     }
 
-    this.calendarFeedCache = { timestamp: Date.now(), items };
-    return items;
+    if ((!fetchedItems || fetchedItems.length === 0) && this.calendarJsonUrl) {
+      fetchedItems = await this.fetchCalendarJson();
+    }
+
+    if (Array.isArray(fetchedItems) && fetchedItems.length > 0) {
+      items = fetchedItems;
+      await this.writeDiskCache(items);
+    } else {
+      const disk = await this.readDiskCache();
+      if (disk?.items?.length) {
+        items = disk.items;
+      }
+    }
+
+    this.calendarFeedCache = { timestamp: now, items };
+    return this.calendarFeedCache.items;
   }
 
   async fetchCalendarJson() {
     try {
-      const { data } = await axios.get(this.calendarJsonUrl, { timeout: 10000 });
+      if (this.isInBackoff('calendar:feed')) {
+        return [];
+      }
+
+      const response = await axios.get(this.calendarJsonUrl, {
+        timeout: 10000,
+        responseType: 'text',
+        validateStatus: () => true,
+        headers: {
+          Accept: 'application/json, */*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.8',
+          'User-Agent': 'SignalsGateway/1.0 (+https://localhost)'
+        }
+      });
+
+      const status = response?.status;
+      if (!Number.isFinite(status) || status < 200 || status >= 300) {
+        this.applyBackoff('calendar:feed', { response });
+        this.logErrorWithCooldown(
+          'calendar:json',
+          `Economic calendar JSON fetch failed: HTTP ${status || 'unknown'}`
+        );
+        return [];
+      }
+
+      const contentType = response?.headers?.['content-type'] || '';
+      const bodyText = typeof response?.data === 'string' ? response.data : '';
+      if (!bodyText) {
+        return [];
+      }
+      if (this.isProbablyHtmlBody(bodyText, contentType)) {
+        this.logErrorWithCooldown(
+          'calendar:json',
+          'Economic calendar JSON fetch failed: received HTML'
+        );
+        return [];
+      }
+
+      let data;
+      try {
+        data = JSON.parse(bodyText);
+      } catch {
+        this.logErrorWithCooldown(
+          'calendar:json',
+          `Economic calendar JSON fetch failed: invalid JSON (${String(contentType) || 'unknown content-type'})`
+        );
+        return [];
+      }
+
       if (!Array.isArray(data)) {
         return [];
       }
@@ -178,7 +502,11 @@ class EconomicCalendarService {
         previous: entry.previous ?? null
       }));
     } catch (error) {
-      console.error('Economic calendar JSON fetch failed:', error.message);
+      this.applyBackoff('calendar:feed', error);
+      this.logErrorWithCooldown(
+        'calendar:json',
+        `Economic calendar JSON fetch failed: ${error.message}`
+      );
       return [];
     }
   }
@@ -208,7 +536,7 @@ class EconomicCalendarService {
       actual: this.extractField(item, 'actual'),
       forecast: this.extractField(item, 'forecast'),
       previous: this.extractField(item, 'previous'),
-      source: 'RSS'
+      source: 'ForexFactory'
     };
   }
 
@@ -260,6 +588,12 @@ class EconomicCalendarService {
   normalizeImpactLabel(label) {
     if (!label) {
       return 7;
+    }
+    const numeric = Number(label);
+    if (Number.isFinite(numeric)) {
+      // Some providers encode impact as a numeric importance score.
+      // Normalize to our standard 3/5/7/10 scale.
+      return this.normalizeImpact(numeric);
     }
     const normalized = label.toString().toLowerCase();
     if (['high', 'very high', 'red', 'strong'].includes(normalized)) {
@@ -336,8 +670,11 @@ class EconomicCalendarService {
     const now = Date.now();
     const maxHours = Math.max(24, daysAhead * 24);
 
-    template.forEach((baseEvent) => {
-      const hoursAhead = Math.random() * maxHours;
+    // Deterministic schedule (no randomness): spread events across the requested window.
+    const offsets = [6, 18, 30, 48, 66].map((h) => Math.min(h, maxHours));
+
+    template.forEach((baseEvent, index) => {
+      const hoursAhead = offsets[index % offsets.length];
       events.push({
         currency,
         event: baseEvent.event,

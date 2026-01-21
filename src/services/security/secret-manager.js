@@ -1,5 +1,3 @@
-import fetch from 'node-fetch';
-
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const toUpperSnake = (value = '') =>
@@ -11,26 +9,27 @@ const toUpperSnake = (value = '') =>
 
 export default class SecretManager {
   constructor(options = {}) {
-    this.driver = (options.driver || process.env.SECRETS_DRIVER || 'env').toLowerCase();
+    this.env = options.env || process.env;
+    this.driver = (options.driver || this.env.SECRETS_DRIVER || 'env').toLowerCase();
     this.logger = options.logger || console;
     this.cacheTtlMs = Number.isFinite(options.cacheTtlMs)
       ? options.cacheTtlMs
-      : Number.parseInt(process.env.SECRETS_CACHE_TTL_MS, 10) || DEFAULT_CACHE_TTL_MS;
+      : Number.parseInt(this.env.SECRETS_CACHE_TTL_MS, 10) || DEFAULT_CACHE_TTL_MS;
 
-    this.envPrefix = options.envPrefix || process.env.SECRETS_ENV_PREFIX || '';
+    this.envPrefix = options.envPrefix || this.env.SECRETS_ENV_PREFIX || '';
 
     this.vaultConfig = {
-      addr: options.vaultAddr || process.env.VAULT_ADDR,
-      token: options.vaultToken || process.env.VAULT_TOKEN,
-      namespace: options.vaultNamespace || process.env.VAULT_NAMESPACE,
-      mount: options.vaultMount || process.env.VAULT_MOUNT || 'secret',
-      kvVersion: options.vaultKvVersion || process.env.VAULT_KV_VERSION || 'v2'
+      addr: options.vaultAddr || this.env.VAULT_ADDR,
+      token: options.vaultToken || this.env.VAULT_TOKEN,
+      namespace: options.vaultNamespace || this.env.VAULT_NAMESPACE,
+      mount: options.vaultMount || this.env.VAULT_MOUNT || 'secret',
+      kvVersion: options.vaultKvVersion || this.env.VAULT_KV_VERSION || 'v2'
     };
 
     this.azureConfig = {
-      vaultUrl: options.azureVaultUrl || process.env.AZURE_KEY_VAULT_URL,
-      bearerToken: options.azureBearerToken || process.env.AZURE_KEY_VAULT_TOKEN,
-      apiVersion: options.azureApiVersion || process.env.AZURE_KEY_VAULT_API_VERSION || '7.4'
+      vaultUrl: options.azureVaultUrl || this.env.AZURE_KEY_VAULT_URL,
+      bearerToken: options.azureBearerToken || this.env.AZURE_KEY_VAULT_TOKEN,
+      apiVersion: options.azureApiVersion || this.env.AZURE_KEY_VAULT_API_VERSION || '7.4'
     };
 
     this.cache = new Map();
@@ -120,7 +119,7 @@ export default class SecretManager {
   fetchEnvSecret(name) {
     const prefixed = `${this.envPrefix}${name}`;
     const key = toUpperSnake(prefixed);
-    return process.env[key] ?? null;
+    return this.env[key] ?? null;
   }
 
   async fetchVaultSecret(name) {

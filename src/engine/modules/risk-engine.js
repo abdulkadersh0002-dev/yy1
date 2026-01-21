@@ -39,19 +39,79 @@ export const riskEngine = {
       remainingDailyRisk >= this.config.minKellyFraction;
 
     const riskAmount = accountBalance * effectiveRiskFraction;
-    const positionSize = riskAmount / riskDistance;
+    let positionSize = riskAmount / riskDistance;
 
     const exposures = this.calculateCurrencyExposures();
-    const exposurePreview = this.previewExposure(
+    let exposurePreview = this.previewExposure(
       exposures,
       signal.pair,
       signal.direction,
       positionSize
     );
-    const exposureBreached = exposurePreview.breaches.length > 0;
-    const currencyLimitResult = this.evaluateCurrencyLimitBreaches
+    let exposureBreached = exposurePreview.breaches.length > 0;
+    let currencyLimitResult = this.evaluateCurrencyLimitBreaches
       ? this.evaluateCurrencyLimitBreaches(exposurePreview.current)
       : { allowed: true, breaches: [] };
+
+    // If the only problem is that the computed position size exceeds configured exposure limits,
+    // cap the position size down to the strictest per-currency limit instead of hard-blocking.
+    // This keeps execution safe (never increases risk) while allowing signals to remain tradeable.
+    let positionSizeCapped = false;
+    try {
+      if (Number.isFinite(positionSize) && positionSize > 0) {
+        const riskCenter = this.config.riskCommandCenter || {};
+        const currencyLimits = riskCenter.currencyLimits || null;
+        const parsedDefault = Number(riskCenter.defaultCurrencyLimit);
+        const defaultLimit = Number.isFinite(parsedDefault)
+          ? Math.abs(parsedDefault)
+          : this.config.maxExposurePerCurrency;
+
+        const pairCurrencies =
+          typeof this.splitPair === 'function' ? this.splitPair(signal.pair) : null;
+        const base = pairCurrencies?.[0] || null;
+        const quote = pairCurrencies?.[1] || null;
+        const limitFor = (ccy) => {
+          const rawLimit = ccy && currencyLimits ? currencyLimits[ccy] : undefined;
+          const parsedLimit = Number(rawLimit);
+          return Number.isFinite(parsedLimit) ? Math.abs(parsedLimit) : defaultLimit;
+        };
+
+        const baseLimit = base ? limitFor(base) : defaultLimit;
+        const quoteLimit = quote ? limitFor(quote) : defaultLimit;
+        const hardLimit = Math.max(
+          0,
+          Math.min(
+            Number.isFinite(baseLimit) ? baseLimit : defaultLimit,
+            Number.isFinite(quoteLimit) ? quoteLimit : defaultLimit,
+            Number.isFinite(this.config.maxExposurePerCurrency)
+              ? this.config.maxExposurePerCurrency
+              : defaultLimit
+          )
+        );
+
+        const overLimit =
+          exposureBreached ||
+          (Array.isArray(currencyLimitResult?.breaches) && currencyLimitResult.breaches.length > 0);
+
+        if (overLimit && Number.isFinite(hardLimit) && hardLimit > 0 && positionSize > hardLimit) {
+          positionSize = hardLimit;
+          positionSizeCapped = true;
+          exposurePreview = this.previewExposure(
+            exposures,
+            signal.pair,
+            signal.direction,
+            positionSize
+          );
+          exposureBreached = exposurePreview.breaches.length > 0;
+          currencyLimitResult = this.evaluateCurrencyLimitBreaches
+            ? this.evaluateCurrencyLimitBreaches(exposurePreview.current)
+            : { allowed: true, breaches: [] };
+        }
+      }
+    } catch (_error) {
+      // best-effort
+    }
+
     const correlationGuard = this.evaluateCorrelationConstraint
       ? this.evaluateCorrelationConstraint(signal.pair, signal.direction)
       : { allowed: true, correlated: [] };
@@ -65,7 +125,9 @@ export const riskEngine = {
 
     const stressTests = this.buildStressTests(signal, positionSize, riskDistance, accountBalance);
 
-    const postTradeDailyRisk = Math.max(0, remainingDailyRisk - effectiveRiskFraction);
+    const realizedRiskAmount = positionSize * riskDistance;
+    const realizedRiskFraction = realizedRiskAmount / accountBalance;
+    const postTradeDailyRisk = Math.max(0, remainingDailyRisk - realizedRiskFraction);
 
     const currencyLimitBreached =
       Array.isArray(currencyLimitResult.breaches) && currencyLimitResult.breaches.length > 0;
@@ -74,12 +136,12 @@ export const riskEngine = {
 
     return {
       positionSize: Number(positionSize.toFixed(2)),
-      riskAmount: Number(riskAmount.toFixed(2)),
-      riskFraction: Number(effectiveRiskFraction.toFixed(4)),
+      riskAmount: Number(realizedRiskAmount.toFixed(2)),
+      riskFraction: Number(realizedRiskFraction.toFixed(4)),
       desiredRiskFraction: Number(desiredRiskFraction.toFixed(4)),
       priceRiskPct: Number(((riskDistance / price) * 100).toFixed(2)),
       riskPercentage: Number(((riskDistance / price) * 100).toFixed(2)),
-      riskPerTradePct: Number((effectiveRiskFraction * 100).toFixed(2)),
+      riskPerTradePct: Number((realizedRiskFraction * 100).toFixed(2)),
       dailyRiskUsedPct: Number((this.dailyRisk * 100).toFixed(2)),
       remainingDailyRiskPct: Number((postTradeDailyRisk * 100).toFixed(2)),
       dailyRiskUsed: Number(this.dailyRisk.toFixed(4)),
@@ -90,6 +152,7 @@ export const riskEngine = {
         volatilityAdjustment: Number(volatilityAdjustment.toFixed(3)),
         correlationAdjustment: Number(correlationAdjustment.toFixed(3)),
         guardrailMultiplier: Number(guardrailMultiplier.toFixed(3)),
+        positionSizeCapped,
         exposureBreached,
         currencyLimitBreaches: currencyLimitResult.breaches || [],
         correlationBreaches: correlationGuard.correlated || [],
@@ -116,7 +179,8 @@ export const riskEngine = {
         valueAtRiskGuard
       },
       canTrade:
-        canTrade &&
+        realizedRiskFraction >= this.config.minKellyFraction &&
+        remainingDailyRisk >= this.config.minKellyFraction &&
         !exposureBreached &&
         !currencyLimitBreached &&
         !correlationBlocked &&

@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 import nodemailer from 'nodemailer';
 
 const DEFAULT_DEDUPE_MS = 5 * 60 * 1000;

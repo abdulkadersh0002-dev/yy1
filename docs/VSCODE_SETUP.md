@@ -3,27 +3,38 @@
 ## 🚀 Quick Start
 
 ### 1. Install VS Code
-Download from: https://code.visualstudio.com/
+
+Download from: <https://code.visualstudio.com/>
 
 ### 2. Open Project in VS Code
+
 ```bash
-cd /path/to/best1
+cd /path/to/sg
+code .
+```
+
+On Windows (PowerShell), the equivalent is:
+
+```powershell
+Set-Location C:\path\to\sg
 code .
 ```
 
 ### 3. Install Recommended Extensions
+
 When you open the project, VS Code will prompt you to install recommended extensions. Click "Install All" or install them manually:
 
 **Essential Extensions:**
+
 - ESLint (`dbaeumer.vscode-eslint`) - JavaScript linting
 - Prettier (`esbenp.prettier-vscode`) - Code formatting
-- Docker (`ms-azuretools.vscode-docker`) - Docker support
 - GitLens (`eamodio.gitlens`) - Enhanced Git features
 - REST Client (`humao.rest-client`) - Test APIs directly in VS Code
 - Markdown All in One (`yzhang.markdown-all-in-one`) - Markdown editing
 - DotENV (`mikestead.dotenv`) - .env file syntax highlighting
 
 **Optional but Recommended:**
+
 - GitHub Pull Requests (`github.vscode-pull-request-github`)
 - Coverage Gutters (`ryanluker.vscode-coverage-gutters`)
 - TODO Tree (`gruntfuggly.todo-tree`)
@@ -31,6 +42,7 @@ When you open the project, VS Code will prompt you to install recommended extens
 - IntelliCode (`visualstudioexptteam.vscodeintellicode`)
 
 ### 4. Set Up Environment
+
 ```bash
 # Copy environment template
 cp .env.example .env
@@ -39,7 +51,15 @@ cp .env.example .env
 code .env
 ```
 
+On Windows (PowerShell):
+
+```powershell
+Copy-Item .env.example .env
+code .env
+```
+
 ### 5. Install Dependencies
+
 ```bash
 npm ci
 ```
@@ -49,34 +69,34 @@ npm ci
 ### Using Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
 
 Type "Tasks: Run Task" and select:
+
 - 📦 **Install Dependencies** - Run `npm ci`
 - 🚀 **Start Development Server** - Start the trading system
+- 🚀 **Start Server + Dashboard** - Start backend + dashboard together (recommended)
 - 🧪 **Run Tests** - Execute all tests
 - 🔍 **Run Linter** - Check code quality
 - 🔧 **Fix Linting Issues** - Auto-fix ESLint errors
 - ✨ **Format Code** - Format with Prettier
-- 🐳 **Build Docker Image** - Build Docker container
-- ▶️ **Start Docker Compose** - Start all services
-- ⏹️ **Stop Docker Compose** - Stop all services
-- 📋 **View Docker Logs** - Watch Docker logs
 - 🔒 **Security Audit** - Run npm audit
+- 🧹 **Free Ports 4101+4173** - Stop any listeners on the backend/dashboard ports
+- 🔎 **Check Backend via curl** - Fast health check (heartbeat + EA quotes)
 
-### Keyboard Shortcuts
+### Keyboard Shortcuts (Customization)
 
-| Action | Shortcut (Win/Linux) | Shortcut (Mac) |
-|--------|---------------------|----------------|
-| Run Task | `Ctrl+Shift+B` | `Cmd+Shift+B` |
-| Start Debugging | `F5` | `F5` |
-| Open Command Palette | `Ctrl+Shift+P` | `Cmd+Shift+P` |
-| Quick Open File | `Ctrl+P` | `Cmd+P` |
-| Toggle Terminal | `Ctrl+` ` | `Cmd+` ` |
-| Save All | `Ctrl+K S` | `Cmd+K S` |
-| Format Document | `Shift+Alt+F` | `Shift+Option+F` |
-| Find in Files | `Ctrl+Shift+F` | `Cmd+Shift+F` |
+| Action               | Shortcut (Win/Linux) | Shortcut (Mac)   |
+| -------------------- | -------------------- | ---------------- |
+| Run Task             | `Ctrl+Shift+B`       | `Cmd+Shift+B`    |
+| Start Debugging      | `F5`                 | `F5`             |
+| Open Command Palette | `Ctrl+Shift+P`       | `Cmd+Shift+P`    |
+| Quick Open File      | `Ctrl+P`             | `Cmd+P`          |
+| Toggle Terminal      | `Ctrl+` `            | `Cmd+` `         |
+| Save All             | `Ctrl+K S`           | `Cmd+K S`        |
+| Format Document      | `Shift+Alt+F`        | `Shift+Option+F` |
+| Find in Files        | `Ctrl+Shift+F`       | `Cmd+Shift+F`    |
 
 ## 🐛 Debugging
 
-### Debug Configurations Available:
+### Debug Configurations Available
 
 1. **🚀 Start Server** - Launch the trading system with debugger attached
 2. **🧪 Run Tests** - Run all tests with debugging
@@ -84,7 +104,7 @@ Type "Tasks: Run Task" and select:
 4. **🐛 Debug Current File** - Debug any JavaScript file
 5. **📎 Attach to Process** - Attach to a running Node.js process
 
-### How to Debug:
+### How to Debug
 
 1. Set breakpoints by clicking left of line numbers
 2. Press `F5` or click "Run and Debug" icon
@@ -99,7 +119,8 @@ Type "Tasks: Run Task" and select:
 
 ## 🧪 Testing in VS Code
 
-### Run Tests:
+### Run Tests
+
 ```bash
 # All tests
 npm test
@@ -111,7 +132,8 @@ npm run test:watch
 node --test tests/unit/services/cache-service.test.js
 ```
 
-### View Coverage:
+### View Coverage
+
 1. Run tests with coverage: `npm run test:coverage`
 2. Install "Coverage Gutters" extension
 3. Press `Ctrl+Shift+7` to toggle coverage display
@@ -119,62 +141,46 @@ node --test tests/unit/services/cache-service.test.js
 ## 🔧 Code Quality
 
 ### Auto-Format on Save
+
 Enabled by default in `.vscode/settings.json`:
+
 - Code formats automatically when you save
 - ESLint fixes are applied on save
 
-### Manual Format:
+### Manual Format
+
 - Format Document: `Shift+Alt+F`
 - Format Selection: `Ctrl+K Ctrl+F`
 
-### Linting:
+### Linting
+
 - ESLint runs automatically
 - View problems: `Ctrl+Shift+M`
 - Fix all auto-fixable issues: Run task "Fix Linting Issues"
 
-## 🐳 Docker Support
-
-### Docker Extension Features:
-- View running containers in sidebar
-- Right-click `docker-compose.yml` to start/stop services
-- View logs by right-clicking container → "View Logs"
-- Attach shell: Right-click container → "Attach Shell"
-
-### Build and Run:
-```bash
-# Build image
-docker build -t trading-system:latest .
-
-# Start with compose
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
-```
-
 ## 📚 Documentation
 
-### Browse Documentation in VS Code:
+### Browse Documentation in VS Code
+
 1. Press `Ctrl+Shift+E` to open Explorer
 2. Navigate to `docs/` folder
 3. Click any `.md` file to view
 4. Press `Ctrl+Shift+V` for Markdown preview
 
-### Quick Navigation:
+### Quick Navigation
+
 - **API Reference**: `docs/API.md`
 - **EA Bridge Guide**: `docs/EA_BRIDGE.md`
+- **Real-time EA Mode (recommended)**: `docs/REALTIME_EA_MODE.md`
+- **Auto Trading Checklist / Spec**: `docs/AUTO_TRADING_CHECKLIST.md`
 - **Signal Accuracy Plan**: `docs/SIGNAL_ACCURACY_PLAN.md`
-- **Data Management**: `docs/SMART_DATA_MANAGEMENT.md`
-- **Real Data Config**: `docs/REAL_DATA_CONFIGURATION.md`
 - **Completeness Assessment**: `docs/COMPLETENESS_ASSESSMENT.md`
 - **Environment Setup**: `docs/ENVIRONMENT.md`
 
 ## 🔍 Search & Navigation
 
-### Find in Project:
+### Find in Project
+
 - `Ctrl+Shift+F` - Search in all files
 - `Ctrl+P` - Quick open file by name
 - `Ctrl+T` - Go to symbol in workspace
@@ -185,12 +191,19 @@ docker-compose down
 
 ## 🌐 API Testing with REST Client
 
-### Create `.http` files:
+### Create `.http` files
+
 ```http
 ### Health Check
 GET http://localhost:4101/api/healthz
 
-### Get Signal
+### Heartbeat
+GET http://localhost:4101/api/health/heartbeat
+
+### EA Quotes (symbol strip)
+GET http://localhost:4101/api/broker/bridge/mt5/market/quotes?maxAgeMs=30000
+
+### Get Signal (optional/manual)
 GET http://localhost:4101/api/broker/bridge/mt5/signal/get
 Authorization: Bearer your-token-here
 
@@ -198,33 +211,39 @@ Authorization: Bearer your-token-here
 GET http://localhost:4101/api/broker/bridge/statistics
 ```
 
-### Execute Requests:
+### Execute Requests
+
 - Click "Send Request" above the request
 - Or use `Ctrl+Alt+R`
 
 ## 🎨 Customization
 
-### Themes:
+### Themes
+
 - `Ctrl+K Ctrl+T` - Change color theme
 - Recommended: Dark+ (default), Monokai, Solarized Dark
 
-### Settings:
+### Settings
+
 - User Settings: `Ctrl+,`
 - Workspace Settings: `.vscode/settings.json`
 
-### Keyboard Shortcuts:
+### Keyboard Shortcuts
+
 - View shortcuts: `Ctrl+K Ctrl+S`
 - Customize any shortcut
 
 ## 🔗 Git Integration
 
-### GitLens Features:
+### GitLens Features
+
 - View file history
 - See line blame annotations
 - Compare branches
 - View commit details
 
-### Common Git Commands in VS Code:
+### Common Git Commands in VS Code
+
 - View changes: Click "Source Control" icon or `Ctrl+Shift+G`
 - Stage files: Click `+` next to file
 - Commit: Enter message and press `Ctrl+Enter`
@@ -234,45 +253,51 @@ GET http://localhost:4101/api/broker/bridge/statistics
 
 ## 📊 Terminal
 
-### Integrated Terminal:
+### Integrated Terminal
+
 - Open: `` Ctrl+` ``
 - New Terminal: `Ctrl+Shift+` `
 - Split Terminal: `Ctrl+Shift+5`
 - Switch between terminals: Dropdown in terminal panel
 
-### Multiple Terminals:
+### Multiple Terminals
+
 1. Main development server
 2. Test runner in watch mode
-3. Docker logs
-4. General commands
+3. General commands
 
 ## 🚨 Problem Solving
 
-### Common Issues:
+### Common Issues
 
 **ESLint not working:**
+
 1. Check ESLint is installed: `npm ls eslint`
 2. Reload VS Code: `Ctrl+Shift+P` → "Reload Window"
 3. Check `.eslintrc.json` exists
 
 **Prettier not formatting:**
+
 1. Set Prettier as default formatter
 2. Check `.prettierrc.json` exists
 3. Enable "Format on Save" in settings
 
 **Debugging not working:**
+
 1. Ensure Node.js 20+ is installed
 2. Check `.vscode/launch.json` exists
 3. Try "Reload Window"
 
 **Extensions not loading:**
+
 1. Check internet connection
 2. Restart VS Code
 3. Manually install from Extensions panel
 
 ## 🎯 Best Practices
 
-### Workflow Tips:
+### Workflow Tips
+
 1. **Use multi-cursor editing**: `Alt+Click` or `Ctrl+D` for next occurrence
 2. **Fold code sections**: `Ctrl+Shift+[` to fold, `Ctrl+Shift+]` to unfold
 3. **Duplicate lines**: `Shift+Alt+Down` to duplicate down
@@ -280,13 +305,15 @@ GET http://localhost:4101/api/broker/bridge/statistics
 5. **Comment lines**: `Ctrl+/` to toggle line comment
 6. **Block comment**: `Shift+Alt+A` to toggle block comment
 
-### Code Organization:
+### Code Organization
+
 1. Use file explorer to navigate (`Ctrl+Shift+E`)
 2. Use outline view to see file structure (`Ctrl+Shift+O`)
 3. Use breadcrumbs at top of editor
 4. Use Go to Symbol (`Ctrl+T`) for quick navigation
 
-### Productivity:
+### Productivity
+
 1. Use Tasks for common operations
 2. Use Snippets for repetitive code
 3. Use Emmet for HTML/JSX
@@ -295,27 +322,32 @@ GET http://localhost:4101/api/broker/bridge/statistics
 
 ## 🎓 Learning Resources
 
-### VS Code:
-- Official Docs: https://code.visualstudio.com/docs
-- Tips & Tricks: https://code.visualstudio.com/docs/getstarted/tips-and-tricks
-- Keyboard Shortcuts: https://code.visualstudio.com/shortcuts/keyboard-shortcuts-windows.pdf
+### VS Code
 
-### Node.js Debugging:
-- https://code.visualstudio.com/docs/nodejs/nodejs-debugging
+- Official Docs: <https://code.visualstudio.com/docs>
+- Tips & Tricks: <https://code.visualstudio.com/docs/getstarted/tips-and-tricks>
+- Keyboard Shortcuts: <https://code.visualstudio.com/shortcuts/keyboard-shortcuts-windows.pdf>
 
-### Extensions:
-- ESLint: https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint
-- Prettier: https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode
-- GitLens: https://marketplace.visualstudio.com/items?itemName=eamodio.gitlens
+### Node.js Debugging
+
+- <https://code.visualstudio.com/docs/nodejs/nodejs-debugging>
+
+### Extensions
+
+- ESLint: <https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint>
+- Prettier: <https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode>
+- GitLens: <https://marketplace.visualstudio.com/items?itemName=eamodio.gitlens>
 
 ## 📞 Support
 
-### Project Documentation:
+### Project Documentation
+
 - See `docs/` folder for comprehensive guides
 - See `README.md` for project overview
 - See `.env.example` for configuration options
 
-### VS Code Help:
+### VS Code Help
+
 - Help menu → "Welcome"
 - Help menu → "Interactive Playground"
 - Help menu → "Show All Commands" (`Ctrl+Shift+P`)
@@ -340,6 +372,6 @@ After setup, verify everything works:
 
 ---
 
-**Ready to code! 🚀**
+## Ready to code
 
 Press `F5` to start the trading system with debugging, or press `Ctrl+Shift+B` to run the default build task.

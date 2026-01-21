@@ -8,7 +8,48 @@ export const executionEngine = {
       };
     }
 
+    const now = Date.now();
+    const expiresAt = Number(signal?.expiresAt);
+    if (Number.isFinite(expiresAt) && expiresAt > 0 && now > expiresAt) {
+      return {
+        success: false,
+        reason: 'Signal expired',
+        signal
+      };
+    }
+
     try {
+      const entryPrice = Number(signal?.entry?.price);
+      const takeProfit = Number(signal?.entry?.takeProfit);
+      const targetDistance =
+        Number.isFinite(entryPrice) && Number.isFinite(takeProfit)
+          ? Math.abs(takeProfit - entryPrice)
+          : null;
+
+      const trailingStop = signal?.entry?.trailingStop || { enabled: false };
+      const breakevenAtFraction = Number.isFinite(Number(trailingStop?.breakevenAtFraction))
+        ? Number(trailingStop.breakevenAtFraction)
+        : 0.5;
+      const activationAtFraction = Number.isFinite(Number(trailingStop?.activationAtFraction))
+        ? Number(trailingStop.activationAtFraction)
+        : 0.6;
+
+      const activationLevel = Number.isFinite(Number(trailingStop?.activationLevel))
+        ? Number(trailingStop.activationLevel)
+        : targetDistance != null
+          ? targetDistance * activationAtFraction
+          : null;
+
+      const trailingDistance = Number.isFinite(Number(trailingStop?.trailingDistance))
+        ? Number(trailingStop.trailingDistance)
+        : null;
+
+      const stepDistance = Number.isFinite(Number(trailingStop?.stepDistance))
+        ? Number(trailingStop.stepDistance)
+        : trailingDistance != null
+          ? trailingDistance * 0.25
+          : null;
+
       const trade = {
         id: this.generateTradeId(),
         pair: signal.pair,
@@ -22,7 +63,14 @@ export const executionEngine = {
         guardrails: signal.riskManagement.guardrails,
         openTime: Date.now(),
         status: 'open',
-        trailingStop: signal.entry.trailingStop,
+        trailingStop: {
+          ...trailingStop,
+          breakevenAtFraction,
+          activationAtFraction,
+          activationLevel,
+          trailingDistance,
+          stepDistance
+        },
         signal
       };
 
@@ -74,9 +122,13 @@ export const executionEngine = {
   async manageActiveTrades() {
     for (const [tradeId, trade] of this.activeTrades) {
       try {
-        const currentPrice = await this.getCurrentPriceForPair(trade.pair);
+        const currentPrice = await this.getCurrentPriceForPair(trade.pair, {
+          broker: trade.broker || trade.brokerRoute || null
+        });
         const pnl = this.calculatePnL(trade, currentPrice);
         trade.currentPnL = pnl;
+
+        const stopLossBefore = Number(trade.stopLoss);
 
         if (!trade.movedToBreakeven && this.shouldMoveToBreakeven(trade, currentPrice)) {
           trade.stopLoss = trade.entryPrice;
@@ -89,6 +141,19 @@ export const executionEngine = {
 
         if (trade.trailingStop.enabled && this.shouldActivateTrailing(trade, currentPrice)) {
           this.updateTrailingStop(trade, currentPrice);
+        }
+
+        const stopLossAfter = Number(trade.stopLoss);
+        if (
+          Number.isFinite(stopLossAfter) &&
+          (!Number.isFinite(stopLossBefore) || Math.abs(stopLossAfter - stopLossBefore) > 1e-10)
+        ) {
+          await this.syncBrokerProtection(trade, {
+            reason:
+              trade.movedToBreakeven && stopLossAfter === Number(trade.entryPrice)
+                ? 'breakeven'
+                : 'trailing'
+          });
         }
 
         if (this.shouldCloseTrade(trade, currentPrice)) {
@@ -119,22 +184,128 @@ export const executionEngine = {
     }
   },
 
+  emitEvent(type, payload) {
+    if (typeof this.emit !== 'function') {
+      return;
+    }
+    try {
+      this.emit(type, payload);
+    } catch (_error) {
+      // best-effort
+    }
+  },
+
+  async syncBrokerProtection(trade, { reason } = {}) {
+    if (!this.brokerRouter?.modifyPosition) {
+      return { success: false, skipped: true, reason: 'Broker router modify not available' };
+    }
+
+    const broker = trade.broker || trade.brokerRoute || null;
+    if (!broker) {
+      return { success: false, skipped: true, reason: 'No broker assigned' };
+    }
+
+    const ticket = trade.brokerOrder?.id || trade.brokerOrder?.ticket || trade.brokerTicket || null;
+    if (!ticket) {
+      return { success: false, skipped: true, reason: 'No broker ticket/id on trade' };
+    }
+
+    const nextStopLoss = Number(trade.stopLoss);
+    const nextTakeProfit = Number(trade.takeProfit);
+    if (!Number.isFinite(nextStopLoss) && !Number.isFinite(nextTakeProfit)) {
+      return { success: false, skipped: true, reason: 'No SL/TP to modify' };
+    }
+
+    const now = Date.now();
+    const minIntervalMs = 1500;
+    if (trade.lastBrokerModifyAt && now - trade.lastBrokerModifyAt < minIntervalMs) {
+      return { success: false, skipped: true, reason: 'Throttled' };
+    }
+
+    if (Number.isFinite(trade.lastBrokerStopLossSent) && Number.isFinite(nextStopLoss)) {
+      if (Math.abs(Number(trade.lastBrokerStopLossSent) - nextStopLoss) <= 1e-10) {
+        return { success: false, skipped: true, reason: 'SL unchanged' };
+      }
+    }
+
+    const payload = {
+      broker,
+      ticket,
+      symbol: trade.pair,
+      stopLoss: Number.isFinite(nextStopLoss) ? nextStopLoss : null,
+      takeProfit: Number.isFinite(nextTakeProfit) ? nextTakeProfit : null,
+      tradeId: trade.id,
+      comment: `modify:${trade.id}`,
+      source: 'execution-engine',
+      reason
+    };
+
+    const result = await this.brokerRouter.modifyPosition(payload);
+    trade.lastBrokerModifyAt = now;
+
+    if (result?.success) {
+      if (Number.isFinite(nextStopLoss)) {
+        trade.lastBrokerStopLossSent = nextStopLoss;
+      }
+      trade.brokerModifyReceipt = result.result || null;
+      trade.brokerModifyError = null;
+      this.emitEvent('trade_stop_modified', {
+        broker,
+        tradeId: trade.id,
+        pair: trade.pair,
+        reason: reason || null,
+        stopLoss: payload.stopLoss,
+        takeProfit: payload.takeProfit,
+        result: result.result || null
+      });
+      return { success: true, result };
+    }
+
+    trade.brokerModifyError = result?.error || 'Broker modify failed';
+    this.emitEvent('trade_stop_modify_failed', {
+      broker,
+      tradeId: trade.id,
+      pair: trade.pair,
+      reason: reason || null,
+      stopLoss: payload.stopLoss,
+      takeProfit: payload.takeProfit,
+      error: trade.brokerModifyError
+    });
+    return { success: false, error: trade.brokerModifyError, result };
+  },
+
   shouldMoveToBreakeven(trade, currentPrice) {
     const distance = Math.abs(currentPrice - trade.entryPrice);
     const targetDistance = Math.abs(trade.takeProfit - trade.entryPrice);
-    return distance >= targetDistance * 0.3;
+    const fraction = Number.isFinite(Number(trade?.trailingStop?.breakevenAtFraction))
+      ? Number(trade.trailingStop.breakevenAtFraction)
+      : 0.5;
+    return distance >= targetDistance * fraction;
   },
 
   shouldActivateTrailing(trade, currentPrice) {
     const profit =
       trade.direction === 'BUY' ? currentPrice - trade.entryPrice : trade.entryPrice - currentPrice;
-    return profit >= trade.trailingStop.activationLevel;
+
+    const targetDistance = Math.abs(trade.takeProfit - trade.entryPrice);
+    const activationLevel = Number.isFinite(Number(trade?.trailingStop?.activationLevel))
+      ? Number(trade.trailingStop.activationLevel)
+      : Number.isFinite(Number(trade?.trailingStop?.activationAtFraction))
+        ? targetDistance * Number(trade.trailingStop.activationAtFraction)
+        : targetDistance * 0.6;
+
+    return profit >= activationLevel;
   },
 
   updateTrailingStop(trade, currentPrice) {
+    const stepDistance = Number.isFinite(Number(trade?.trailingStop?.stepDistance))
+      ? Number(trade.trailingStop.stepDistance)
+      : null;
+
     if (trade.direction === 'BUY') {
       const newStopLoss = currentPrice - trade.trailingStop.trailingDistance;
-      if (newStopLoss > trade.stopLoss) {
+      const improvement = newStopLoss - trade.stopLoss;
+      if (newStopLoss > trade.stopLoss && (stepDistance == null || improvement >= stepDistance)) {
         trade.stopLoss = newStopLoss;
         this.logger?.info?.(
           {
@@ -148,7 +319,8 @@ export const executionEngine = {
       }
     } else {
       const newStopLoss = currentPrice + trade.trailingStop.trailingDistance;
-      if (newStopLoss < trade.stopLoss) {
+      const improvement = trade.stopLoss - newStopLoss;
+      if (newStopLoss < trade.stopLoss && (stepDistance == null || improvement >= stepDistance)) {
         trade.stopLoss = newStopLoss;
         this.logger?.info?.(
           {

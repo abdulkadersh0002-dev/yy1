@@ -3,7 +3,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import fetch from 'node-fetch';
 import HistoricalWarehouseRunner from '../../src/etl/historical-warehouse-runner.js';
 
 const DEFAULT_FRESHNESS_MINUTES = 10;

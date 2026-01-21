@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { appConfig } from '../../app/config.js';
 
 const ACCESS_SECRET_NAME = 'client-jwt-access';
 const REFRESH_SECRET_NAME = 'client-jwt-refresh';
@@ -13,9 +14,10 @@ const DEFAULT_REFRESH_EXPIRY = '30d';
 const DEFAULT_CHALLENGE_EXPIRY = '5m';
 
 export default class ClientTokenService {
-  constructor({ secretManager, logger } = {}) {
+  constructor({ secretManager, logger, env } = {}) {
     this.secretManager = secretManager || null;
     this.logger = logger || console;
+    this.env = env || appConfig?.env || process.env;
     this.cache = new Map();
   }
 
@@ -84,7 +86,7 @@ export default class ClientTokenService {
       return this.cache.get(secretName);
     }
 
-    let value = process.env[envVar];
+    let value = this.env?.[envVar];
 
     if (!value && this.secretManager && typeof this.secretManager.getSecret === 'function') {
       try {

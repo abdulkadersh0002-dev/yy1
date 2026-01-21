@@ -256,7 +256,9 @@ export default class RssFeedAggregator {
       cacheTtlMs = 5 * 60 * 1000,
       apiKeys = {},
       polygonLimit = 40,
-      finnhubCategory = 'forex'
+      finnhubCategory = 'forex',
+      logger = console,
+      nodeEnv = process.env.NODE_ENV
     } = options;
     this.requestHeaders = {
       'User-Agent':
@@ -273,6 +275,17 @@ export default class RssFeedAggregator {
     this.feeds = feeds;
     this.cacheTtlMs = cacheTtlMs;
     this.cache = new Map();
+    this.logCooldownMs = 5 * 60 * 1000;
+    this.lastErrorLogAt = new Map();
+    this.feedFailureState = new Map();
+    this.logger = logger;
+    const isTestRunner =
+      process.env.npm_lifecycle_event === 'test' ||
+      (typeof process.env.npm_lifecycle_script === 'string' &&
+        process.env.npm_lifecycle_script.includes('--test')) ||
+      (Array.isArray(process.argv) && process.argv.includes('--test'));
+    this.suppressLogs =
+      nodeEnv === 'test' || isTestRunner || process.env.SUPPRESS_RSS_LOGS === 'true';
     const tradingApiKeys = appConfig.trading?.apiKeys || {};
     this.apiKeys = {
       polygon: apiKeys.polygon || tradingApiKeys.polygon,
@@ -280,6 +293,57 @@ export default class RssFeedAggregator {
     };
     this.polygonLimit = polygonLimit;
     this.finnhubCategory = finnhubCategory;
+  }
+
+  logErrorWithCooldown(key, message) {
+    if (this.suppressLogs) {
+      return;
+    }
+    const now = Date.now();
+    const lastLogAt = this.lastErrorLogAt.get(key) || 0;
+    if (now - lastLogAt < this.logCooldownMs) {
+      return;
+    }
+    this.lastErrorLogAt.set(key, now);
+    if (typeof this.logger?.warn === 'function') {
+      this.logger.warn(message);
+    } else {
+      console.warn(message);
+    }
+  }
+
+  getFeedBackoffState(feedId) {
+    return this.feedFailureState.get(feedId) || { failures: 0, nextRetryAt: 0, lastStatus: null };
+  }
+
+  resetFeedBackoff(feedId) {
+    this.feedFailureState.delete(feedId);
+  }
+
+  scheduleFeedRetry(feedId, statusCode) {
+    const state = this.getFeedBackoffState(feedId);
+    const failures = Math.max(1, state.failures + 1);
+
+    let baseDelayMs = 60 * 1000;
+    if (statusCode === 429) {
+      baseDelayMs = 10 * 60 * 1000;
+    } else if (statusCode === 401 || statusCode === 403 || statusCode === 404) {
+      baseDelayMs = 60 * 60 * 1000;
+    } else if (typeof statusCode === 'number' && statusCode >= 500) {
+      baseDelayMs = 2 * 60 * 1000;
+    }
+
+    const exponent = Math.min(failures - 1, 6);
+    const delayMs = Math.min(baseDelayMs * 2 ** exponent, 6 * 60 * 60 * 1000);
+
+    const nextRetryAt = Date.now() + delayMs;
+    this.feedFailureState.set(feedId, {
+      failures,
+      nextRetryAt,
+      lastStatus: typeof statusCode === 'number' ? statusCode : null
+    });
+
+    return delayMs;
   }
 
   async fetchAll(options = {}) {
@@ -315,8 +379,16 @@ export default class RssFeedAggregator {
     if (cached) {
       return cached;
     }
+
+    const backoffState = this.getFeedBackoffState(feed.id);
+    if (Date.now() < backoffState.nextRetryAt) {
+      this.setCached(cacheKey, []);
+      return [];
+    }
+
     const urls = Array.isArray(feed.url) ? feed.url : [feed.url];
     let lastError = null;
+    let hadSuccessfulFetch = false;
 
     for (const url of urls) {
       try {
@@ -327,6 +399,7 @@ export default class RssFeedAggregator {
         });
 
         const parsedFeed = await this.parser.parseString(fetchResponse.data);
+        hadSuccessfulFetch = true;
         const items = Array.isArray(parsedFeed.items) ? parsedFeed.items : [];
         const normalized = items
           .map((item) => buildNormalizedItem(feed, item))
@@ -334,6 +407,7 @@ export default class RssFeedAggregator {
           .slice(0, options.maxItems);
 
         if (normalized.length > 0) {
+          this.resetFeedBackoff(feed.id);
           this.setCached(cacheKey, normalized);
           return normalized;
         }
@@ -342,8 +416,17 @@ export default class RssFeedAggregator {
       }
     }
 
-    if (lastError) {
-      console.error(`RSS fetch failed for ${feed.name}:`, lastError.message);
+    if (lastError && !hadSuccessfulFetch) {
+      const statusCode = lastError?.response?.status;
+      const delayMs = this.scheduleFeedRetry(feed.id, statusCode);
+      const statusLabel =
+        typeof statusCode === 'number' ? `HTTP ${statusCode}` : lastError.code || 'error';
+      this.logErrorWithCooldown(
+        `feed:${feed.id}`,
+        `RSS fetch failed for ${feed.name} (${statusLabel}); retrying in ${Math.round(
+          delayMs / 1000
+        )}s: ${lastError.message}`
+      );
     }
     this.setCached(cacheKey, []);
     return [];
@@ -399,7 +482,7 @@ export default class RssFeedAggregator {
       this.setCached(cacheKey, normalized);
       return normalized;
     } catch (error) {
-      console.error('Polygon news fetch failed:', error.message);
+      this.logErrorWithCooldown('polygon:news', `Polygon news fetch failed: ${error.message}`);
       return [];
     }
   }
@@ -455,7 +538,7 @@ export default class RssFeedAggregator {
       this.setCached(cacheKey, normalized);
       return normalized;
     } catch (error) {
-      console.error('Finnhub news fetch failed:', error.message);
+      this.logErrorWithCooldown('finnhub:news', `Finnhub news fetch failed: ${error.message}`);
       return [];
     }
   }

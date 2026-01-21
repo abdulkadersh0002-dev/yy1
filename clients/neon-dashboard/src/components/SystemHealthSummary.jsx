@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { formatRelativeTime, formatPercent } from '../utils/format.js';
 import { useModuleHealth } from '../context/ModuleHealthContext.jsx';
 import { useProviderAvailability } from '../context/ProviderAvailabilityContext.jsx';
@@ -15,7 +15,14 @@ const toTimestamp = (value) => {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : null;
   }
-  const parsed = Date.parse(String(value));
+  const raw = String(value).trim();
+
+  // If the backend sends an ISO timestamp without a timezone suffix,
+  // browsers parse it as local time which can produce future/negative ages.
+  // Treat timezone-less ISO strings as UTC.
+  const looksIsoNoTz = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?$/.test(raw);
+  const normalized = looksIsoNoTz ? `${raw}Z` : raw;
+  const parsed = Date.parse(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 };
 
@@ -97,13 +104,11 @@ const describeModuleMeta = (module = {}) => {
   }
 
   if (Array.isArray(meta.providers) && meta.providers.length > 0) {
-    const highlights = meta.providers
-      .slice(0, 4)
-      .map((provider) => {
-        const name = provider?.provider || provider?.id || 'provider';
-        const status = String(provider?.status || 'unknown').toUpperCase();
-        return `${name}: ${status}`;
-      });
+    const highlights = meta.providers.slice(0, 4).map((provider) => {
+      const name = provider?.provider || provider?.id || 'provider';
+      const status = String(provider?.status || 'unknown').toUpperCase();
+      return `${name}: ${status}`;
+    });
     if (meta.providers.length > 4) {
       highlights.push(`+${meta.providers.length - 4} more`);
     }
@@ -146,7 +151,9 @@ const describeModuleMeta = (module = {}) => {
 const describeEngineState = (snapshot = {}) => {
   const { status, loading, error, updatedAt } = snapshot;
   const pairs = Array.isArray(status?.pairs) ? status.pairs.length : 0;
-  const detail = updatedAt ? `Last sync ${formatRelativeTime(updatedAt)}` : 'Awaiting first telemetry sample';
+  const detail = updatedAt
+    ? `Last sync ${formatRelativeTime(updatedAt)}`
+    : 'Awaiting first telemetry sample';
 
   if (error) {
     return {
@@ -222,7 +229,9 @@ const describeProviderAvailability = (availability = {}) => {
       warning: 'warning',
       info: 'positive'
     };
-    const state = severityToState[classification.severity] || (classification.state === 'operational' ? 'positive' : 'warning');
+    const state =
+      severityToState[classification.severity] ||
+      (classification.state === 'operational' ? 'positive' : 'warning');
     const message = classification.message || 'Provider availability update';
 
     const detailParts = [];
@@ -244,7 +253,9 @@ const describeProviderAvailability = (availability = {}) => {
       detailParts.push(text);
     };
 
-    const aggregateQuality = toNumber(classification.metrics?.aggregateQuality ?? availability.aggregateQuality);
+    const aggregateQuality = toNumber(
+      classification.metrics?.aggregateQuality ?? availability.aggregateQuality
+    );
     if (aggregateQuality != null) {
       includeDetail(`Quality ${aggregateQuality.toFixed(1)}%`);
     }
@@ -310,7 +321,12 @@ const describeProviderAvailability = (availability = {}) => {
 
   const aggregateQuality = toNumber(availability.aggregateQuality);
   const normalizedQuality = toNumber(availability.normalizedQuality);
-  const qualityPercent = aggregateQuality != null ? aggregateQuality : (normalizedQuality != null ? normalizedQuality * 100 : null);
+  const qualityPercent =
+    aggregateQuality != null
+      ? aggregateQuality
+      : normalizedQuality != null
+        ? normalizedQuality * 100
+        : null;
 
   const detailParts = [];
 
@@ -323,7 +339,12 @@ const describeProviderAvailability = (availability = {}) => {
   }
 
   if (blockedTimeframes.length > 0) {
-    detailParts.push(`Blocked TF: ${blockedTimeframes.map((entry) => entry.timeframe).slice(0, 4).join(', ')}`);
+    detailParts.push(
+      `Blocked TF: ${blockedTimeframes
+        .map((entry) => entry.timeframe)
+        .slice(0, 4)
+        .join(', ')}`
+    );
   }
 
   const defaultReasons = availability.defaultAvailability?.reasons;
@@ -357,7 +378,8 @@ const describeProviderAvailability = (availability = {}) => {
   const activeCount = activeProviders.length;
   const unavailableCount = unavailableProviders.length;
   const blockedRatio = activeCount > 0 ? unavailableCount / activeCount : 0;
-  const blockedTimeframeRatio = timeframes.length > 0 ? blockedTimeframes.length / timeframes.length : 0;
+  const blockedTimeframeRatio =
+    timeframes.length > 0 ? blockedTimeframes.length / timeframes.length : 0;
 
   if (activeCount > 0 && unavailableCount === activeCount) {
     state = 'critical';
@@ -380,18 +402,40 @@ const describeProviderAvailability = (availability = {}) => {
     }
   }
 
-  const detail = detailParts.length > 0
-    ? detailParts.join(' · ')
-    : 'Awaiting detailed telemetry from health service';
+  const detail =
+    detailParts.length > 0
+      ? detailParts.join(' · ')
+      : 'Awaiting detailed telemetry from health service';
 
   return { state, message, detail };
 };
 
-const describeDataFeeds = (featureSnapshots = []) => {
+const describeDataFeeds = (featureSnapshots = [], options = {}) => {
+  const eaOnly = Boolean(options?.eaOnly);
+  const eaBridgeConnected = Boolean(options?.eaBridgeConnected);
+  const eaQuotes = Array.isArray(options?.eaQuotes) ? options.eaQuotes : [];
+
   const latestSnapshotTs = getLatestTimestamp(featureSnapshots, ['ts', 'timestamp', 'updatedAt']);
   const count = Array.isArray(featureSnapshots) ? featureSnapshots.length : 0;
 
+  const latestQuoteTs = getLatestTimestamp(eaQuotes, ['timestamp', 'ts', 'updatedAt']);
+  const quoteCount = eaQuotes.length;
+  const quoteDetail = latestQuoteTs
+    ? `EA quotes ${quoteCount} · Latest quote ${formatRelativeTime(latestQuoteTs)}`
+    : quoteCount
+      ? `EA quotes ${quoteCount}`
+      : eaBridgeConnected
+        ? 'EA connected · Waiting for first quote'
+        : 'EA not connected';
+
   if (!count) {
+    if (eaOnly) {
+      return {
+        state: eaBridgeConnected ? 'neutral' : 'warning',
+        message: 'EA-only mode · Feature store optional',
+        detail: `Signals are computed live from the EA bridge · ${quoteDetail}`
+      };
+    }
     return {
       state: 'critical',
       message: 'Feature store empty',
@@ -431,9 +475,23 @@ const describeDataFeeds = (featureSnapshots = []) => {
   };
 };
 
-const describeSignalFlow = (signals = [], events = []) => {
-  const latestSignalTs = signals.length ? toTimestamp(signals[0].openedAt || signals[0].timestamp) : null;
+const describeSignalFlow = (signals = [], events = [], options = {}) => {
+  const eaOnly = Boolean(options?.eaOnly);
+  const eaBridgeConnected = Boolean(options?.eaBridgeConnected);
+  const eaQuotes = Array.isArray(options?.eaQuotes) ? options.eaQuotes : [];
+
+  const latestSignalTs = signals.length
+    ? toTimestamp(signals[0].openedAt || signals[0].timestamp)
+    : null;
   const signalCount = signals.length;
+
+  const latestQuoteTs = getLatestTimestamp(eaQuotes, ['timestamp', 'ts', 'updatedAt']);
+  const quoteCount = eaQuotes.length;
+  const eaDetail = eaBridgeConnected
+    ? latestQuoteTs
+      ? `EA connected · Quotes ${quoteCount} · Latest quote ${formatRelativeTime(latestQuoteTs)}`
+      : 'EA connected · Waiting for first quote'
+    : 'Connect the EA to start streaming quotes';
 
   const signalDetail = latestSignalTs
     ? `Most recent ${formatRelativeTime(latestSignalTs)} · ${signalCount} signals retained`
@@ -443,10 +501,21 @@ const describeSignalFlow = (signals = [], events = []) => {
 
   if (!signalCount) {
     const latestEvent = events.length ? toTimestamp(events[0].timestamp) : null;
+    if (eaOnly) {
+      return {
+        state: eaBridgeConnected ? 'neutral' : 'warning',
+        message: eaBridgeConnected ? 'Awaiting first strong EA signal' : 'EA not connected',
+        detail: latestEvent
+          ? `${eaDetail} · Latest event ${formatRelativeTime(latestEvent)}`
+          : eaDetail
+      };
+    }
     return {
       state: latestEvent ? 'neutral' : 'warning',
       message: latestEvent ? 'Awaiting first live signal' : 'No live activity detected',
-      detail: latestEvent ? `Latest event ${formatRelativeTime(latestEvent)}` : 'Check engine connectivity and scoring model'
+      detail: latestEvent
+        ? `Latest event ${formatRelativeTime(latestEvent)}`
+        : 'Check engine connectivity and scoring model'
     };
   }
 
@@ -521,7 +590,15 @@ const describeActivity = (events = []) => {
   };
 };
 
-function SystemHealthSummary({ snapshot, featureSnapshots, signals, events }) {
+function useSystemHealthDiagnostics({
+  snapshot,
+  featureSnapshots,
+  signals,
+  events,
+  eaOnly,
+  eaBridgeConnected,
+  eaQuotes
+}) {
   const moduleHealth = useModuleHealth() || {};
   const providerAvailability = useProviderAvailability() || {};
   const overallRawState = moduleHealth?.overall?.state || null;
@@ -572,13 +649,15 @@ function SystemHealthSummary({ snapshot, featureSnapshots, signals, events }) {
       });
     }
 
-    const providerSummary = describeProviderAvailability(providerAvailability);
-    if (providerSummary) {
-      health.push({
-        id: 'provider-availability',
-        label: 'Provider Availability',
-        ...providerSummary
-      });
+    if (!eaOnly) {
+      const providerSummary = describeProviderAvailability(providerAvailability);
+      if (providerSummary) {
+        health.push({
+          id: 'provider-availability',
+          label: 'Provider Availability',
+          ...providerSummary
+        });
+      }
     }
 
     if (!moduleIds.has('signals')) {
@@ -592,13 +671,13 @@ function SystemHealthSummary({ snapshot, featureSnapshots, signals, events }) {
     health.push({
       id: 'insight-features',
       label: 'Feature Store',
-      ...describeDataFeeds(featureSnapshots)
+      ...describeDataFeeds(featureSnapshots, { eaOnly, eaBridgeConnected, eaQuotes })
     });
 
     health.push({
       id: 'insight-signals',
       label: 'Signal Stream',
-      ...describeSignalFlow(signals, events)
+      ...describeSignalFlow(signals, events, { eaOnly, eaBridgeConnected, eaQuotes })
     });
 
     const performance = classifyPerformance(snapshot?.statistics);
@@ -616,7 +695,148 @@ function SystemHealthSummary({ snapshot, featureSnapshots, signals, events }) {
     });
 
     return health;
-  }, [moduleHealth, providerAvailability, snapshot, featureSnapshots, signals, events]);
+  }, [
+    moduleHealth,
+    providerAvailability,
+    snapshot,
+    featureSnapshots,
+    signals,
+    events,
+    eaOnly,
+    eaBridgeConnected,
+    eaQuotes
+  ]);
+
+  return {
+    overallState,
+    overallLabel,
+    overallUpdatedAt,
+    items
+  };
+}
+
+export function SystemHealthHeaderIndicator({
+  snapshot,
+  featureSnapshots,
+  signals,
+  events,
+  eaOnly = false,
+  eaBridgeConnected = false,
+  eaQuotes = []
+}) {
+  const { overallState, overallLabel, overallUpdatedAt, items } = useSystemHealthDiagnostics({
+    snapshot,
+    featureSnapshots,
+    signals,
+    events,
+    eaOnly,
+    eaBridgeConnected,
+    eaQuotes
+  });
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (!wrapperRef.current) {
+        return;
+      }
+      if (!wrapperRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  const state =
+    overallState || (items.some((item) => item.state === 'critical') ? 'critical' : 'neutral');
+  const label = overallLabel || (items.length ? 'Monitoring' : 'Unavailable');
+  const shownItems = items.slice(0, 6);
+
+  return (
+    <div className="system-health-indicator" ref={wrapperRef}>
+      <button
+        type="button"
+        className={`system-health-indicator__button health-pill health-pill--${state}`}
+        onClick={() => setOpen((prev) => !prev)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title="System health"
+      >
+        Health · {label}
+      </button>
+      {open && (
+        <div className="system-health-indicator__popover" role="dialog" aria-label="System health">
+          <div className="system-health-indicator__top">
+            <span className={`health-pill health-pill--${state}`}>Overall · {label}</span>
+            {overallUpdatedAt && (
+              <span className="system-health-indicator__meta">
+                Updated {formatRelativeTime(overallUpdatedAt)}
+              </span>
+            )}
+          </div>
+          {shownItems.length === 0 ? (
+            <div className="system-health-indicator__empty">Health diagnostics unavailable</div>
+          ) : (
+            <ul className="system-health-indicator__list">
+              {shownItems.map((item) => (
+                <li key={item.id} className="system-health-indicator__item">
+                  <span className={`health-pill health-pill--${item.state}`}>{item.label}</span>
+                  <div className="system-health-indicator__details">
+                    <span className="system-health-indicator__status">{item.message}</span>
+                    {item.detail && (
+                      <span className="system-health-indicator__meta">{item.detail}</span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {items.length > shownItems.length && (
+            <div className="system-health-indicator__more">
+              +{items.length - shownItems.length} more checks
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SystemHealthSummary({
+  snapshot,
+  featureSnapshots,
+  signals,
+  events,
+  eaOnly = false,
+  eaBridgeConnected = false,
+  eaQuotes = []
+}) {
+  const { overallState, overallLabel, overallUpdatedAt, items } = useSystemHealthDiagnostics({
+    snapshot,
+    featureSnapshots,
+    signals,
+    events,
+    eaOnly,
+    eaBridgeConnected,
+    eaQuotes
+  });
 
   return (
     <section className="panel panel--health" aria-live="polite">
@@ -626,9 +846,13 @@ function SystemHealthSummary({ snapshot, featureSnapshots, signals, events }) {
       </div>
       {overallLabel && (
         <div className="health-panel__overall">
-          <span className={`health-pill health-pill--${overallState}`}>Overall · {overallLabel}</span>
+          <span className={`health-pill health-pill--${overallState}`}>
+            Overall · {overallLabel}
+          </span>
           {overallUpdatedAt && (
-            <span className="health-panel__meta">Updated {formatRelativeTime(overallUpdatedAt)}</span>
+            <span className="health-panel__meta">
+              Updated {formatRelativeTime(overallUpdatedAt)}
+            </span>
           )}
         </div>
       )}
@@ -647,7 +871,11 @@ function SystemHealthSummary({ snapshot, featureSnapshots, signals, events }) {
           ))}
         </ul>
       )}
-      <p className="health-panel__footnote">Health scoring adjusts automatically as telemetry updates and models improve.</p>
+      <p className="health-panel__footnote">
+        {eaOnly
+          ? 'EA-only mode: health reflects EA connectivity, signals, and trades.'
+          : 'Health scoring adjusts automatically as telemetry updates and models improve.'}
+      </p>
     </section>
   );
 }

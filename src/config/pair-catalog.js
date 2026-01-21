@@ -48,7 +48,10 @@ function createFxInstrument(config) {
     quote,
     displayName: config.displayName || `${base}/${quote}`,
     pricePrecision: config.pricePrecision ?? (isYen ? 3 : 5),
-    pipSize: config.pipSize ?? (isYen ? 0.001 : 0.0001),
+    // For FX, 1 pip is typically:
+    // - 0.0001 for non-JPY pairs (5-digit brokers quote to 0.00001 points)
+    // - 0.01 for JPY-quoted pairs (3-digit brokers quote to 0.001 points)
+    pipSize: config.pipSize ?? (isYen ? 0.01 : 0.0001),
     contractSize: config.contractSize ?? 100000,
     region: config.region,
     volatilityTier: config.volatilityTier,
@@ -524,11 +527,11 @@ export function getProviderSymbol(pair, provider) {
 export function getPipSize(pair) {
   const metadata = getPairMetadata(pair);
   if (!metadata) {
-    return pair && pair.endsWith('JPY') ? 0.001 : 0.0001;
+    return pair && pair.endsWith('JPY') ? 0.01 : 0.0001;
   }
   return (
     metadata.pipSize ??
-    (metadata.assetClass === 'forex' && metadata.quote === 'JPY' ? 0.001 : 0.0001)
+    (metadata.assetClass === 'forex' && metadata.quote === 'JPY' ? 0.01 : 0.0001)
   );
 }
 

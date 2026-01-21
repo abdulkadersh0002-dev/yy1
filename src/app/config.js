@@ -1,13 +1,20 @@
+import 'dotenv/config';
 import { z } from 'zod';
 
 const envSchema = z
   .object({
-    NODE_ENV: z.string().default('development'),
+    NODE_ENV: z.preprocess(
+      (value) => (value === undefined || value === null || value === '' ? undefined : value),
+      z.string().default('development')
+    ),
     PORT: z.preprocess(
       (value) => (value === undefined || value === '' ? 4101 : value),
       z.coerce.number().int().positive()
     ),
-    REQUEST_JSON_LIMIT: z.string().default('1mb')
+    REQUEST_JSON_LIMIT: z.preprocess(
+      (value) => (value === undefined || value === null || value === '' ? undefined : value),
+      z.string().default('5mb')
+    )
   })
   .passthrough();
 
@@ -212,6 +219,12 @@ function buildAlertEmailConfig(env) {
 }
 
 function buildTradingEngineConfig(env, priceDataConfig) {
+  const presetRaw = String(env.AUTO_TRADING_PRESET || '')
+    .trim()
+    .toLowerCase();
+  const smartStrongPreset =
+    presetRaw === 'smart_strong' || presetRaw === 'smart-strong' || presetRaw === 'smartstrong';
+
   const config = {
     minSignalStrength: 35,
     riskPerTrade: 0.02,
@@ -219,6 +232,8 @@ function buildTradingEngineConfig(env, priceDataConfig) {
     maxConcurrentTrades: 5,
     signalAmplifier: 2.5,
     directionThreshold: 12,
+    // Used by TradingEngine decision profiles (soft preference).
+    minRiskReward: 1.6,
     apiKeys: {
       openai: env.OPENAI_API_KEY,
       twelveData: env.TWELVE_DATA_API_KEY,
@@ -229,8 +244,68 @@ function buildTradingEngineConfig(env, priceDataConfig) {
       fred: env.FRED_API_KEY,
       exchangeRate: env.EXCHANGERATE_API_KEY,
       fixer: env.FIXER_API_KEY
-    }
+    },
+    // Smart auto-trading guards (opt-in via validateSignal defaults; enabled here for the real app).
+    enforceTradingWindows: parseBoolSafe(env.AUTO_TRADING_ENFORCE_TRADING_WINDOWS, false),
+    tradingWindowsLondon: parseJsonSafe(env.AUTO_TRADING_TRADING_WINDOWS_LONDON),
+    // Momentum guards are helpful but can be overly strict for realtime EA execution.
+    // Default OFF unless explicitly enabled by env.
+    enforceMomentumGuards: parseBoolSafe(env.AUTO_TRADING_ENFORCE_MOMENTUM_GUARDS, false),
+    enforceHtfAlignment: parseBoolSafe(env.AUTO_TRADING_ENFORCE_HTF_ALIGNMENT, true),
+    enforceFxAtrRange: parseBoolSafe(env.AUTO_TRADING_ENFORCE_FX_ATR_RANGE, true),
+    enforceCryptoVolSpike: parseBoolSafe(env.AUTO_TRADING_ENFORCE_CRYPTO_VOL_SPIKE, true)
   };
+
+  if (smartStrongPreset) {
+    const clampPct = (value, fallback) => {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) {
+        return fallback;
+      }
+      return Math.max(0, Math.min(100, numeric));
+    };
+
+    const realtimeMinConfidence = clampPct(
+      parseFloatSafe(env.AUTO_TRADING_REALTIME_MIN_CONFIDENCE, env.EA_SIGNAL_MIN_CONFIDENCE),
+      78
+    );
+    const realtimeMinStrength = clampPct(
+      parseFloatSafe(env.AUTO_TRADING_REALTIME_MIN_STRENGTH, env.EA_SIGNAL_MIN_STRENGTH),
+      62
+    );
+
+    // "Smart strong" preset:
+    // - more decisive entry scoring (handled by AUTO_TRADING_PROFILE defaulting to smart_strong)
+    // - keeps risk controls and hard blocks in place
+    // - slightly increases analysis sensitivity without going reckless
+    config.minSignalStrength = 30;
+    config.signalAmplifier = 2.8;
+    config.directionThreshold = 10;
+    config.maxConcurrentTrades = 4;
+    config.minRiskReward = 1.7;
+
+    // TradeManager reads these from tradingEngine.config.autoTrading.
+    config.autoTrading = {
+      // Keep quality high for execution while allowing more opportunities than the strictest mode.
+      realtimeMinConfidence,
+      realtimeMinStrength,
+      realtimeRequireLayers18: parseBoolSafe(env.AUTO_TRADING_REALTIME_REQUIRE_LAYERS18, true),
+
+      // Scan more symbols from the EA quote strip.
+      dynamicUniverseEnabled: true,
+      universeMaxAgeMs: 90 * 1000,
+      universeMaxSymbols: 300,
+      allowAllQuoteSymbols: true,
+
+      // Safety: open at most 1 new trade per cycle.
+      maxNewTradesPerCycle: 1,
+
+      // Background scanning cadence (realtime strong-signal execution is separate).
+      monitoringIntervalMs: 10 * 1000,
+      signalGenerationIntervalMs: 2 * 60 * 1000,
+      signalCheckIntervalMs: 30 * 1000
+    };
+  }
 
   config.priceData = priceDataConfig;
 
@@ -311,6 +386,8 @@ export function buildAppConfig(environment = process.env) {
   const server = {
     nodeEnv: env.NODE_ENV,
     port: env.PORT,
+    enablePortFallback: parseBoolSafe(env.ENABLE_PORT_FALLBACK, false),
+    portFallbackAttempts: parseIntSafe(env.PORT_FALLBACK_ATTEMPTS) || 10,
     requestJsonLimit: env.REQUEST_JSON_LIMIT,
     enableWebSockets: parseBoolSafe(env.ENABLE_WEBSOCKETS, true),
     websocketPath: env.WEBSOCKET_PATH || '/ws/trading',
@@ -354,6 +431,10 @@ export function buildAppConfig(environment = process.env) {
     timeInForce: env.BROKER_TIME_IN_FORCE || 'GTC'
   };
 
+  const tradingModifyApi = {
+    enabled: parseBoolSafe(env.ENABLE_TRADING_MODIFY_API, false)
+  };
+
   const riskReports = {
     enabled: env.ENABLE_RISK_REPORTS !== 'false',
     reportHourUtc: parseIntSafe(env.RISK_REPORT_HOUR_UTC)
@@ -377,7 +458,7 @@ export function buildAppConfig(environment = process.env) {
   };
 
   const autoTrading = {
-    autostart: parseBoolSafe(env.AUTO_TRADING_AUTOSTART, true),
+    autostart: parseBoolSafe(env.AUTO_TRADING_AUTOSTART, false),
     monitoringIntervalMs: parseIntSafe(env.AUTO_TRADING_MONITORING_INTERVAL_MS),
     signalGenerationIntervalMs: parseIntSafe(env.AUTO_TRADING_SIGNAL_INTERVAL_MS),
     signalCheckIntervalMs: parseIntSafe(env.AUTO_TRADING_SIGNAL_CHECK_INTERVAL_MS)
@@ -407,6 +488,7 @@ export function buildAppConfig(environment = process.env) {
     alerting,
     brokers,
     brokerRouting,
+    tradingModifyApi,
     services,
     pairPrefetch,
     autoTrading,

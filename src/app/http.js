@@ -2,16 +2,24 @@ import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
 import helmet from 'helmet';
+import fs from 'node:fs';
+import path from 'node:path';
+import url from 'node:url';
 import { createApiAuthMiddleware } from '../middleware/api-auth.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
+import { requestIdMiddleware } from '../middleware/request-id.js';
+import { createErrorHandler } from '../middleware/error-handler.js';
 import { appConfig } from '../app/config.js';
-import healthRoutes from '../../routes/health-routes.js';
-import tradingRoutes from '../../routes/trading-routes.js';
-import autoTradingRoutes from '../../routes/auto-trading-routes.js';
-import configRoutes from '../../routes/config-routes.js';
-import brokerRoutes from '../../routes/broker-routes.js';
-import featureRoutes from '../../routes/feature-routes.js';
-import eaBridgeRoutes from '../../routes/ea-bridge-routes.js';
+import healthRoutes from '../routes/health-routes.js';
+import tradingRoutes from '../routes/trading-routes.js';
+import autoTradingRoutes from '../routes/auto-trading-routes.js';
+import configRoutes from '../routes/config-routes.js';
+import brokerRoutes from '../routes/broker-routes.js';
+import featureRoutes from '../routes/feature-routes.js';
+import eaBridgeRoutes from '../routes/ea-bridge-routes.js';
+import scenarioRoutes from '../routes/scenario-routes.js';
+import { createClientExperienceModule } from '../routes/client-experience.js';
+import { notFound } from '../utils/http-response.js';
 
 export function createHttpApp({
   tradingEngine,
@@ -34,12 +42,33 @@ export function createHttpApp({
     brokerRouting: brokerRoutingConfig
   } = appConfig;
 
+  const allowPublicEaBridge =
+    String(process.env.ALLOW_PUBLIC_EA_BRIDGE || '')
+      .trim()
+      .toLowerCase() === 'true' || serverConfig.nodeEnv !== 'production';
+
   const requestBodyLimit = serverConfig.requestJsonLimit;
+
+  app.disable('x-powered-by');
 
   // Security middleware
   app.use(helmet());
+
+  // API responses don't benefit from browser-focused headers like CSP/X-XSS-Protection.
+  // Keep Helmet defaults for the dashboard/static HTML, but strip these from /api.
+  app.use('/api', (req, res, next) => {
+    try {
+      res.removeHeader('Content-Security-Policy');
+      res.removeHeader('Content-Security-Policy-Report-Only');
+      res.removeHeader('X-XSS-Protection');
+    } catch (_error) {
+      // best-effort
+    }
+    next();
+  });
   app.use(compression());
   app.use(cors());
+  app.use(requestIdMiddleware());
   app.use(express.json({ limit: requestBodyLimit }));
   app.use(express.urlencoded({ extended: true, limit: requestBodyLimit }));
 
@@ -52,7 +81,8 @@ export function createHttpApp({
       { method: 'GET', path: /^\/api\/health(\/.*)?$/ },
       { method: 'GET', path: /^\/api\/health\/heartbeat(\/.*)?$/ },
       { method: 'GET', path: /^\/metrics$/ },
-      { path: /^\/api\/client(\/.*)?$/ }
+      { path: /^\/api\/client(\/.*)?$/ },
+      ...(allowPublicEaBridge ? [{ path: /^\/api\/broker\/bridge(\/.*)?$/ }] : [])
     ]
   });
 
@@ -92,6 +122,7 @@ export function createHttpApp({
     tradingRoutes({
       tradingEngine,
       tradeManager,
+      eaBridgeService,
       auditLogger,
       logger,
       broadcast,
@@ -105,12 +136,24 @@ export function createHttpApp({
 
   app.use(
     '/api',
+    scenarioRoutes({
+      tradingEngine,
+      eaBridgeService,
+      logger,
+      requireSignalsGenerate
+    })
+  );
+
+  app.use(
+    '/api',
     autoTradingRoutes({
       tradeManager,
+      eaBridgeService,
       auditLogger,
       logger,
       broadcast,
-      requireAutomationControl: [sensitiveRateLimiter, requireAutomationControl]
+      requireAutomationControl: [sensitiveRateLimiter, requireAutomationControl],
+      requireBasicRead
     })
   );
 
@@ -155,21 +198,52 @@ export function createHttpApp({
       eaBridgeService,
       tradingEngine,
       brokerRouter,
+      tradeManager,
       auditLogger,
       logger,
-      requireBrokerWrite: [sensitiveRateLimiter, requireBrokerWrite]
+      broadcast,
+      requireBrokerWrite: allowPublicEaBridge ? null : [sensitiveRateLimiter, requireBrokerWrite]
     })
   );
 
-  // Global error handler
-  app.use((err, req, res, _next) => {
-    logger.error({ err }, 'Server error');
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      message: err.message
+  app.use(
+    '/api/client',
+    createClientExperienceModule({
+      secretManager,
+      auditLogger,
+      logger,
+      tradingEngine,
+      tradeManager,
+      brokerRouter
+    }).router
+  );
+
+  const projectRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
+  const dashboardDistDir = path.join(projectRoot, 'clients', 'neon-dashboard', 'dist');
+  const dashboardIndexFile = path.join(dashboardDistDir, 'index.html');
+  const serveDashboard =
+    serverConfig.nodeEnv === 'production' ||
+    String(process.env.SERVE_DASHBOARD || '')
+      .trim()
+      .toLowerCase() === 'true';
+
+  if (serveDashboard && fs.existsSync(dashboardIndexFile)) {
+    app.use(express.static(dashboardDistDir));
+
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path.startsWith('/metrics')) {
+        return next();
+      }
+
+      res.sendFile(dashboardIndexFile);
     });
-  });
+  }
+
+  // Not found handler (JSON)
+  app.use((req, res) => notFound(res));
+
+  // Global error handler
+  app.use(createErrorHandler({ logger }));
 
   return app;
 }

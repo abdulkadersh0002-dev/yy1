@@ -971,18 +971,19 @@ class EnhancedNewsAnalyzer {
   async fetchInvestingRSSForCurrency(currency) {
     // Simulate Investing.com RSS data
     // In production, you would parse actual RSS feeds
+    const now = Date.now();
     const mockNews = [
       {
         title: `${currency} Analysis: Market Sentiment Shifts`,
         description: `Latest analysis of ${currency} movements in forex markets`,
-        publishedAt: new Date(Date.now() - Math.random() * 3600000).toISOString(),
+        publishedAt: new Date(now - 25 * 60 * 1000).toISOString(),
         source: 'Investing.com',
         url: 'https://www.investing.com'
       },
       {
         title: `${currency} Forex Outlook: Key Levels to Watch`,
         description: `Technical and fundamental outlook for ${currency}`,
-        publishedAt: new Date(Date.now() - Math.random() * 7200000).toISOString(),
+        publishedAt: new Date(now - 85 * 60 * 1000).toISOString(),
         source: 'Investing.com',
         url: 'https://www.investing.com'
       }
@@ -1002,7 +1003,7 @@ class EnhancedNewsAnalyzer {
         {
           title: `${pair} Trading Ideas and Analysis`,
           description: 'Latest trading ideas from the community',
-          publishedAt: new Date(Date.now() - Math.random() * 1800000).toISOString(),
+          publishedAt: new Date(Date.now() - 22 * 60 * 1000).toISOString(),
           source: 'Forex Factory',
           url: 'https://www.forexfactory.com'
         }

@@ -47,11 +47,9 @@ async function buildManifest(stagingDir) {
     generatedAt: new Date().toISOString(),
     gitSha: process.env.GITHUB_SHA || null,
     gitRef: process.env.GITHUB_REF_NAME || null,
-    dockerImageTag: process.env.DOCKER_IMAGE_TAG || null,
-    dockerImageDigest: process.env.IMAGE_DIGEST || null,
     testsExecuted: parseTestSummary(process.env.PIPELINE_TEST_SUMMARY),
     nodeVersion: process.version,
-    notes: 'Update DOCKER_IMAGE_TAG and deployment steps if promotion targets change.'
+    notes: 'This bundle is intended for local/non-container deployment workflows.'
   };
 
   await writeFile(path.join(stagingDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -60,19 +58,14 @@ async function buildManifest(stagingDir) {
 async function writeReadme(stagingDir) {
   const readme =
     `# Staging Deployment Bundle\n\n` +
-    `## Docker Image\n` +
-    `- Tag: ${process.env.DOCKER_IMAGE_TAG || 'not provided'}\n` +
-    `- Digest: ${process.env.IMAGE_DIGEST || 'not captured'}\n` +
     `- Source ref: ${process.env.GITHUB_REF_NAME || 'unknown'} (@ ${process.env.GITHUB_SHA || 'unknown'})\n\n` +
     `## What's Inside\n` +
     `- manifest.json — captured metadata for this bundle.\n` +
-    `- Dockerfile / docker-compose.yml — production build definitions.\n` +
     `- env.template — staging environment variables to seed secrets.\n\n` +
     `## Promote to Staging\n` +
     `1. Load secrets into the target environment (see env.template).\n` +
-    `2. Pull image tag listed above (or rebuild using the included Dockerfile).\n` +
-    `3. Deploy via \`docker compose up -d\` to provision API + workers.\n` +
-    `4. Run smoke tests against monitoring endpoints before promoting to production.\n\n` +
+    `2. Install dependencies via \`npm ci\` and start the service via \`npm start\`.\n` +
+    `3. Run smoke tests against monitoring endpoints before promoting to production.\n\n` +
     `> This bundle is generated automatically by the CI pipeline. Any manual edits should be committed before re-running the workflow.\n`;
 
   await writeFile(path.join(stagingDir, 'README.md'), `${readme}\n`);
@@ -86,11 +79,6 @@ async function main() {
   await writeReadme(stagingDir);
 
   const filesToCopy = [
-    { source: path.resolve('Dockerfile'), target: path.join(stagingDir, 'Dockerfile') },
-    {
-      source: path.resolve('docker-compose.yml'),
-      target: path.join(stagingDir, 'docker-compose.yml')
-    },
     { source: path.resolve('.env.example'), target: path.join(stagingDir, 'env.template') }
   ];
 

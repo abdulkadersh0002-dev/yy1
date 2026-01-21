@@ -1,13 +1,14 @@
 import { allowSyntheticData, requireRealTimeData } from '../config/runtime-flags.js';
 import { appConfig } from '../app/config.js';
 
-const REQUIRED_PROVIDERS = [
+const PRICE_PROVIDERS = [
   { envKey: 'TWELVE_DATA_API_KEY', label: 'Twelve Data', configKey: 'twelveData' },
   { envKey: 'ALPHA_VANTAGE_API_KEY', label: 'Alpha Vantage', configKey: 'alphaVantage' },
   { envKey: 'FINNHUB_API_KEY', label: 'Finnhub', configKey: 'finnhub' },
-  { envKey: 'POLYGON_API_KEY', label: 'Polygon', configKey: 'polygon' },
-  { envKey: 'NEWSAPI_KEY', label: 'NewsAPI', configKey: 'newsApi' }
+  { envKey: 'POLYGON_API_KEY', label: 'Polygon', configKey: 'polygon' }
 ];
+
+const NEWS_PROVIDERS = [{ envKey: 'NEWSAPI_KEY', label: 'NewsAPI', configKey: 'newsApi' }];
 
 const AUXILIARY_PROVIDERS = [
   { envKey: 'FRED_API_KEY', label: 'FRED', configKey: 'fred', optional: true },
@@ -97,11 +98,11 @@ function preferRssNews(envConfig) {
 }
 
 export function enforceRealTimeProviderReadiness(apiKeys = {}, envConfig = appConfig.env) {
-  if (!requireRealTimeData()) {
+  if (!requireRealTimeData(envConfig)) {
     return;
   }
 
-  if (allowSyntheticData()) {
+  if (allowSyntheticData(envConfig)) {
     const error = new Error(
       'Real-time data enforcement requires ALLOW_SYNTHETIC_DATA=false or REQUIRE_REALTIME_DATA=true'
     );
@@ -111,28 +112,59 @@ export function enforceRealTimeProviderReadiness(apiKeys = {}, envConfig = appCo
 
   const disabledProviders = parseDisabledProviders(envConfig);
   const rssOnlyNews = preferRssNews(envConfig);
-  const filteredRequiredProviders = REQUIRED_PROVIDERS.filter((provider) => {
+
+  const hasEaBrokerEnabled = Boolean(
+    appConfig?.brokers?.mt4?.enabled || appConfig?.brokers?.mt5?.enabled
+  );
+
+  // Real-time price requirement:
+  // - If the MT4/MT5 bridge is enabled, the EA can serve as the real-time price source.
+  // - Otherwise, require at least one configured price provider (TwelveData / Finnhub / Polygon / AlphaVantage).
+  const enabledPriceProviders = PRICE_PROVIDERS.filter((provider) => {
     const normalizedKey = provider.configKey.toLowerCase();
-    if (disabledProviders.has(normalizedKey)) {
-      return false;
-    }
-    if (normalizedKey === 'newsapi' && rssOnlyNews) {
-      return false;
-    }
-    return true;
+    return !disabledProviders.has(normalizedKey);
   });
 
-  const requiredCheck = collectInvalidProviders(filteredRequiredProviders, apiKeys);
+  const priceCheck = collectInvalidProviders(enabledPriceProviders, apiKeys);
+
+  const hasAnyPriceKey = enabledPriceProviders.some((provider) => {
+    const keyValue =
+      apiKeys?.[provider.configKey] ?? appConfig.trading?.apiKeys?.[provider.configKey];
+    return Boolean(keyValue) && !isLikelyPlaceholder(keyValue);
+  });
+
+  const enabledNewsProviders = rssOnlyNews
+    ? []
+    : NEWS_PROVIDERS.filter((provider) => {
+        const normalizedKey = provider.configKey.toLowerCase();
+        return !disabledProviders.has(normalizedKey);
+      });
+
+  const newsCheck = collectInvalidProviders(enabledNewsProviders, apiKeys);
+
   const auxiliaryCheck = collectInvalidProviders(AUXILIARY_PROVIDERS, apiKeys);
 
   const issues = [];
   const warnings = [];
 
-  if (requiredCheck.missing.length > 0) {
-    issues.push(`missing API keys for ${requiredCheck.missing.join(', ')}`);
+  if (!hasEaBrokerEnabled && !hasAnyPriceKey) {
+    issues.push(
+      `missing real-time price provider (configure one of: ${enabledPriceProviders
+        .map((p) => p.label)
+        .join(', ')})`
+    );
   }
-  if (requiredCheck.placeholders.length > 0) {
-    warnings.push(`placeholder API keys detected for ${requiredCheck.placeholders.join(', ')}`);
+
+  if (priceCheck.placeholders.length > 0) {
+    warnings.push(`placeholder API keys detected for ${priceCheck.placeholders.join(', ')}`);
+  }
+
+  if (newsCheck.missing.length > 0) {
+    warnings.push(`news provider keys missing (${newsCheck.missing.join(', ')})`);
+  }
+
+  if (newsCheck.placeholders.length > 0) {
+    warnings.push(`placeholder news provider keys detected (${newsCheck.placeholders.join(', ')})`);
   }
 
   if (auxiliaryCheck.optionalMissing.length > 0) {
@@ -149,7 +181,7 @@ export function enforceRealTimeProviderReadiness(apiKeys = {}, envConfig = appCo
   const dbRequired = ['DB_HOST', 'DB_USER', 'DB_PASSWORD'];
   const dbMissing = dbRequired.filter((key) => !envConfig[key]);
   if (dbMissing.length > 0) {
-    issues.push(`database configuration missing: ${dbMissing.join(', ')}`);
+    warnings.push(`database configuration missing (${dbMissing.join(', ')})`);
   }
 
   if (issues.length > 0) {

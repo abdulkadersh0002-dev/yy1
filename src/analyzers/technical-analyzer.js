@@ -18,6 +18,115 @@ class TechnicalAnalyzer {
       : DEFAULT_AVAILABILITY_QUALITY_THRESHOLD;
   }
 
+  analyzeTechnicalCacheKeyFromSeries(pair, timeframes, seriesByTimeframe) {
+    try {
+      const keyParts = [`tech_ea_${pair}`, ...(Array.isArray(timeframes) ? timeframes : [])];
+      const newest = (tf) => {
+        const series =
+          seriesByTimeframe?.[tf] || seriesByTimeframe?.[String(tf || '').toLowerCase()];
+        if (!Array.isArray(series) || series.length === 0) {
+          return null;
+        }
+        const last = series[series.length - 1];
+        const t = last?.time ?? last?.timestamp ?? last?.t;
+        const numeric = Number(t);
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+          return null;
+        }
+        const ms = numeric > 10_000_000_000 ? numeric : numeric * 1000;
+        return Math.round(ms);
+      };
+
+      for (const tf of Array.isArray(timeframes) ? timeframes : []) {
+        const ts = newest(tf);
+        keyParts.push(`${tf}:${ts ?? 'na'}`);
+      }
+      return keyParts.join('|');
+    } catch (_error) {
+      return `tech_ea_${pair}`;
+    }
+  }
+
+  /**
+   * Perform technical analysis using pre-supplied candle series (e.g. EA-driven bars).
+   * This avoids external providers and produces richer indicators/patterns than the lite candle analyzer.
+   */
+  async analyzeTechnicalFromCandles(
+    pair,
+    seriesByTimeframe = {},
+    timeframes = ['M15', 'H1', 'H4', 'D1']
+  ) {
+    const requested =
+      Array.isArray(timeframes) && timeframes.length ? timeframes : ['M15', 'H1', 'H4', 'D1'];
+    const cacheKey = this.analyzeTechnicalCacheKeyFromSeries(pair, requested, seriesByTimeframe);
+    const cached = this.getCached(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const analysis = {
+        pair,
+        timestamp: Date.now(),
+        timeframes: {},
+        overallScore: 0,
+        trend: 'neutral',
+        strength: 0,
+        signals: []
+      };
+
+      const availabilityByTimeframe = {};
+      for (const tf of requested) {
+        availabilityByTimeframe[tf] = {
+          timeframe: tf,
+          inspectedAt: Date.now(),
+          viable: true,
+          reasons: ['ea_bridge'],
+          normalizedQuality: 1,
+          availableProviders: ['eaBridge'],
+          blockedProviders: [],
+          availabilityDetails: []
+        };
+
+        const series =
+          seriesByTimeframe?.[tf] ||
+          seriesByTimeframe?.[String(tf || '').toLowerCase()] ||
+          seriesByTimeframe?.[String(tf || '').toUpperCase()] ||
+          null;
+
+        const normalizedSeries = Array.isArray(series) ? series : [];
+        const timeframeAnalysis = await this.analyzeTimeframe(normalizedSeries, tf, pair);
+        analysis.timeframes[tf] = this.applyAvailabilityMetadata(
+          timeframeAnalysis,
+          availabilityByTimeframe[tf]
+        );
+      }
+
+      analysis.dataAvailability = this.summarizeAvailability(
+        pair,
+        availabilityByTimeframe,
+        requested
+      );
+
+      analysis.overallScore = this.calculateOverallScore(analysis.timeframes);
+      analysis.trend = this.determineTrend(analysis.overallScore);
+      analysis.strength = Math.min(Math.abs(analysis.overallScore), 100);
+      analysis.signals = this.generateSignals(analysis.timeframes);
+      analysis.latestPrice = this.getLatestPriceFromTimeframes(analysis.timeframes);
+      analysis.directionSummary = this.buildDirectionSummary(analysis.timeframes);
+      analysis.regimeSummary = this.aggregateRegime(analysis.timeframes);
+      analysis.volatilitySummary = this.aggregateVolatility(analysis.timeframes);
+      analysis.divergenceSummary = this.aggregateDivergences(analysis.timeframes);
+      analysis.volumePressureSummary = this.aggregateVolumePressure(analysis.timeframes);
+
+      this.setCached(cacheKey, analysis);
+      return analysis;
+    } catch (error) {
+      this.logger.error({ err: error, pair }, 'EA candle technical analysis failed');
+      return this.getDefaultAnalysis(pair);
+    }
+  }
+
   /**
    * Perform complete technical analysis
    */
@@ -239,6 +348,14 @@ class TechnicalAnalyzer {
     // Calculate support/resistance
     analysis.supportResistance = this.calculateSupportResistance(priceData);
 
+    if (timeframe === 'D1') {
+      analysis.ranges = this.calculateDailyRanges(priceData);
+      analysis.pivotPoints = this.calculateClassicPivotPoints(priceData);
+    } else {
+      analysis.ranges = null;
+      analysis.pivotPoints = null;
+    }
+
     // Regime detection (trend vs range)
     analysis.regime = this.detectRegime(analysis, priceData);
 
@@ -266,6 +383,69 @@ class TechnicalAnalyzer {
     }
 
     return analysis;
+  }
+
+  calculateDailyRanges(priceData) {
+    if (!Array.isArray(priceData) || priceData.length === 0) {
+      return null;
+    }
+    const latest = priceData[priceData.length - 1] || null;
+    const takeHighLow = (slice) => {
+      if (!Array.isArray(slice) || slice.length === 0) {
+        return null;
+      }
+      const highs = slice
+        .map((candle) => Number(candle?.high))
+        .filter((value) => Number.isFinite(value));
+      const lows = slice
+        .map((candle) => Number(candle?.low))
+        .filter((value) => Number.isFinite(value));
+      if (!highs.length || !lows.length) {
+        return null;
+      }
+      return {
+        high: Math.max(...highs),
+        low: Math.min(...lows)
+      };
+    };
+
+    const day =
+      latest && Number.isFinite(Number(latest.high)) && Number.isFinite(Number(latest.low))
+        ? { high: Number(latest.high), low: Number(latest.low) }
+        : null;
+    const week = takeHighLow(priceData.slice(-5));
+    const month = takeHighLow(priceData.slice(-22));
+
+    return { day, week, month };
+  }
+
+  calculateClassicPivotPoints(priceData) {
+    if (!Array.isArray(priceData) || priceData.length < 2) {
+      return null;
+    }
+
+    const prev = priceData[priceData.length - 2] || null;
+    const high = prev ? Number(prev.high) : NaN;
+    const low = prev ? Number(prev.low) : NaN;
+    const close = prev ? Number(prev.close) : NaN;
+    if (!Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
+      return null;
+    }
+
+    const pivot = (high + low + close) / 3;
+    const r1 = 2 * pivot - low;
+    const s1 = 2 * pivot - high;
+    const r2 = pivot + (high - low);
+    const s2 = pivot - (high - low);
+
+    return {
+      pivot,
+      r1,
+      s1,
+      r2,
+      s2,
+      basedOn: prev?.time ?? null
+    };
   }
 
   /**
@@ -1172,6 +1352,8 @@ class TechnicalAnalyzer {
       indicators: {},
       patterns: [],
       supportResistance: {},
+      ranges: null,
+      pivotPoints: null,
       score: 0,
       lastPrice: null,
       latestCandle: null,

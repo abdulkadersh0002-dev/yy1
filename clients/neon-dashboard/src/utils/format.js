@@ -1,13 +1,65 @@
 const isNumberLike = (value) =>
   value !== null && value !== undefined && !Number.isNaN(Number(value));
 
-export const formatNumber = (value, decimals = 2) => {
+const clampFractionDigits = (value, fallback) => {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  const intValue = Math.trunc(value);
+  if (intValue < 0) {
+    return 0;
+  }
+  if (intValue > 20) {
+    return 20;
+  }
+  return intValue;
+};
+
+export const formatNumber = (value, decimalsOrOptions = 2) => {
   if (!isNumberLike(value)) {
     return '—';
   }
-  return Number(value).toLocaleString('en-US', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals
+
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return '—';
+  }
+
+  const defaultDigits = 2;
+  let minimumFractionDigits = defaultDigits;
+  let maximumFractionDigits = defaultDigits;
+
+  if (typeof decimalsOrOptions === 'number') {
+    const clamped = clampFractionDigits(decimalsOrOptions, defaultDigits);
+    minimumFractionDigits = clamped;
+    maximumFractionDigits = clamped;
+  } else if (decimalsOrOptions && typeof decimalsOrOptions === 'object') {
+    const rawMin = Number(decimalsOrOptions.minimumFractionDigits);
+    const rawMax = Number(decimalsOrOptions.maximumFractionDigits);
+
+    const hasMin = Number.isFinite(rawMin);
+    const hasMax = Number.isFinite(rawMax);
+
+    if (hasMin || hasMax) {
+      minimumFractionDigits = clampFractionDigits(rawMin, 0);
+      maximumFractionDigits = clampFractionDigits(rawMax, minimumFractionDigits);
+      if (maximumFractionDigits < minimumFractionDigits) {
+        maximumFractionDigits = minimumFractionDigits;
+      }
+    } else {
+      const clamped = clampFractionDigits(Number(decimalsOrOptions.decimals), defaultDigits);
+      minimumFractionDigits = clamped;
+      maximumFractionDigits = clamped;
+    }
+  } else {
+    const clamped = clampFractionDigits(Number(decimalsOrOptions), defaultDigits);
+    minimumFractionDigits = clamped;
+    maximumFractionDigits = clamped;
+  }
+
+  return number.toLocaleString('en-US', {
+    minimumFractionDigits,
+    maximumFractionDigits
   });
 };
 
@@ -55,20 +107,21 @@ export const formatRelativeTime = (value) => {
     return '—';
   }
   const diff = Date.now() - timestamp;
-  const seconds = Math.floor(diff / 1000);
+  const seconds = Math.floor(Math.abs(diff) / 1000);
+  const suffix = diff >= 0 ? 'ago' : 'from now';
   if (seconds < 60) {
-    return `${seconds}s ago`;
+    return `${seconds}s ${suffix}`;
   }
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) {
-    return `${minutes}m ago`;
+    return `${minutes}m ${suffix}`;
   }
   const hours = Math.floor(minutes / 60);
   if (hours < 24) {
-    return `${hours}h ago`;
+    return `${hours}h ${suffix}`;
   }
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${days}d ${suffix}`;
 };
 
 export const formatDirection = (direction) => {

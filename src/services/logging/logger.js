@@ -1,12 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import pino from 'pino';
+import { appConfig } from '../../app/config.js';
 
-const level = process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug');
-const serviceName = process.env.LOG_SERVICE_NAME || 'signals-strategy';
-const environment = process.env.NODE_ENV || 'development';
-const version = process.env.APP_VERSION || undefined;
-const logDir = process.env.LOG_DIR || 'logs';
+const env = appConfig?.env || process.env;
+
+const level = env.LOG_LEVEL || (env.NODE_ENV === 'production' ? 'info' : 'debug');
+const serviceName = env.LOG_SERVICE_NAME || 'signals-strategy';
+const environment = env.NODE_ENV || 'development';
+const version = env.APP_VERSION || undefined;
+const logDir = env.LOG_DIR || 'logs';
 
 const base = {
   service: serviceName,
@@ -24,8 +27,8 @@ const resolveTargetPath = (targetPath) => {
   return new URL(targetPath, import.meta.url).pathname;
 };
 
-const enableConsole = process.env.LOG_TO_STDOUT !== 'false';
-const enableFile = process.env.LOG_FILE_ENABLED !== 'false';
+const enableConsole = env.LOG_TO_STDOUT !== 'false';
+const enableFile = env.LOG_FILE_ENABLED !== 'false';
 
 if (enableConsole) {
   if (environment === 'production') {
@@ -63,30 +66,30 @@ if (enableFile) {
   }
 }
 
-if (process.env.LOKI_ENDPOINT) {
+if (env.LOKI_ENDPOINT) {
   targets.push({
     target: resolveTargetPath('./loki-transport.cjs'),
     options: {
-      endpoint: process.env.LOKI_ENDPOINT,
-      tenantId: process.env.LOKI_TENANT_ID || null,
-      basicAuth: process.env.LOKI_BASIC_AUTH || null,
-      batchSize: Number(process.env.LOKI_BATCH_SIZE || '20'),
-      flushIntervalMs: Number(process.env.LOKI_FLUSH_INTERVAL || '5000'),
+      endpoint: env.LOKI_ENDPOINT,
+      tenantId: env.LOKI_TENANT_ID || null,
+      basicAuth: env.LOKI_BASIC_AUTH || null,
+      batchSize: Number(env.LOKI_BATCH_SIZE || '20'),
+      flushIntervalMs: Number(env.LOKI_FLUSH_INTERVAL || '5000'),
       labels: {
         service: serviceName,
         environment,
         app: 'signals-strategy'
       }
     },
-    level: process.env.LOKI_LOG_LEVEL || level
+    level: env.LOKI_LOG_LEVEL || level
   });
 }
 
-if (process.env.ELASTIC_ENDPOINT) {
+if (env.ELASTIC_ENDPOINT) {
   let parsedHeaders;
-  if (process.env.ELASTIC_HEADERS) {
+  if (env.ELASTIC_HEADERS) {
     try {
-      parsedHeaders = JSON.parse(process.env.ELASTIC_HEADERS);
+      parsedHeaders = JSON.parse(env.ELASTIC_HEADERS);
     } catch (error) {
       console.error('Failed to parse ELASTIC_HEADERS env var:', error.message);
     }
@@ -95,16 +98,16 @@ if (process.env.ELASTIC_ENDPOINT) {
   targets.push({
     target: resolveTargetPath('./opensearch-transport.cjs'),
     options: {
-      endpoint: process.env.ELASTIC_ENDPOINT,
-      indexPrefix: process.env.ELASTIC_INDEX_PREFIX || 'signals-strategy',
-      apiKey: process.env.ELASTIC_API_KEY || null,
-      username: process.env.ELASTIC_USERNAME || null,
-      password: process.env.ELASTIC_PASSWORD || null,
+      endpoint: env.ELASTIC_ENDPOINT,
+      indexPrefix: env.ELASTIC_INDEX_PREFIX || 'signals-strategy',
+      apiKey: env.ELASTIC_API_KEY || null,
+      username: env.ELASTIC_USERNAME || null,
+      password: env.ELASTIC_PASSWORD || null,
       headers: parsedHeaders,
-      batchSize: Number(process.env.ELASTIC_BATCH_SIZE || '50'),
-      flushIntervalMs: Number(process.env.ELASTIC_FLUSH_INTERVAL || '5000')
+      batchSize: Number(env.ELASTIC_BATCH_SIZE || '50'),
+      flushInterval: Number(env.ELASTIC_FLUSH_INTERVAL || '5000')
     },
-    level: process.env.ELASTIC_LOG_LEVEL || level
+    level: env.ELASTIC_LOG_LEVEL || level
   });
 }
 

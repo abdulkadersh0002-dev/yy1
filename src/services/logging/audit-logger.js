@@ -1,6 +1,7 @@
 import fs from 'fs';
 import fsPromises from 'fs/promises';
 import path from 'path';
+import { appConfig } from '../../app/config.js';
 
 const ensureDirectory = async (targetPath) => {
   const dir = path.dirname(targetPath);
@@ -10,8 +11,9 @@ const ensureDirectory = async (targetPath) => {
 export default class AuditLogger {
   constructor(options = {}) {
     this.logger = options.logger || console;
+    this.env = options.env || appConfig?.env || process.env;
     const defaultPath = path.resolve(process.cwd(), 'logs', 'audit.log');
-    this.filePath = options.filePath || process.env.AUDIT_LOG_PATH || defaultPath;
+    this.filePath = options.filePath || this.env.AUDIT_LOG_PATH || defaultPath;
     this.stream = null;
     this.streamReady = null;
   }

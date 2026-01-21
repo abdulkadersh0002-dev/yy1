@@ -27,19 +27,76 @@ export const analysisCore = {
     return await this.buildCrossAssetEconomicAssessment(pair, metadata);
   },
 
-  async analyzeNews(pair) {
+  async analyzeNews(pair, options = {}) {
     const analysis = await this.newsAnalyzer.analyzeNews(pair);
+
+    const external = options?.external || null;
+    const externalEvents = Array.isArray(external?.events) ? external.events : [];
+    const externalNewsItems = Array.isArray(external?.news) ? external.news : [];
+    const mergedCalendarEvents = Array.isArray(analysis.calendar) ? [...analysis.calendar] : [];
+
+    if (externalEvents.length) {
+      for (const event of externalEvents) {
+        if (!event) {
+          continue;
+        }
+        mergedCalendarEvents.push({
+          ...event,
+          source: event.source || 'ea'
+        });
+      }
+    }
+
+    const sources = {
+      ...(analysis.sources || {})
+    };
+    if (externalEvents.length || externalNewsItems.length) {
+      sources.eaBridge = true;
+    }
+
+    const extraNewsCount = externalNewsItems.length;
+
+    const projectEvidenceItem = (item) => {
+      if (!item) {
+        return null;
+      }
+      const timestamp = Number.isFinite(Number(item.timestamp))
+        ? Number(item.timestamp)
+        : Number.isFinite(Number(item.publishedAt))
+          ? Number(item.publishedAt)
+          : null;
+      return {
+        headline: item.headline || item.title || 'Untitled',
+        source: item.source || item.feedId || 'Unknown',
+        timestamp,
+        url: item.url || item.link || null,
+        impact: Number.isFinite(Number(item.impact)) ? Number(item.impact) : null,
+        score: Number.isFinite(Number(item.score)) ? Number(item.score) : null,
+        sentimentLabel: item.sentimentLabel || null
+      };
+    };
+
+    const evidenceBase = Array.isArray(analysis.baseNews) ? analysis.baseNews.slice(0, 8) : [];
+    const evidenceQuote = Array.isArray(analysis.quoteNews) ? analysis.quoteNews.slice(0, 8) : [];
+    const evidenceExternal = Array.isArray(externalNewsItems)
+      ? externalNewsItems.slice(0, 8).map(projectEvidenceItem).filter(Boolean)
+      : [];
 
     return {
       sentiment: analysis.sentiment.overall,
       direction: analysis.direction,
       impact: analysis.impact,
       confidence: analysis.confidence,
-      upcomingEvents: analysis.calendar.length,
-      newsCount: analysis.baseNews.length + analysis.quoteNews.length,
+      upcomingEvents: mergedCalendarEvents.length,
+      newsCount: analysis.baseNews.length + analysis.quoteNews.length + extraNewsCount,
       sentimentFeeds: analysis.sentimentFeeds || null,
-      calendarEvents: analysis.calendar,
-      newsSources: analysis.sources
+      calendarEvents: mergedCalendarEvents,
+      newsSources: sources,
+      evidence: {
+        base: evidenceBase.map(projectEvidenceItem).filter(Boolean),
+        quote: evidenceQuote.map(projectEvidenceItem).filter(Boolean),
+        external: evidenceExternal
+      }
     };
   },
 
@@ -116,7 +173,27 @@ export const analysisCore = {
       Math.min(100, weightedComposite * this.config.signalAmplifier)
     );
     const ensembleScore = ensemble ? Math.max(-100, Math.min(100, ensemble.finalScore)) : null;
-    let finalScore = ensembleScore != null ? ensembleScore : amplifiedComposite;
+
+    // In EA-only mode, the adaptive scorer can be under-confident or trained on different
+    // data characteristics. Prefer the composite when the ensemble is weak.
+    const issues = Array.isArray(dataQualityContext?.issues) ? dataQualityContext.issues : [];
+    const isEaBridgeMode = issues.includes('ea_only_mode') || issues.includes('ea_bridge_source');
+    const ensembleConfidence = ensemble ? Number(ensemble.confidence) : NaN;
+    const ensembleIsConfident = Number.isFinite(ensembleConfidence) && ensembleConfidence >= 60;
+    const ensembleIsStrongEnough =
+      ensembleScore != null
+        ? Math.abs(ensembleScore) >= Math.abs(amplifiedComposite) * (isEaBridgeMode ? 0.6 : 0.4)
+        : false;
+
+    let finalScore = (() => {
+      if (ensembleScore == null) {
+        return amplifiedComposite;
+      }
+      if (isEaBridgeMode && (!ensembleIsConfident || !ensembleIsStrongEnough)) {
+        return amplifiedComposite;
+      }
+      return ensembleScore;
+    })();
 
     let directionPreQuality = this.determineDirection(finalScore, economic, news, technical);
     if (ensemble && ensemble.direction && ensemble.direction !== 'NEUTRAL') {
@@ -230,6 +307,14 @@ export const analysisCore = {
       directionPreQuality
     });
 
+    const reasoning = this.generateReasoning(explainability);
+    const finalDecision = {
+      action: direction,
+      reason: Array.isArray(reasoning) && reasoning.length ? reasoning[0] : null,
+      reasons: Array.isArray(reasoning) ? reasoning.slice(0, 4) : [],
+      tradeValid: null
+    };
+
     let estimatedWinRate = this.estimateWinRate({
       direction,
       strength,
@@ -286,6 +371,7 @@ export const analysisCore = {
       finalScore,
       estimatedWinRate,
       tradePlan,
+      finalDecision,
       components: {
         economic: {
           score: economicScore,
@@ -304,6 +390,12 @@ export const analysisCore = {
           confidence: news.confidence,
           impact: news.impact,
           upcomingEvents: news.upcomingEvents,
+          calendarEvents: Array.isArray(news.calendarEvents)
+            ? news.calendarEvents.slice(0, 25)
+            : [],
+          newsSources: news.newsSources || null,
+          evidence: news.evidence || null,
+          newsCount: Number.isFinite(news.newsCount) ? news.newsCount : null,
           weight: Number(componentWeights.weights.news.toFixed(3)),
           quality: {
             reliability: Number(newsQuality.reliability.toFixed(3)),
@@ -320,9 +412,12 @@ export const analysisCore = {
           direction: technical.direction,
           strength: technical.strength,
           signals: technical.signals,
+          timeframes: technical.timeframes,
           latestPrice: technical.latestPrice,
           marketPrice,
           weight: Number(componentWeights.weights.technical.toFixed(3)),
+          candlesSummary: technical.candlesSummary || null,
+          candlesByTimeframe: technical.candlesByTimeframe || null,
           directionSummary: technical.directionSummary,
           regime: technical.regimeSummary ? { ...technical.regimeSummary } : null,
           volatility: technical.volatilitySummary ? { ...technical.volatilitySummary } : null,
@@ -449,7 +544,7 @@ export const analysisCore = {
       },
       entry: entryParams,
       explainability,
-      reasoning: this.generateReasoning(explainability)
+      reasoning
     };
   },
 
@@ -960,8 +1055,10 @@ export const analysisCore = {
     }
 
     const issues = Array.isArray(report.issues) ? report.issues.map((issue) => String(issue)) : [];
+    const informationalIssues = new Set(['ea_bridge_source', 'ea_only_mode', 'ea_hybrid_mode']);
+    const penalizedIssues = issues.filter((issue) => !informationalIssues.has(issue));
     const syntheticRelaxed = Boolean(report.syntheticRelaxed);
-    const issuePenalty = Math.min(0.2, issues.length * 0.03);
+    const issuePenalty = Math.min(0.2, penalizedIssues.length * 0.03);
     if (syntheticRelaxed) {
       modifier = Math.max(0.5, modifier - issuePenalty * 0.3);
     } else {
@@ -970,7 +1067,10 @@ export const analysisCore = {
 
     const confidencePenaltyBase =
       report.status === 'critical' ? 18 : report.status === 'degraded' ? 10 : 0;
-    let confidencePenalty = Math.max(0, Math.round(confidencePenaltyBase + issues.length * 2.5));
+    let confidencePenalty = Math.max(
+      0,
+      Math.round(confidencePenaltyBase + penalizedIssues.length * 2.5)
+    );
     if (spreadStatus === 'critical') {
       confidencePenalty += 12;
     } else if (spreadStatus === 'elevated') {

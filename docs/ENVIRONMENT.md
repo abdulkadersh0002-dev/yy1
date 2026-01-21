@@ -17,10 +17,11 @@ This document provides a complete reference for all environment variables used b
 
 ### Feature Flags
 
-| Variable                | Type    | Default     | Description                    |
-| ----------------------- | ------- | ----------- | ------------------------------ |
-| `ALLOW_SYNTHETIC_DATA`  | boolean | true (dev)  | Allow synthetic/simulated data |
-| `REQUIRE_REALTIME_DATA` | boolean | false (dev) | Require real-time data feeds   |
+| Variable                | Type    | Default     | Description                                             |
+| ----------------------- | ------- | ----------- | ------------------------------------------------------- |
+| `ALLOW_SYNTHETIC_DATA`  | boolean | true (dev)  | Allow synthetic/simulated data                          |
+| `REQUIRE_REALTIME_DATA` | boolean | false (dev) | Require real-time data feeds                            |
+| `ALLOW_ALL_SYMBOLS`     | boolean | false       | Allow all EA-streamed symbols (disable asset filtering) |
 
 ### API Keys
 
@@ -67,12 +68,39 @@ This document provides a complete reference for all environment variables used b
 
 ## Trading Configuration
 
-| Variable                                | Type    | Default | Description                        |
-| --------------------------------------- | ------- | ------- | ---------------------------------- |
-| `AUTO_TRADING_AUTOSTART`                | boolean | true    | Auto-start trading on server start |
-| `AUTO_TRADING_MONITORING_INTERVAL_MS`   | number  | -       | Monitoring interval                |
-| `AUTO_TRADING_SIGNAL_INTERVAL_MS`       | number  | -       | Signal generation interval         |
-| `AUTO_TRADING_SIGNAL_CHECK_INTERVAL_MS` | number  | -       | Signal check interval              |
+| Variable                                | Type    | Default | Description                                                 |
+| --------------------------------------- | ------- | ------- | ----------------------------------------------------------- |
+| `AUTO_TRADING_AUTOSTART`                | boolean | true    | Auto-start trading on server start                          |
+| `AUTO_TRADING_PRESET`                   | string  | -       | Preset tuning (`smart_strong`)                              |
+| `AUTO_TRADING_PROFILE`                  | string  | -       | Decision profile (`balanced`, `smart_strong`, `aggressive`) |
+| `AUTO_TRADING_FORCE_BROKER`             | string  | -       | Force auto-trading broker (e.g. `mt5`)                      |
+| `AUTO_TRADING_SMART_STRONG_ENTER_SCORE` | number  | 45      | Smart-strong entry score (0..100, lower = more entries)     |
+| `AUTO_TRADING_REALTIME_MIN_CONFIDENCE`  | number  | -       | Execution confidence floor (overrides smart_strong default) |
+| `AUTO_TRADING_REALTIME_MIN_STRENGTH`    | number  | -       | Execution strength floor (overrides smart_strong default)   |
+| `AUTO_TRADING_ASSET_CLASSES`            | string  | -       | Auto-trade universe filter (e.g. `forex,metals`)            |
+| `AUTO_TRADING_ALLOW_ALL_ASSETS`         | boolean | false   | Disable asset-class filter (allow any symbol)               |
+| `AUTO_TRADING_MONITORING_INTERVAL_MS`   | number  | -       | Monitoring interval                                         |
+| `AUTO_TRADING_SIGNAL_INTERVAL_MS`       | number  | -       | Signal generation interval                                  |
+| `AUTO_TRADING_SIGNAL_CHECK_INTERVAL_MS` | number  | -       | Signal check interval                                       |
+| `ADVANCED_SIGNAL_FILTER_ENABLED`        | boolean | false   | Enable stricter, multi-layer signal gating                  |
+
+## SMC (Candle-Derived) Heuristics
+
+These tuning knobs affect best-effort SMC-style features computed from EA candles in `src/analyzers/candle-analysis-lite.js`.
+
+| Variable                       | Type   | Default | Description                                                                       |
+| ------------------------------ | ------ | ------- | --------------------------------------------------------------------------------- |
+| `SMC_VOL_IMBALANCE_MIN_ABS`    | number | 0.12    | Minimum normalized volume-imbalance magnitude to classify buying/selling pressure |
+| `SMC_SWEEP_WICK_BODY_MIN`      | number | 1.4     | Minimum wick-to-body ratio to consider a liquidity sweep rejection candle         |
+| `SMC_SWEEP_WICK_RANGE_MIN`     | number | 0.35    | Minimum wick-to-range fraction to consider a sweep                                |
+| `SMC_SWEEP_ATR_DIV`            | number | 0.6     | ATR divisor used in sweep confidence scaling (higher = stricter)                  |
+| `SMC_OB_IMPULSE_RANGE_MULT`    | number | 1.8     | Impulse candle range multiplier vs average range to qualify an order-block setup  |
+| `SMC_OB_IMPULSE_BODY_FRAC_MIN` | number | 0.55    | Minimum impulse body fraction (body/range)                                        |
+| `SMC_OB_NEAR_ATR_FRAC`         | number | 0.35    | “Near price” threshold as a fraction of ATR for an order-block zone               |
+| `SMC_VOL_RATIO_MIN`            | number | 1.8     | Volume spike minimum ratio (latest volume / average volume)                       |
+| `SMC_VOL_Z_MIN`                | number | 1.5     | Volume spike minimum z-score                                                      |
+| `SMC_FVG_MIN_ATR_FRAC`         | number | 0.15    | Minimum FVG gap size as a fraction of ATR to be considered meaningful             |
+| `SMC_FVG_MAX_AGE_BARS`         | number | 25      | Maximum age (bars) for a gap to be considered in the nearest/unfilled list        |
 
 ## Risk Management
 
@@ -146,23 +174,31 @@ This document provides a complete reference for all environment variables used b
 
 ### MT5
 
-| Variable             | Type    | Default                   | Description              |
-| -------------------- | ------- | ------------------------- | ------------------------ |
-| `ENABLE_BROKER_MT5`  | boolean | true                      | Enable MT5 broker        |
-| `MT5_ACCOUNT_MODE`   | string  | demo                      | Account mode (demo/live) |
-| `MT5_BRIDGE_URL`     | string  | http://127.0.0.1:5002/api | MT5 bridge URL           |
-| `MT5_BRIDGE_TOKEN`   | string  | -                         | MT5 bridge API token     |
-| `MT5_ACCOUNT_NUMBER` | string  | -                         | MT5 account number       |
+| Variable             | Type    | Default                     | Description              |
+| -------------------- | ------- | --------------------------- | ------------------------ |
+| `ENABLE_BROKER_MT5`  | boolean | true                        | Enable MT5 broker        |
+| `MT5_ACCOUNT_MODE`   | string  | demo                        | Account mode (demo/live) |
+| `MT5_BRIDGE_URL`     | string  | <http://127.0.0.1:5002/api> | MT5 bridge URL           |
+| `MT5_BRIDGE_TOKEN`   | string  | -                           | MT5 bridge API token     |
+| `MT5_ACCOUNT_NUMBER` | string  | -                           | MT5 account number       |
+
+The MT5 bridge service is expected to expose (at minimum) these endpoints:
+
+- `GET /status`
+- `POST /session/connect`
+- `POST /orders`
+- `POST /positions/close`
+- `POST /positions/modify` (required for broker-side breakeven/trailing stop updates)
 
 ### IBKR
 
-| Variable                 | Type    | Default                       | Description                |
-| ------------------------ | ------- | ----------------------------- | -------------------------- |
-| `ENABLE_BROKER_IBKR`     | boolean | false                         | Enable Interactive Brokers |
-| `IBKR_ACCOUNT_MODE`      | string  | demo                          | Account mode (demo/live)   |
-| `IBKR_GATEWAY_URL`       | string  | https://127.0.0.1:5000/v1/api | IBKR gateway URL           |
-| `IBKR_ACCOUNT_ID`        | string  | -                             | IBKR account ID            |
-| `IBKR_ALLOW_SELF_SIGNED` | boolean | true                          | Allow self-signed certs    |
+| Variable                 | Type    | Default                         | Description                |
+| ------------------------ | ------- | ------------------------------- | -------------------------- |
+| `ENABLE_BROKER_IBKR`     | boolean | false                           | Enable Interactive Brokers |
+| `IBKR_ACCOUNT_MODE`      | string  | demo                            | Account mode (demo/live)   |
+| `IBKR_GATEWAY_URL`       | string  | <https://127.0.0.1:5000/v1/api> | IBKR gateway URL           |
+| `IBKR_ACCOUNT_ID`        | string  | -                               | IBKR account ID            |
+| `IBKR_ALLOW_SELF_SIGNED` | boolean | true                            | Allow self-signed certs    |
 
 ### General Broker Settings
 
@@ -171,6 +207,12 @@ This document provides a complete reference for all environment variables used b
 | `BROKER_DEFAULT`               | string | mt5     | Default broker          |
 | `BROKER_TIME_IN_FORCE`         | string | GTC     | Order time in force     |
 | `BROKER_RECONCILE_INTERVAL_MS` | number | 60000   | Reconciliation interval |
+
+### Broker Modification API (optional)
+
+| Variable                    | Type    | Default | Description                                                                               |
+| --------------------------- | ------- | ------- | ----------------------------------------------------------------------------------------- |
+| `ENABLE_TRADING_MODIFY_API` | boolean | false   | Enable `POST /api/broker/positions/modify` for manual/diagnostic SL/TP modification calls |
 
 ## Service Configuration
 

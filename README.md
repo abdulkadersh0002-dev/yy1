@@ -11,7 +11,6 @@ An advanced AI-powered automated trading system with economic, news, and technic
 - [Installation](#-installation)
 - [Configuration](#-configuration)
 - [API Reference](#-api-reference)
-- [Docker](#-docker)
 - [Development](#-development)
 - [Testing](#-testing)
 - [Architecture](#-architecture)
@@ -44,9 +43,19 @@ cp .env.example .env
 
 # Edit .env with your API keys and configuration
 
-# Start the server
-npm start
+# Start backend + dashboard (recommended dev workflow)
+npm run start:all
 ```
+
+What you get:
+
+- Backend API: `http://127.0.0.1:4101`
+- Dashboard (dev): `http://127.0.0.1:4173`
+- WebSocket: `ws://127.0.0.1:4101/ws/trading`
+
+For the EA-driven realtime workflow (signals stream automatically; no manual “Analyze Pair”), see `docs/REALTIME_EA_MODE.md`.
+
+For MetaTrader 5 setup (EA + WebRequest allowlist + verification), see `docs/MT5_SETUP.md`.
 
 ## 📦 Installation
 
@@ -68,16 +77,13 @@ npm ci
 If you want to enable persistence, set up TimescaleDB:
 
 ```bash
-# Start TimescaleDB with Docker
-docker compose up -d timescaledb
-
 # Run migrations
 npm run db:migrate
 ```
 
 See [db/README.md](./db/README.md) for detailed database setup instructions.
 
-## ⚙️ Configuration
+## ⚙ Configuration
 
 ### Environment Variables
 
@@ -93,6 +99,14 @@ cp .env.example .env
 | ---------- | ------------------------------------------------- |
 | `PORT`     | Server port (default: 4101)                       |
 | `NODE_ENV` | Environment (`development`, `production`, `test`) |
+
+#### EA-driven realtime flags
+
+| Variable                | Description                                            |
+| ----------------------- | ------------------------------------------------------ |
+| `ALLOW_SYNTHETIC_DATA`  | Allow synthetic/simulated data (dev)                   |
+| `REQUIRE_REALTIME_DATA` | Require real-time feeds                                |
+| `ALLOW_ALL_SYMBOLS`     | Allow any EA-streamed symbol (disable asset filtering) |
 
 #### API Keys
 
@@ -180,53 +194,6 @@ See `.env.example` for the complete list of configuration options.
 | `/api/features-snapshots`  | GET    | Feature snapshots        |
 | `/api/risk/command-center` | GET    | Risk command center data |
 
-## 🐳 Docker
-
-### Build and Run
-
-```bash
-# Build the Docker image
-docker build -t intelligent-trading:latest .
-
-# Run the container
-docker run -d \
-  --name trading-server \
-  -p 4101:4101 \
-  -e NODE_ENV=production \
-  -e ALLOW_SYNTHETIC_DATA=true \
-  intelligent-trading:latest
-```
-
-### Docker Compose
-
-```bash
-# Start all services
-docker compose up -d
-
-# View logs
-docker compose logs -f
-
-# Stop services
-docker compose down
-```
-
-### Multi-stage Build
-
-The Dockerfile uses a multi-stage build for optimal image size:
-
-```dockerfile
-FROM node:20-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev --ignore-scripts
-COPY . ./
-ENV NODE_ENV=production
-EXPOSE 4101
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:4101/api/healthz || exit 1
-CMD ["npm", "start"]
-```
-
 ## 💻 Development
 
 ### Development Mode
@@ -237,6 +204,9 @@ npm run dev
 
 # Run dashboard dev server
 npm run dashboard:dev
+
+# Start both together
+npm run start:all
 ```
 
 ### Code Quality
@@ -279,7 +249,7 @@ npm run test:ci
 
 ### Test Structure
 
-```
+```text
 tests/
 ├── fixtures/           # Test fixtures and mock data
 ├── helpers/            # Test utility functions
@@ -293,18 +263,17 @@ tests/
     └── data/           # Data service tests
 ```
 
-## 🏗️ Architecture
+## 🏗 Architecture
 
 ### Directory Structure
 
-```
+```text
 .
 ├── clients/            # Client applications (dashboard)
 ├── config/             # Configuration files (Prometheus, Grafana, etc.)
 ├── data/               # Static data files
 ├── db/                 # Database migrations and schema
 ├── docs/               # Documentation
-├── routes/             # Express route modules
 ├── scripts/            # Utility scripts
 ├── src/
 │   ├── analyzers/      # Technical, economic, news analyzers
@@ -316,7 +285,7 @@ tests/
 │   ├── etl/            # ETL pipelines
 │   ├── middleware/     # Express middleware
 │   ├── models/         # Data models and DTOs
-│   ├── routes/         # Internal route handlers
+│   ├── routes/         # Express route modules
 │   ├── services/       # Business services
 │   ├── storage/        # Data persistence
 │   └── utils/          # Utility functions

@@ -36,6 +36,11 @@ class BaseBrokerConnector {
   }
 
   // eslint-disable-next-line class-methods-use-this
+  async modifyPosition() {
+    throw new Error('modifyPosition not implemented for connector');
+  }
+
+  // eslint-disable-next-line class-methods-use-this
   async fetchOpenPositions() {
     return [];
   }

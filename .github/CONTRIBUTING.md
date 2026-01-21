@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing! This document provides guidelines for contributing to this project.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
 - [Getting Started](#getting-started)
@@ -14,21 +14,27 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 ## Code of Conduct
 
-By participating in this project, you agree to abide by our Code of Conduct. Please be respectful and constructive in all interactions.
+By participating in this project, you agree to be respectful and constructive in all interactions.
 
 ## Getting Started
 
-1. **Fork** the repository on GitHub
-2. **Clone** your fork locally:
+1. Fork the repository on GitHub.
+
+2. Clone your fork locally.
+
    ```bash
-   git clone https://github.com/YOUR-USERNAME/my-app1.git
-   cd my-app1
+   git clone https://github.com/YOUR-USERNAME/sg.git
+   cd sg
    ```
-3. **Add upstream** remote:
+
+3. Add the upstream remote.
+
    ```bash
-   git remote add upstream https://github.com/abdulkadersh0002-dev/my-app1.git
+   git remote add upstream https://github.com/abdulkadersh0002-dev/sg.git
    ```
-4. **Install** dependencies:
+
+4. Install dependencies.
+
    ```bash
    npm ci
    ```
@@ -43,25 +49,18 @@ By participating in this project, you agree to abide by our Code of Conduct. Ple
 
 ### Environment Configuration
 
-1. Copy the example environment file:
+1. Copy the example environment file.
 
    ```bash
    cp .env.example .env
    ```
 
-2. Configure your local `.env` with appropriate values for development
+2. Configure your local `.env` with appropriate values for development.
 
 ### Running Locally
 
 ```bash
-# Development mode with hot reload
 npm run dev
-
-# Run tests
-npm test
-
-# Run linter
-npm run lint
 ```
 
 ## Making Changes
@@ -77,9 +76,9 @@ Use descriptive branch names:
 
 ### Commit Messages
 
-Follow conventional commit format:
+Follow a conventional commit format:
 
-```
+```text
 type(scope): description
 
 [optional body]
@@ -87,19 +86,9 @@ type(scope): description
 [optional footer]
 ```
 
-Types:
-
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `style`: Code style changes (formatting)
-- `refactor`: Code refactoring
-- `test`: Adding or updating tests
-- `chore`: Maintenance tasks
-
 Examples:
 
-```
+```text
 feat(analyzer): add RSI divergence detection
 fix(broker): handle connection timeout gracefully
 docs(api): add websocket endpoint documentation
@@ -107,76 +96,50 @@ docs(api): add websocket endpoint documentation
 
 ## Pull Request Process
 
-1. **Update** your fork with the latest upstream changes:
+1. Update your fork with the latest upstream changes.
 
    ```bash
    git fetch upstream
-   git rebase upstream/main
+   git rebase upstream/HEAD
    ```
 
-2. **Create** a feature branch:
+2. Create a feature branch.
 
    ```bash
    git checkout -b feature/your-feature-name
    ```
 
-3. **Make** your changes following our coding standards
-
-4. **Test** your changes:
+3. Run checks locally.
 
    ```bash
    npm run lint
    npm test
+   npm run format:check
    ```
 
-5. **Commit** your changes with a descriptive message
-
-6. **Push** to your fork:
-
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-7. **Open** a Pull Request on GitHub
-
-### PR Checklist
-
-- [ ] Code follows project style guidelines
-- [ ] All tests pass
-- [ ] New tests added for new functionality
-- [ ] Documentation updated as needed
-- [ ] No unrelated changes included
-- [ ] PR description clearly explains changes
+4. Push to your fork and open a Pull Request.
 
 ## Coding Standards
 
 ### JavaScript Style
 
-We use ESLint and Prettier for code formatting. The configuration is in `.eslintrc.json` and `.prettierrc.json`.
+We use ESLint and Prettier.
 
 ```bash
-# Check code style
 npm run lint
-
-# Fix auto-fixable issues
-npm run lint:fix
-
-# Format code
 npm run format:write
 ```
 
 ### Key Guidelines
 
-- Use ES modules (`import`/`export`)
-- Prefer `const` over `let`, avoid `var`
-- Use meaningful variable and function names
-- Add JSDoc comments for public APIs
-- Keep functions small and focused
-- Handle errors appropriately
+- Use ES modules (`import`/`export`).
+- Prefer `const` over `let`; avoid `var`.
+- Use meaningful names; keep functions focused.
+- Handle errors explicitly.
 
 ### File Organization
 
-```
+```text
 src/
 ├── analyzers/    # Analysis modules
 ├── services/     # Business logic
@@ -190,7 +153,7 @@ src/
 
 ### Test Structure
 
-```
+```text
 tests/
 ├── unit/         # Unit tests
 ├── integration/  # Integration tests
@@ -198,34 +161,15 @@ tests/
 └── helpers/      # Test utilities
 ```
 
-### Writing Tests
-
-- Place tests next to the code they test or in the `tests/` directory
-- Use descriptive test names
-- Test edge cases and error conditions
-- Mock external dependencies
-
 ### Running Tests
 
 ```bash
-# All tests
 npm test
-
-# Unit tests only
-npm run test:unit
-
-# Integration tests only
-npm run test:integration
-
-# With coverage
-npm run test:ci
 ```
 
-## Questions?
+## Questions
 
-If you have questions, feel free to:
+If you have questions:
 
-- Open an issue for discussion
-- Reach out to maintainers
-
-Thank you for contributing! 🎉
+- Open an issue for discussion.
+- Reach out to maintainers.

@@ -165,9 +165,11 @@ export const createApiAuthMiddleware = (options = {}) => {
     const keys = await loadKeys();
     if (!keys.size) {
       logger?.warn?.('API authentication enforced but no keys configured');
+      const _requestId = res?.locals?.requestId;
       return res.status(503).json({
         success: false,
-        error: 'API authentication temporarily unavailable'
+        error: 'API authentication temporarily unavailable',
+        ...(_requestId ? { requestId: _requestId } : null)
       });
     }
 
@@ -187,7 +189,12 @@ export const createApiAuthMiddleware = (options = {}) => {
         path: req.originalUrl || req.url,
         ip: req.ip
       });
-      return res.status(401).json({ success: false, error: 'Missing API key' });
+      const _requestId = res?.locals?.requestId;
+      return res.status(401).json({
+        success: false,
+        error: 'Missing API key',
+        ...(_requestId ? { requestId: _requestId } : null)
+      });
     }
 
     const entry = keys.get(supplied);
@@ -197,7 +204,12 @@ export const createApiAuthMiddleware = (options = {}) => {
         path: req.originalUrl || req.url,
         ip: req.ip
       });
-      return res.status(403).json({ success: false, error: 'Invalid API key' });
+      const _requestId = res?.locals?.requestId;
+      return res.status(403).json({
+        success: false,
+        error: 'Invalid API key',
+        ...(_requestId ? { requestId: _requestId } : null)
+      });
     }
 
     const identity = {
@@ -225,7 +237,12 @@ export const createApiAuthMiddleware = (options = {}) => {
     return (req, res, next) => {
       const identity = req.identity;
       if (!identity || !Array.isArray(identity.roles)) {
-        return res.status(403).json({ success: false, error: 'Forbidden' });
+        const _requestId = res?.locals?.requestId;
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden',
+          ...(_requestId ? { requestId: _requestId } : null)
+        });
       }
       const ok = roles.every((role) => identity.roles.includes(role));
       if (!ok) {
@@ -235,7 +252,12 @@ export const createApiAuthMiddleware = (options = {}) => {
           id: identity.id,
           required: roles
         });
-        return res.status(403).json({ success: false, error: 'Forbidden' });
+        const _requestId = res?.locals?.requestId;
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden',
+          ...(_requestId ? { requestId: _requestId } : null)
+        });
       }
       return next();
     };
@@ -248,7 +270,12 @@ export const createApiAuthMiddleware = (options = {}) => {
     return (req, res, next) => {
       const identity = req.identity;
       if (!identity || !Array.isArray(identity.roles)) {
-        return res.status(403).json({ success: false, error: 'Forbidden' });
+        const _requestId = res?.locals?.requestId;
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden',
+          ...(_requestId ? { requestId: _requestId } : null)
+        });
       }
       const ok = identity.roles.some((role) => roles.includes(role));
       if (!ok) {
@@ -258,7 +285,12 @@ export const createApiAuthMiddleware = (options = {}) => {
           id: identity.id,
           anyOf: roles
         });
-        return res.status(403).json({ success: false, error: 'Forbidden' });
+        const _requestId = res?.locals?.requestId;
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden',
+          ...(_requestId ? { requestId: _requestId } : null)
+        });
       }
       return next();
     };

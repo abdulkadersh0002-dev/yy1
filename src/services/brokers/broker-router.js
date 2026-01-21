@@ -217,6 +217,44 @@ class BrokerRouter {
     };
   }
 
+  async modifyPosition(request = {}) {
+    if (this.killSwitchEnabled) {
+      return {
+        success: false,
+        error: `Kill switch engaged${this.killSwitchReason ? `: ${this.killSwitchReason}` : ''}`
+      };
+    }
+
+    const connector = this.getConnector(request.broker || this.defaultBroker);
+    if (!connector) {
+      return { success: false, error: `Unknown broker: ${request.broker || this.defaultBroker}` };
+    }
+
+    const normalized = this.normalizeModifyRequest(request);
+
+    if (typeof connector.modifyPosition !== 'function') {
+      return {
+        success: false,
+        error: `Broker ${connector.id} does not support position modification`
+      };
+    }
+
+    const result = await connector.modifyPosition(normalized);
+
+    this.recordOrder({
+      broker: connector.id,
+      request: normalized,
+      result,
+      timestamp: new Date().toISOString(),
+      type: 'modify'
+    });
+
+    return {
+      ...result,
+      broker: connector.id
+    };
+  }
+
   normalizeOrderRequest(request = {}) {
     const side = request.side || (request.direction === 'SELL' ? 'sell' : 'buy');
     const volume = Number(request.volume || request.units || request.quantity || 0);
@@ -235,6 +273,26 @@ class BrokerRouter {
       routerMeta: {
         source: request.source || 'trading-engine',
         tradeId: request.tradeId || null
+      }
+    };
+  }
+
+  normalizeModifyRequest(request = {}) {
+    const stopLoss = request.stopLoss ?? request.sl ?? null;
+    const takeProfit = request.takeProfit ?? request.tp ?? null;
+
+    return {
+      broker: request.broker || this.defaultBroker,
+      ticket: request.ticket || request.id || request.positionId || null,
+      symbol: request.symbol || request.pair || null,
+      stopLoss: stopLoss != null ? Number(stopLoss) : null,
+      takeProfit: takeProfit != null ? Number(takeProfit) : null,
+      accountNumber: request.accountNumber || null,
+      comment: request.comment || 'modify',
+      routerMeta: {
+        source: request.source || 'trading-engine',
+        tradeId: request.tradeId || null,
+        reason: request.reason || null
       }
     };
   }

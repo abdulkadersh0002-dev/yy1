@@ -50,18 +50,22 @@ test('WebSocket broadcast flow', async (t) => {
 
     await once(socket, 'open');
 
+    // Ensure the server has fully registered this client before we trigger broadcasts.
+    // This reduces flakiness when the full test suite is running under heavy load.
+    await waitFor(() => received.find((message) => message.type === 'connected'), 4000);
+
     const response = await fetch(server.url('/api/signal/generate'), {
       method: 'POST',
       headers: {
         'content-type': 'application/json'
       },
-      body: JSON.stringify({ pair: 'EURUSD' })
+      body: JSON.stringify({ pair: 'EURUSD', broadcast: true })
     });
     assert.equal(response.status, 200);
 
     const broadcast = await waitFor(
       () => received.find((message) => message.type === 'signal'),
-      4000
+      10000
     );
 
     assert.equal(broadcast.payload?.pair, 'EURUSD');

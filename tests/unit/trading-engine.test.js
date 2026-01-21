@@ -67,18 +67,47 @@ test('calculateEntryParameters builds coherent trade plan inputs', () => {
 test('validateSignal enforces gating and reports failures', () => {
   const engine = createEngine();
   const goodSignal = {
+    pair: 'EURUSD',
     direction: 'BUY',
     strength: 80,
-    confidence: 75,
+    confidence: 85,
     estimatedWinRate: 93,
     entry: { riskReward: 2.0 },
     riskManagement: { canTrade: true },
-    components: { marketData: { confidenceFloorBreached: false } }
+    components: {
+      marketData: { confidenceFloorBreached: false },
+      technical: {
+        candlesByTimeframe: {
+          M15: {
+            smc: {
+              priceImbalance: {
+                state: 'bullish',
+                confidence: 72,
+                nearest: {
+                  type: 'bullish',
+                  zoneLow: 1.1,
+                  zoneHigh: 1.101,
+                  fillPct: 15,
+                  ageBars: 4,
+                  distance: 0.0
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   };
   const passing = engine.validateSignal(goodSignal);
   assert.equal(passing.isValid, true);
+  assert.equal(passing.decision.state, 'ENTER');
+
+  const layers = goodSignal?.components?.confluence?.layers;
+  assert.ok(Array.isArray(layers), 'confluence layers should exist');
+  assert.ok(layers.some((l) => l?.id === 'smc_price_imbalance'));
 
   const badSignal = {
+    pair: 'EURUSD',
     direction: 'NEUTRAL',
     strength: 10,
     confidence: 40,
@@ -89,5 +118,6 @@ test('validateSignal enforces gating and reports failures', () => {
   };
   const failing = engine.validateSignal(badSignal);
   assert.equal(failing.isValid, false);
-  assert.match(failing.reason, /Failed validations/);
+  assert.equal(failing.decision.state, 'WAIT_MONITOR');
+  assert.match(failing.reason, /WAIT|monitor/i);
 });

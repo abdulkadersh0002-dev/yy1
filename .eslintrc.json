@@ -8,7 +8,7 @@
     "ecmaVersion": 2022,
     "sourceType": "module"
   },
-  "ignorePatterns": ["node_modules/", "dist/", "coverage/", "build/"],
+  "ignorePatterns": ["node_modules/", "dist/", "coverage/", "build/", "clients/neon-dashboard/**"],
   "extends": ["eslint:recommended"],
   "rules": {
     "no-unused-vars": [

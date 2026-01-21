@@ -9,8 +9,13 @@ import { z } from 'zod';
 
 /**
  * @typedef {Object} TradingSignalDTO
+ * @property {string|null|undefined} broker
  * @property {string} pair
  * @property {number} timestamp
+ * @property {number|null|undefined} expiresAt
+ * @property {string|null|undefined} signalStatus
+ * @property {string|null|undefined} timeframe
+ * @property {{ state?: string, expiresAt?: (number|null), ttlMs?: (number|null), evaluatedAt?: (number|null), reason?: (string|null) }|null|undefined} validity
  * @property {('BUY'|'SELL'|'NEUTRAL')} direction
  * @property {number} strength
  * @property {number} confidence
@@ -21,24 +26,88 @@ import { z } from 'zod';
  * @property {{ isValid: boolean, checks: Object<string, boolean>, reason: string }} isValid
  * @property {Object|null} explainability
  * @property {string[]|null} reasoning
+ * @property {{ action: ('BUY'|'SELL'|'NEUTRAL'), reason: (string|null), reasons: string[], tradeValid: (boolean|null) }|null|undefined} finalDecision
  */
 
 // Zod schemas for runtime validation
 export const TradingSignalSchema = z
   .object({
+    broker: z.string().nullable().optional(),
     pair: z.string(),
     timestamp: z.number(),
+    expiresAt: z.number().nullable().optional(),
+    signalStatus: z.string().nullable().optional(),
+    timeframe: z.string().nullable().optional(),
+    validity: z
+      .object({
+        state: z.string().optional(),
+        expiresAt: z.number().nullable().optional(),
+        ttlMs: z.number().nullable().optional(),
+        evaluatedAt: z.number().nullable().optional(),
+        reason: z.string().nullable().optional()
+      })
+      .nullable()
+      .optional(),
     direction: z.enum(['BUY', 'SELL', 'NEUTRAL']),
     strength: z.number(),
     confidence: z.number(),
     finalScore: z.number(),
+    finalDecision: z
+      .object({
+        action: z.enum(['BUY', 'SELL', 'NEUTRAL']),
+        reason: z.string().nullable().optional(),
+        reasons: z.array(z.string()).optional(),
+        tradeValid: z.boolean().nullable().optional()
+      })
+      .nullable()
+      .optional(),
     components: z.record(z.any()),
     entry: z.any().nullable(),
     riskManagement: z.record(z.any()),
     isValid: z.object({
       isValid: z.boolean(),
       checks: z.record(z.boolean()),
-      reason: z.string()
+      reason: z.string(),
+      decision: z
+        .object({
+          state: z.enum(['ENTER', 'WAIT_MONITOR', 'NO_TRADE_BLOCKED']).optional(),
+          blocked: z.boolean().optional(),
+          score: z.number().optional(),
+          assetClass: z.string().optional(),
+          category: z.string().optional(),
+          killSwitch: z
+            .object({
+              enabled: z.boolean().optional(),
+              blocked: z.boolean().optional(),
+              ids: z.array(z.string()).optional(),
+              items: z
+                .array(
+                  z.object({
+                    id: z.string(),
+                    label: z.string().nullable().optional(),
+                    reason: z.string().nullable().optional(),
+                    weight: z.number().nullable().optional()
+                  })
+                )
+                .optional()
+            })
+            .nullable()
+            .optional(),
+          blockers: z.array(z.string()).optional(),
+          missing: z.array(z.string()).optional(),
+          whatWouldChange: z.array(z.string()).optional(),
+          missingInputs: z
+            .object({
+              missing: z.array(z.string()).optional(),
+              details: z.record(z.any()).optional()
+            })
+            .optional(),
+          nextSteps: z.array(z.string()).optional(),
+          contributors: z.record(z.any()).optional(),
+          modifiers: z.record(z.any()).optional(),
+          context: z.record(z.any()).optional()
+        })
+        .optional()
     }),
     explainability: z.any().nullable(),
     reasoning: z.array(z.string()).nullable().optional()
@@ -197,15 +266,107 @@ export const TechnicalAnalysisSchema = z
   })
   .strict();
 
+export const PriceBarSchema = z
+  .object({
+    // Epoch ms recommended. If the EA sends epoch seconds, the backend will normalize.
+    time: z.number(),
+    open: z.number(),
+    high: z.number(),
+    low: z.number(),
+    close: z.number(),
+    volume: z.number().optional().nullable()
+  })
+  .passthrough();
+
+export const MarketBarsIngestSchema = z
+  .object({
+    broker: z.string().min(1),
+    symbol: z.string().min(1),
+    timeframe: z.string().min(1),
+    bars: z.array(PriceBarSchema).optional(),
+    bar: PriceBarSchema.optional(),
+    source: z.string().optional(),
+    timestamp: z.number().optional()
+  })
+  .passthrough()
+  .refine((value) => (Array.isArray(value.bars) ? value.bars.length > 0 : Boolean(value.bar)), {
+    message: 'bars[] or bar is required'
+  })
+  .transform((value) => ({
+    ...value,
+    bars: Array.isArray(value.bars) && value.bars.length ? value.bars : value.bar ? [value.bar] : []
+  }));
+
+const optionalFiniteNumber = () =>
+  z.preprocess(
+    (value) => (value === '' || value === undefined ? undefined : value),
+    z.coerce.number().finite()
+  );
+
+export const ModifyPositionSchema = z
+  .object({
+    broker: z.string().min(1).optional(),
+    ticket: z.union([z.string().min(1), z.number().int().positive()]).optional(),
+    id: z.union([z.string().min(1), z.number().int().positive()]).optional(),
+    positionId: z.union([z.string().min(1), z.number().int().positive()]).optional(),
+    symbol: z.string().min(1).optional(),
+    pair: z.string().min(1).optional(),
+    stopLoss: optionalFiniteNumber().optional().nullable(),
+    sl: optionalFiniteNumber().optional().nullable(),
+    takeProfit: optionalFiniteNumber().optional().nullable(),
+    tp: optionalFiniteNumber().optional().nullable(),
+    accountNumber: z
+      .union([z.string().min(1), z.number().int().positive()])
+      .optional()
+      .nullable(),
+    comment: z.string().max(120).optional().nullable(),
+    source: z.string().max(60).optional().nullable(),
+    tradeId: z.string().max(80).optional().nullable(),
+    reason: z.string().max(120).optional().nullable()
+  })
+  .passthrough()
+  .refine(
+    (value) => Boolean(value.ticket ?? value.id ?? value.positionId),
+    'ticket/id/positionId is required'
+  )
+  .refine((value) => Boolean(value.symbol ?? value.pair), 'symbol/pair is required')
+  .refine(
+    (value) =>
+      value.stopLoss != null || value.sl != null || value.takeProfit != null || value.tp != null,
+    'stopLoss/takeProfit (or sl/tp) is required'
+  )
+  .transform((value) => {
+    const stopLoss = value.stopLoss ?? value.sl ?? null;
+    const takeProfit = value.takeProfit ?? value.tp ?? null;
+    return {
+      broker: value.broker,
+      ticket: value.ticket ?? value.id ?? value.positionId,
+      symbol: value.symbol ?? value.pair,
+      stopLoss: stopLoss == null ? null : Number(stopLoss),
+      takeProfit: takeProfit == null ? null : Number(takeProfit),
+      accountNumber: value.accountNumber ?? null,
+      comment: value.comment ?? null,
+      source: value.source ?? null,
+      tradeId: value.tradeId ?? null,
+      reason: value.reason ?? null
+    };
+  });
+
 export function createTradingSignalDTO(raw) {
   if (!raw) {
     return {
+      broker: null,
       pair: '',
       timestamp: Date.now(),
+      expiresAt: null,
+      signalStatus: null,
+      timeframe: null,
+      validity: null,
       direction: 'NEUTRAL',
       strength: 0,
       confidence: 0,
       finalScore: 0,
+      finalDecision: null,
       components: {},
       entry: null,
       riskManagement: {},
@@ -215,13 +376,65 @@ export function createTradingSignalDTO(raw) {
     };
   }
 
+  const timeframe = (() => {
+    const direct = raw.timeframe ?? raw.meta?.timeframe;
+    if (direct != null && String(direct).trim()) {
+      return String(direct);
+    }
+    const technicalTf = raw.components?.technical?.signals?.[0]?.timeframe;
+    if (technicalTf != null && String(technicalTf).trim()) {
+      return String(technicalTf);
+    }
+    return null;
+  })();
+
   return {
+    broker: raw.broker || null,
     pair: String(raw.pair || ''),
     timestamp: Number.isFinite(raw.timestamp) ? raw.timestamp : Date.now(),
+    expiresAt: Number.isFinite(Number(raw.expiresAt)) ? Number(raw.expiresAt) : null,
+    signalStatus: raw.signalStatus != null ? String(raw.signalStatus) : null,
+    timeframe,
+    validity:
+      raw.validity && typeof raw.validity === 'object'
+        ? {
+            state: raw.validity.state != null ? String(raw.validity.state) : undefined,
+            expiresAt:
+              raw.validity.expiresAt == null || !Number.isFinite(Number(raw.validity.expiresAt))
+                ? null
+                : Number(raw.validity.expiresAt),
+            ttlMs:
+              raw.validity.ttlMs == null || !Number.isFinite(Number(raw.validity.ttlMs))
+                ? null
+                : Number(raw.validity.ttlMs),
+            evaluatedAt:
+              raw.validity.evaluatedAt == null || !Number.isFinite(Number(raw.validity.evaluatedAt))
+                ? null
+                : Number(raw.validity.evaluatedAt),
+            reason: raw.validity.reason != null ? String(raw.validity.reason) : null
+          }
+        : null,
     direction: raw.direction || 'NEUTRAL',
     strength: Number(raw.strength) || 0,
     confidence: Number(raw.confidence) || 0,
     finalScore: Number(raw.finalScore) || 0,
+    finalDecision:
+      raw.finalDecision && typeof raw.finalDecision === 'object'
+        ? {
+            action: raw.finalDecision.action || raw.direction || 'NEUTRAL',
+            reason:
+              raw.finalDecision.reason != null
+                ? String(raw.finalDecision.reason)
+                : raw.isValid?.reason || null,
+            reasons: Array.isArray(raw.finalDecision.reasons)
+              ? raw.finalDecision.reasons.map((r) => String(r)).slice(0, 6)
+              : [],
+            tradeValid:
+              raw.finalDecision.tradeValid === null || raw.finalDecision.tradeValid === undefined
+                ? null
+                : Boolean(raw.finalDecision.tradeValid)
+          }
+        : null,
     components: raw.components || {},
     entry: raw.entry ?? null,
     riskManagement: raw.riskManagement || {},
@@ -241,7 +454,44 @@ export function createTradingSignalDTO(raw) {
           ])
         );
       })(),
-      reason: raw.isValid?.reason || 'Unspecified'
+      reason: raw.isValid?.reason || 'Unspecified',
+      decision:
+        raw.isValid?.decision && typeof raw.isValid.decision === 'object'
+          ? {
+              state: raw.isValid.decision.state || undefined,
+              blocked:
+                raw.isValid.decision.blocked === undefined
+                  ? undefined
+                  : Boolean(raw.isValid.decision.blocked),
+              score: Number.isFinite(Number(raw.isValid.decision.score))
+                ? Number(raw.isValid.decision.score)
+                : undefined,
+              assetClass: raw.isValid.decision.assetClass || undefined,
+              category: raw.isValid.decision.category || undefined,
+              blockers: Array.isArray(raw.isValid.decision.blockers)
+                ? raw.isValid.decision.blockers.map((v) => String(v)).slice(0, 10)
+                : undefined,
+              missing: Array.isArray(raw.isValid.decision.missing)
+                ? raw.isValid.decision.missing.map((v) => String(v)).slice(0, 12)
+                : undefined,
+              whatWouldChange: Array.isArray(raw.isValid.decision.whatWouldChange)
+                ? raw.isValid.decision.whatWouldChange.map((v) => String(v)).slice(0, 12)
+                : undefined,
+              contributors:
+                raw.isValid.decision.contributors &&
+                typeof raw.isValid.decision.contributors === 'object'
+                  ? raw.isValid.decision.contributors
+                  : undefined,
+              modifiers:
+                raw.isValid.decision.modifiers && typeof raw.isValid.decision.modifiers === 'object'
+                  ? raw.isValid.decision.modifiers
+                  : undefined,
+              context:
+                raw.isValid.decision.context && typeof raw.isValid.decision.context === 'object'
+                  ? raw.isValid.decision.context
+                  : undefined
+            }
+          : undefined
     },
     explainability: raw.explainability ?? null,
     reasoning: Array.isArray(raw.reasoning) ? raw.reasoning : null
@@ -367,4 +617,12 @@ export function validateNewsAnalysisDTO(dto) {
 
 export function validateTechnicalAnalysisDTO(dto) {
   return TechnicalAnalysisSchema.parse(dto);
+}
+
+export function validateMarketBarsIngestDTO(dto) {
+  return MarketBarsIngestSchema.parse(dto);
+}
+
+export function validateModifyPositionDTO(dto) {
+  return ModifyPositionSchema.parse(dto);
 }

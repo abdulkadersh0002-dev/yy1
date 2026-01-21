@@ -56,6 +56,7 @@ function buildChildEnv(port, optionsEnv = {}) {
     NODE_ENV: 'test',
     PORT: String(port),
     ENABLE_API_AUTH: 'false',
+    EA_ONLY_MODE: 'false',
     ENABLE_WEBSOCKETS: optionsEnv.ENABLE_WEBSOCKETS ?? 'false',
     ALLOW_SYNTHETIC_DATA: 'true',
     REQUIRE_REALTIME_DATA: 'false',

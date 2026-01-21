@@ -9,11 +9,32 @@ const resolveBrowserOrigin = () => {
   return `${protocol}//${host}`;
 };
 
+const resolveDefaultBaseUrl = () => {
+  const browserOrigin = resolveBrowserOrigin();
+  if (!browserOrigin) {
+    return 'http://localhost:4101';
+  }
+
+  if (import.meta.env.DEV) {
+    try {
+      const url = new URL(browserOrigin);
+      if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+        url.port = '4101';
+        return url.toString().replace(/\/$/, '');
+      }
+    } catch (_error) {
+      // ignore and fall back to browser origin
+    }
+  }
+
+  return browserOrigin.replace(/\/$/, '');
+};
+
 const sanitizeBaseUrl = (value) => {
   const browserOrigin = resolveBrowserOrigin();
 
   if (!value) {
-    return browserOrigin || 'http://localhost:4101';
+    return resolveDefaultBaseUrl();
   }
 
   const trimmed = value.trim().replace(/\/$/, '');
@@ -27,13 +48,13 @@ const sanitizeBaseUrl = (value) => {
     const candidate = new URL(normalized);
     if (browserOrigin) {
       const browserUrl = new URL(browserOrigin);
-      if (candidate.hostname === 'app' || candidate.hostname === 'localhost') {
+      if (candidate.hostname === 'app') {
         return `${browserUrl.protocol}//${browserUrl.host}`;
       }
     }
     return candidate.toString();
   } catch (_error) {
-    return browserOrigin || 'http://localhost:4101';
+    return resolveDefaultBaseUrl();
   }
 };
 
@@ -82,9 +103,26 @@ const buildHeaders = (baseHeaders = {}, skipAuth = false) => {
   return headers;
 };
 
+const joinApiUrl = (path) => {
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+
+  const normalizedBase = String(baseUrl || '').replace(/\/$/, '');
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+
+  if (normalizedBase.endsWith('/api') && normalizedPath.startsWith('/api/')) {
+    return `${normalizedBase}${normalizedPath.slice(4)}`;
+  }
+  if (normalizedBase.endsWith('/metrics') && normalizedPath === '/metrics') {
+    return normalizedBase;
+  }
+
+  return `${normalizedBase}${normalizedPath}`;
+};
+
 export async function fetchJson(path, options = {}) {
-  const url =
-    path.startsWith('http://') || path.startsWith('https://') ? path : `${baseUrl}${path}`;
+  const url = joinApiUrl(path);
   const method = options.method || 'GET';
   const skipAuth = Boolean(options.skipAuth);
   const headers = buildHeaders(options.headers, skipAuth);

@@ -3,8 +3,8 @@
 This project can persist feature snapshots, trade outcomes, and provider telemetry in TimescaleDB/Postgres. To launch a local instance for development:
 
 ```bash
-# Ensure environment variables exist (see .env.example)
-docker compose up -d timescaledb
+# Install PostgreSQL locally (optionally with TimescaleDB), then set env vars (see .env.example)
+# and run migrations.
 ```
 
 Once the container is running, apply migrations in `db/migrations/` (any migration tool is fine, for example `psql`):
