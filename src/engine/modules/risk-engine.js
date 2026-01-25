@@ -34,10 +34,6 @@ export const riskEngine = {
 
     const remainingDailyRisk = Math.max(0, this.config.maxDailyRisk - this.dailyRisk);
     const effectiveRiskFraction = Math.min(desiredRiskFraction, remainingDailyRisk);
-    const canTrade =
-      effectiveRiskFraction >= this.config.minKellyFraction &&
-      remainingDailyRisk >= this.config.minKellyFraction;
-
     const riskAmount = accountBalance * effectiveRiskFraction;
     let positionSize = riskAmount / riskDistance;
 
