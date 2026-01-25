@@ -78,7 +78,12 @@ const coerceRecentTimestamp = (value) => {
   return { timestamp: ts, originalTimestamp: null };
 };
 
-export function startRssToEaBridgeIngestor({ eaBridgeService, brokers, logger } = {}) {
+export function startRssToEaBridgeIngestor({
+  eaBridgeService,
+  brokers,
+  logger,
+  calendarService
+} = {}) {
   const log = logger && typeof logger === 'object' ? logger : console;
 
   const enabledEnv = parseBool(process.env.EA_RSS_NEWS_ENABLED);
@@ -109,6 +114,14 @@ export function startRssToEaBridgeIngestor({ eaBridgeService, brokers, logger } 
 
   const maxItemsEnv = Number(process.env.EA_RSS_MAX_ITEMS);
   const maxItems = Number.isFinite(maxItemsEnv) ? Math.max(5, Math.min(200, maxItemsEnv)) : 80;
+
+  const calendarEnabledEnv = parseBool(process.env.EA_RSS_CALENDAR_ENABLED);
+  const calendarEnabled = calendarEnabledEnv != null ? calendarEnabledEnv : true;
+  const calendarCurrencies = FX_CURRENCIES;
+  const calendarDaysAheadEnv = Number(process.env.EA_RSS_CALENDAR_DAYS_AHEAD);
+  const calendarDaysAhead = Number.isFinite(calendarDaysAheadEnv)
+    ? Math.max(1, Math.min(14, calendarDaysAheadEnv))
+    : 3;
 
   const aggregator = new RssFeedAggregator({
     apiKeys: {
@@ -172,16 +185,63 @@ export function startRssToEaBridgeIngestor({ eaBridgeService, brokers, logger } 
         };
       });
 
+      const calendarItems = [];
+      if (
+        calendarEnabled &&
+        calendarService &&
+        typeof calendarService.getEventsForCurrency === 'function'
+      ) {
+        for (const currency of calendarCurrencies) {
+          try {
+            const events = await calendarService.getEventsForCurrency(currency, {
+              daysAhead: calendarDaysAhead,
+              includeHistorical: false
+            });
+            if (!Array.isArray(events)) {
+              continue;
+            }
+            events.forEach((evt) => {
+              const iso = evt?.isoDate || evt?.time || evt?.date || null;
+              const ts = Number.isFinite(Date.parse(String(iso))) ? Date.parse(String(iso)) : null;
+              if (!ts) {
+                return;
+              }
+              const title = evt?.event || evt?.title || 'Economic Event';
+              calendarItems.push({
+                id: `cal:${currency}:${String(title).slice(0, 80)}:${ts}`,
+                title,
+                headline: title,
+                currency,
+                impact: evt?.impact ?? null,
+                time: ts,
+                timestamp: ts,
+                actual: evt?.actual ?? null,
+                forecast: evt?.forecast ?? null,
+                previous: evt?.previous ?? null,
+                source: evt?.source || 'calendar',
+                kind: 'calendar',
+                topic: 'economic_calendar',
+                raw: evt
+              });
+            });
+          } catch (_error) {
+            // best-effort
+          }
+        }
+      }
+
+      const mergedItems = calendarItems.length ? items.concat(calendarItems) : items;
+
       for (const broker of brokerList) {
         try {
-          eaBridgeService.recordNews({ broker, items });
+          eaBridgeService.recordNews({ broker, items: mergedItems });
         } catch (_error) {
           // best-effort
         }
       }
 
       log.info?.(
-        { brokers: brokerList, ingested: items.length, intervalMs },
+        { brokers: brokerList, ingested: mergedItems.length, intervalMs },
         'RSS→EA bridge ingestor: headlines refreshed'
       );
     } catch (error) {

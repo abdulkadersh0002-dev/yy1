@@ -1,4 +1,4 @@
-import { allowSyntheticData, requireRealTimeData } from '../config/runtime-flags.js';
+import { allowSyntheticData, requireRealTimeData, eaOnlyMode } from '../config/runtime-flags.js';
 import { appConfig } from '../app/config.js';
 
 const PRICE_PROVIDERS = [
@@ -98,6 +98,9 @@ function preferRssNews(envConfig) {
 }
 
 export function enforceRealTimeProviderReadiness(apiKeys = {}, envConfig = appConfig.env) {
+  if (eaOnlyMode(envConfig)) {
+    return;
+  }
   if (!requireRealTimeData(envConfig)) {
     return;
   }
@@ -156,25 +159,29 @@ export function enforceRealTimeProviderReadiness(apiKeys = {}, envConfig = appCo
   }
 
   if (priceCheck.placeholders.length > 0) {
-    warnings.push(`placeholder API keys detected for ${priceCheck.placeholders.join(', ')}`);
+    warnings.push(`placeholder credentials detected for ${priceCheck.placeholders.join(', ')}`);
   }
 
   if (newsCheck.missing.length > 0) {
-    warnings.push(`news provider keys missing (${newsCheck.missing.join(', ')})`);
+    warnings.push(`news provider credentials missing (${newsCheck.missing.join(', ')})`);
   }
 
   if (newsCheck.placeholders.length > 0) {
-    warnings.push(`placeholder news provider keys detected (${newsCheck.placeholders.join(', ')})`);
+    warnings.push(
+      `placeholder news provider credentials detected (${newsCheck.placeholders.join(', ')})`
+    );
   }
 
   if (auxiliaryCheck.optionalMissing.length > 0) {
     warnings.push(
-      `auxiliary data providers missing keys (${auxiliaryCheck.optionalMissing.join(', ')})`
+      `auxiliary data providers missing credentials (${auxiliaryCheck.optionalMissing.join(', ')})`
     );
   }
   if (auxiliaryCheck.optionalPlaceholders.length > 0) {
     warnings.push(
-      `auxiliary data providers use placeholder keys (${auxiliaryCheck.optionalPlaceholders.join(', ')})`
+      `auxiliary data providers use placeholder credentials (${auxiliaryCheck.optionalPlaceholders.join(
+        ', '
+      )})`
     );
   }
 

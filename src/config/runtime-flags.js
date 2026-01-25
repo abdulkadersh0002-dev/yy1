@@ -58,9 +58,8 @@ export function eaOnlyMode(envConfig = process.env) {
     return flag;
   }
 
-  // Opt-in by default to keep integration/unit tests stable.
-  // The production/dev server can choose to default this on at boot.
-  return false;
+  // Default on to prefer EA + RSS only workflows.
+  return true;
 }
 
 export function assertRealTimeDataAvailability(arg1, arg2, arg3 = '') {

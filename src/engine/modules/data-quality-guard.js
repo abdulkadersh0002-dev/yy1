@@ -30,6 +30,13 @@ const SPREAD_THRESHOLDS = {
   crosses: { warn: 3.4, block: 6.2 }
 };
 
+const AUTO_REENABLE_DEFAULTS = {
+  enabled: true,
+  minScore: 78,
+  minHealthyCount: 2,
+  windowMs: 4 * 60 * 1000
+};
+
 function normalizePairCategory(pair) {
   const value = (pair || '').toUpperCase();
   const majors = new Set(['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCHF', 'USDCAD', 'NZDUSD']);
@@ -83,6 +90,23 @@ function priceToPips(pair, priceDiff) {
 }
 
 export const dataQualityGuard = {
+  resolveAutoReenableConfig() {
+    const raw = this?.config?.dataQualityGuard || {};
+    return {
+      enabled:
+        typeof raw.autoReenable === 'boolean' ? raw.autoReenable : AUTO_REENABLE_DEFAULTS.enabled,
+      minScore: Number.isFinite(raw.autoReenableMinScore)
+        ? raw.autoReenableMinScore
+        : AUTO_REENABLE_DEFAULTS.minScore,
+      minHealthyCount: Number.isFinite(raw.autoReenableMinHealthyCount)
+        ? raw.autoReenableMinHealthyCount
+        : AUTO_REENABLE_DEFAULTS.minHealthyCount,
+      windowMs: Number.isFinite(raw.autoReenableWindowMs)
+        ? raw.autoReenableWindowMs
+        : AUTO_REENABLE_DEFAULTS.windowMs
+    };
+  },
+
   async assessMarketData(pair, options = {}) {
     if (!this.priceDataFetcher) {
       return null;
@@ -293,7 +317,7 @@ export const dataQualityGuard = {
         spreadStatus === 'critical' ||
         worstWeekendGapSeverity === 'critical')
     ) {
-      this.activatePairCircuitBreaker?.(pair, {
+      const breakerEntry = this.activatePairCircuitBreaker?.(pair, {
         reason:
           spreadStatus === 'critical'
             ? 'wide_spread'
@@ -304,13 +328,55 @@ export const dataQualityGuard = {
         spreadPips,
         weekendGapPips: maxWeekendGapPips
       });
+      this.config?.auditLogger?.record?.('data_quality.circuit_breaker.activated', {
+        pair,
+        reason: breakerEntry?.reason || null,
+        score: adjustedScore,
+        spreadPips,
+        weekendGapPips: maxWeekendGapPips,
+        expiresAt: breakerEntry?.expiresAt || null
+      });
       report.recommendation = 'block';
       if (!issues.includes('pair:circuit_breaker_triggered')) {
         issues.push('pair:circuit_breaker_triggered');
       }
     }
 
-    const breakerAfter = this.getPairCircuitBreaker?.(pair) || activeBreaker;
+    let breakerAfter = this.getPairCircuitBreaker?.(pair) || activeBreaker;
+
+    const reenableConfig = this.resolveAutoReenableConfig();
+    const streak = this.updatePairQualityStreak(pair, {
+      assessedAt,
+      status,
+      score: adjustedScore
+    });
+
+    if (
+      breakerAfter &&
+      !relaxForSynthetic &&
+      reenableConfig.enabled &&
+      status === 'healthy' &&
+      adjustedScore >= reenableConfig.minScore &&
+      streak?.healthyCount >= reenableConfig.minHealthyCount &&
+      assessedAt - (streak.healthySince || assessedAt) <= reenableConfig.windowMs
+    ) {
+      this.clearPairCircuitBreaker?.(pair);
+      breakerAfter = null;
+      report.circuitBreakerCleared = {
+        at: assessedAt,
+        reason: 'auto_reenable',
+        healthyCount: streak.healthyCount,
+        healthySince: streak.healthySince
+      };
+      this.config?.auditLogger?.record?.('data_quality.circuit_breaker.cleared', {
+        pair,
+        reason: 'auto_reenable',
+        healthyCount: streak.healthyCount,
+        healthySince: streak.healthySince,
+        score: adjustedScore
+      });
+    }
+
     if (breakerAfter && !relaxForSynthetic) {
       report.circuitBreaker = breakerAfter;
       report.recommendation = 'block';
@@ -535,6 +601,41 @@ export const dataQualityGuard = {
       this.marketDataCircuitBreakers = new Map();
     }
     return this.marketDataCircuitBreakers;
+  },
+
+  ensurePairQualityStreakMap() {
+    if (!this.marketDataQualityStreaks) {
+      this.marketDataQualityStreaks = new Map();
+    }
+    return this.marketDataQualityStreaks;
+  },
+
+  updatePairQualityStreak(pair, { assessedAt, status, score } = {}) {
+    const map = this.ensurePairQualityStreakMap();
+    const entry = map.get(pair) || {
+      healthyCount: 0,
+      healthySince: 0,
+      lastAssessmentAt: 0,
+      lastScore: null,
+      lastStatus: null
+    };
+
+    const isHealthy = status === 'healthy' && Number.isFinite(score);
+    if (isHealthy) {
+      if (entry.healthyCount === 0) {
+        entry.healthySince = assessedAt;
+      }
+      entry.healthyCount += 1;
+    } else {
+      entry.healthyCount = 0;
+      entry.healthySince = 0;
+    }
+
+    entry.lastAssessmentAt = assessedAt;
+    entry.lastScore = Number.isFinite(score) ? score : null;
+    entry.lastStatus = status || null;
+    map.set(pair, entry);
+    return entry;
   },
 
   getPairCircuitBreaker(pair) {

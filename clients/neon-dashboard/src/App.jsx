@@ -1,4 +1,12 @@
-import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  startTransition,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import { useLiveClock } from './hooks/useLiveClock.js';
 import { useWebSocketFeed } from './hooks/useWebSocketFeed.js';
 import { SystemHealthHeaderIndicator } from './components/SystemHealthSummary.jsx';
@@ -73,6 +81,7 @@ const formatDuration = (totalMinutes) => {
 
 const MAX_SIGNAL_ITEMS = 28;
 const MAX_EVENT_ITEMS = 28;
+const MAX_TICKER_RENDER = 120;
 const MAX_CANDIDATE_ITEMS = (() => {
   const raw = Number(import.meta?.env?.VITE_MAX_CANDIDATE_ITEMS);
   if (!Number.isFinite(raw)) {
@@ -172,11 +181,9 @@ const extractFxCurrencies = (symbolUpper) => {
 };
 
 const TICKER_CATEGORIES = [
-  { id: 'ALL', label: 'All' },
+  { id: 'ALL', label: 'FX + Metals' },
   { id: 'FX', label: 'FX' },
-  { id: 'METALS', label: 'Metals' },
-  { id: 'CRYPTO', label: 'Crypto' },
-  { id: 'STOCKS', label: 'Stocks' }
+  { id: 'METALS', label: 'Metals' }
 ];
 
 const isFxSymbol = (symbolUpper) => {
@@ -236,6 +243,10 @@ const classifyTickerSymbol = (symbolUpper) => {
 };
 
 const matchesTickerCategory = (symbolUpper, categoryId) => {
+  const allowed = isFxSymbol(symbolUpper) || isMetalSymbol(symbolUpper);
+  if (!allowed) {
+    return false;
+  }
   const category = String(categoryId || 'ALL').toUpperCase();
   if (category === 'ALL') {
     return true;
@@ -436,6 +447,12 @@ function App() {
     error: null,
     updatedAt: null
   });
+  const quotesBySymbolRef = useRef(new Map());
+  const quoteSymbolsRef = useRef([]);
+  const quoteIndexBySymbolRef = useRef(new Map());
+  const lastQuoteUpdateSymbolsRef = useRef([]);
+  const lastMidCleanupRef = useRef(0);
+  const tickerMeasureRef = useRef({ viewportWidth: 0, trackWidth: 0, duration: 0 });
   const [tickerSearch, setTickerSearch] = useState('');
   const [tickerCategory, setTickerCategory] = useState('ALL');
   const [tickerOffset, setTickerOffset] = useState(0);
@@ -942,6 +959,52 @@ function App() {
             (Array.isArray(nextQuotes) && nextQuotes.length > 0) ||
             (Array.isArray(nextNews) && nextNews.length > 0);
 
+          if (quotesSucceeded) {
+            const bySymbol = new Map();
+            const symbols = [];
+            const indexBySymbol = new Map();
+
+            const normalizedQuotes = Array.isArray(nextQuotes)
+              ? nextQuotes
+                  .filter(Boolean)
+                  .map((q) => {
+                    const symbol = String(q?.symbol || '')
+                      .trim()
+                      .toUpperCase();
+                    if (!symbol) {
+                      return null;
+                    }
+                    return { ...q, symbol };
+                  })
+                  .filter(Boolean)
+              : [];
+
+            for (let i = 0; i < normalizedQuotes.length; i += 1) {
+              const quote = normalizedQuotes[i];
+              const symbol = String(quote?.symbol || '').toUpperCase();
+              if (!symbol) {
+                continue;
+              }
+              if (!bySymbol.has(symbol)) {
+                symbols.push(symbol);
+                indexBySymbol.set(symbol, symbols.length - 1);
+              }
+              bySymbol.set(symbol, quote);
+            }
+
+            quotesBySymbolRef.current = bySymbol;
+            quoteSymbolsRef.current = symbols;
+            quoteIndexBySymbolRef.current = indexBySymbol;
+
+            return {
+              quotes: symbols.map((s) => bySymbol.get(s)).filter(Boolean),
+              news: nextNews,
+              loading: false,
+              error: errorMessage,
+              updatedAt: hasData ? Date.now() : prev.updatedAt || null
+            };
+          }
+
           return {
             quotes: nextQuotes,
             news: nextNews,
@@ -1195,33 +1258,99 @@ function App() {
         // Keep EA snapshot/bars streaming for the symbols moving on the tape.
         scheduleActiveSymbolsSync(Array.from(updates.keys()));
 
-        setMarketFeed((prev) => {
-          const bySymbol = new Map(
-            Array.isArray(prev?.quotes)
-              ? prev.quotes
-                  .filter(Boolean)
-                  .map((q) => [String(q?.symbol || '').toUpperCase(), q])
-                  .filter(([s]) => s)
-              : []
-          );
+        lastQuoteUpdateSymbolsRef.current = Array.from(updates.keys());
 
-          for (const [symbol, quote] of updates.entries()) {
-            bySymbol.set(symbol, { ...(bySymbol.get(symbol) || {}), ...quote, symbol });
-          }
+        startTransition(() => {
+          setMarketFeed((prev) => {
+            const prevQuotes = Array.isArray(prev?.quotes) ? prev.quotes.filter(Boolean) : [];
+            const bySymbol = quotesBySymbolRef.current;
+            let symbols = quoteSymbolsRef.current;
+            let indexBySymbol = quoteIndexBySymbolRef.current;
 
-          const quotes = Array.from(bySymbol.values()).sort((a, b) =>
-            String(a?.symbol || '').localeCompare(String(b?.symbol || ''))
-          );
+            // One-time lazy init if the app bootstrapped quotes before refs were populated.
+            if ((!symbols || symbols.length === 0) && prevQuotes.length > 0) {
+              const nextBySymbol = new Map();
+              const nextSymbols = [];
+              const nextIndex = new Map();
+              for (const q of prevQuotes) {
+                const sym = String(q?.symbol || '')
+                  .trim()
+                  .toUpperCase();
+                if (!sym || nextBySymbol.has(sym)) {
+                  continue;
+                }
+                nextSymbols.push(sym);
+                nextIndex.set(sym, nextSymbols.length - 1);
+                nextBySymbol.set(sym, { ...q, symbol: sym });
+              }
+              quotesBySymbolRef.current = nextBySymbol;
+              quoteSymbolsRef.current = nextSymbols;
+              quoteIndexBySymbolRef.current = nextIndex;
+              symbols = nextSymbols;
+              indexBySymbol = nextIndex;
+            }
 
-          return {
-            ...prev,
-            quotes,
-            loading: false,
-            error: null,
-            updatedAt: Date.now()
-          };
+            const nextQuotes = prevQuotes.slice();
+            const newlySeen = [];
+            const newlySeenSet = new Set();
+
+            for (const [symbolRaw, quote] of updates.entries()) {
+              const symbol = String(symbolRaw || quote?.symbol || '')
+                .trim()
+                .toUpperCase();
+              if (!symbol) {
+                continue;
+              }
+
+              const merged = { ...(bySymbol.get(symbol) || {}), ...(quote || {}), symbol };
+              bySymbol.set(symbol, merged);
+
+              const idx = indexBySymbol?.get?.(symbol);
+              if (Number.isInteger(idx) && idx >= 0 && idx < nextQuotes.length) {
+                nextQuotes[idx] = merged;
+              } else if (!newlySeenSet.has(symbol)) {
+                newlySeenSet.add(symbol);
+                newlySeen.push(symbol);
+              }
+            }
+
+            if (newlySeen.length > 0) {
+              const mergedSymbols = Array.isArray(symbols) ? symbols.slice() : [];
+              for (const s of newlySeen) {
+                mergedSymbols.push(s);
+              }
+              const uniqueSorted = Array.from(new Set(mergedSymbols)).sort((a, b) =>
+                String(a || '').localeCompare(String(b || ''))
+              );
+
+              const rebuiltQuotes = uniqueSorted.map((s) => bySymbol.get(s)).filter(Boolean);
+              const rebuiltIndex = new Map();
+              for (let i = 0; i < uniqueSorted.length; i += 1) {
+                rebuiltIndex.set(uniqueSorted[i], i);
+              }
+
+              quoteSymbolsRef.current = uniqueSorted;
+              quoteIndexBySymbolRef.current = rebuiltIndex;
+
+              return {
+                ...prev,
+                quotes: rebuiltQuotes,
+                loading: false,
+                error: null,
+                updatedAt: Date.now()
+              };
+            }
+
+            return {
+              ...prev,
+              quotes: nextQuotes,
+              loading: false,
+              error: null,
+              updatedAt: Date.now()
+            };
+          });
         });
-      }, 200);
+      }, 650);
     };
 
     const connect = () => {
@@ -1298,7 +1427,7 @@ function App() {
             }
             const normalized = normalizeSignal(msg.payload || {}, msg.timestamp);
             if (normalized) {
-              mergeSignals([normalized]);
+              startTransition(() => mergeSignals([normalized]));
             }
             return;
           }
@@ -1310,7 +1439,7 @@ function App() {
             }
             const normalized = normalizeSignal(msg.payload || {}, msg.timestamp);
             if (normalized) {
-              mergeCandidateSignals([normalized]);
+              startTransition(() => mergeCandidateSignals([normalized]));
             }
             return;
           }
@@ -1330,7 +1459,7 @@ function App() {
               .map((s) => normalizeSignal(s, msg.timestamp))
               .filter(Boolean);
             if (normalized.length) {
-              mergeCandidateSignals(normalized);
+              startTransition(() => mergeCandidateSignals(normalized));
             }
             return;
           }
@@ -1350,7 +1479,7 @@ function App() {
               .map((s) => normalizeSignal(s, msg.timestamp))
               .filter(Boolean);
             if (normalized.length) {
-              mergeSignals(normalized);
+              startTransition(() => mergeSignals(normalized));
             }
             return;
           }
@@ -2159,13 +2288,8 @@ function App() {
       return [];
     }
     const category = String(tickerCategory || 'ALL').toUpperCase();
-    if (category === 'ALL') {
-      return list;
-    }
     return list.filter((quote) => {
-      const symbolUpper = String(quote?.symbol || quote?.pair || '')
-        .trim()
-        .toUpperCase();
+      const symbolUpper = normalizeTickerSymbol(quote?.symbol || quote?.pair);
       return matchesTickerCategory(symbolUpper, category);
     });
   }, [sortedQuotes, tickerCategory]);
@@ -2264,8 +2388,21 @@ function App() {
     if (!Array.isArray(tickerQuotes) || tickerQuotes.length === 0) {
       return [];
     }
-    return [...tickerQuotes, ...tickerQuotes];
+    const cap = Math.min(tickerQuotes.length, MAX_TICKER_RENDER / 2);
+    const base = tickerQuotes.slice(0, Math.max(1, cap));
+    return [...base, ...base];
   }, [tickerQuotes]);
+
+  const tickerRenderQuotes = useMemo(() => {
+    const list = tickerSearchNormalized ? tickerQuotes : tickerLoopQuotes;
+    if (!Array.isArray(list) || list.length === 0) {
+      return [];
+    }
+    if (tickerSearchNormalized) {
+      return list;
+    }
+    return list.slice(0, Math.min(list.length, MAX_TICKER_RENDER));
+  }, [tickerLoopQuotes, tickerQuotes, tickerSearchNormalized]);
 
   useEffect(() => {
     if (!bridgeIsConnected) {
@@ -2282,10 +2419,18 @@ function App() {
       return;
     }
 
+    let rafId = null;
+    let resizeRaf = null;
+
     const updateDuration = () => {
       const viewportWidth = viewport.clientWidth || 0;
       const trackWidth = track.scrollWidth || 0;
       if (!viewportWidth || !trackWidth) {
+        return;
+      }
+
+      const prev = tickerMeasureRef.current;
+      if (prev.viewportWidth === viewportWidth && prev.trackWidth === trackWidth) {
         return;
       }
 
@@ -2295,14 +2440,42 @@ function App() {
       const pixelsPerSecond = 18;
       const rawSeconds = travelPx / pixelsPerSecond;
       const durationSeconds = Math.max(240, Math.min(1800, Math.round(rawSeconds)));
-      track.style.setProperty('--market-ticker-duration', `${durationSeconds}s`);
+
+      if (prev.duration !== durationSeconds) {
+        track.style.setProperty('--market-ticker-duration', `${durationSeconds}s`);
+      }
+
+      tickerMeasureRef.current = {
+        viewportWidth,
+        trackWidth,
+        duration: durationSeconds
+      };
     };
 
-    const raf = requestAnimationFrame(updateDuration);
-    window.addEventListener('resize', updateDuration);
+    const scheduleMeasure = () => {
+      if (resizeRaf != null) {
+        return;
+      }
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null;
+        updateDuration();
+      });
+    };
+
+    rafId = requestAnimationFrame(updateDuration);
+    const resizeObserver = new ResizeObserver(scheduleMeasure);
+    resizeObserver.observe(viewport);
+    resizeObserver.observe(track);
+    window.addEventListener('resize', scheduleMeasure);
     return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener('resize', updateDuration);
+      if (rafId != null) {
+        cancelAnimationFrame(rafId);
+      }
+      if (resizeRaf != null) {
+        cancelAnimationFrame(resizeRaf);
+      }
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', scheduleMeasure);
     };
   }, [bridgeIsConnected, tickerLoopQuotes.length, tickerSearchNormalized]);
 
@@ -2342,8 +2515,47 @@ function App() {
     }
 
     const map = lastMidBySymbolRef.current;
-    const keep = new Set();
+    const updates = Array.isArray(lastQuoteUpdateSymbolsRef.current)
+      ? lastQuoteUpdateSymbolsRef.current
+      : [];
 
+    const now = Date.now();
+    const shouldFullScan =
+      updates.length === 0 || now - (lastMidCleanupRef.current || 0) > 5 * 60 * 1000;
+
+    if (!shouldFullScan) {
+      for (const symbolUpper of updates) {
+        const quote = quotesBySymbolRef.current?.get?.(symbolUpper) || null;
+        if (!quote) {
+          continue;
+        }
+        const broker = String(quote?.broker || effectivePlatformId || '').toLowerCase();
+        const symbolNormalized = normalizeTickerSymbol(quote?.symbol || quote?.pair);
+        if (!symbolNormalized) {
+          continue;
+        }
+        const key = `${broker}:${symbolNormalized}`;
+        const bid = Number.isFinite(Number(quote?.bid)) ? Number(quote.bid) : null;
+        const ask = Number.isFinite(Number(quote?.ask)) ? Number(quote.ask) : null;
+        const last = Number.isFinite(Number(quote?.last)) ? Number(quote.last) : null;
+        const mid =
+          bid != null && ask != null
+            ? (bid + ask) / 2
+            : bid != null
+              ? bid
+              : ask != null
+                ? ask
+                : last;
+        if (mid == null) {
+          continue;
+        }
+        map.set(key, mid);
+      }
+      lastQuoteUpdateSymbolsRef.current = [];
+      return;
+    }
+
+    const keep = new Set();
     for (const quote of sortedQuotes) {
       const broker = String(quote?.broker || effectivePlatformId || '').toLowerCase();
       const symbolNormalized = normalizeTickerSymbol(quote?.symbol || quote?.pair);
@@ -2371,6 +2583,8 @@ function App() {
         }
       }
     }
+
+    lastMidCleanupRef.current = now;
   }, [bridgeIsConnected, marketFeed.updatedAt, effectivePlatformId, sortedQuotes]);
 
   const handleTickerCycle = useCallback(() => {
@@ -2990,6 +3204,11 @@ function App() {
                                       </div>
 
                                       <div>
+                                        <strong>Acceleration</strong>{' '}
+                                        {formatNum(layer1Metrics.midAccelerationPerSec2, 8)}/s²
+                                      </div>
+
+                                      <div>
                                         <strong>Gap→M1 close</strong>:{' '}
                                         {formatNum(layer1Metrics.gapToMid, 8)}
                                       </div>
@@ -3007,6 +3226,12 @@ function App() {
                                         {layer1Metrics.quoteAgeMs != null
                                           ? `${formatNum(layer1Metrics.quoteAgeMs, 0)}ms`
                                           : '—'}
+                                      </div>
+
+                                      <div>
+                                        <strong>Bars (M15/H1)</strong>:{' '}
+                                        {formatNum(layer1Metrics?.barsCoverage?.M15?.count, 0)}/
+                                        {formatNum(layer1Metrics?.barsCoverage?.H1?.count, 0)}
                                       </div>
 
                                       <div>
@@ -5172,143 +5397,136 @@ function App() {
                   className={`market-ticker__track ${tickerSearchNormalized ? 'market-ticker__track--static' : ''}`}
                   ref={tickerTrackRef}
                 >
-                  {(tickerSearchNormalized ? tickerQuotes : tickerLoopQuotes).length ? (
-                    (tickerSearchNormalized ? tickerQuotes : tickerLoopQuotes).map(
-                      (quote, index) => {
-                        const bid = Number.isFinite(Number(quote?.bid)) ? Number(quote.bid) : null;
-                        const ask = Number.isFinite(Number(quote?.ask)) ? Number(quote.ask) : null;
-                        const last = Number.isFinite(Number(quote?.last))
-                          ? Number(quote.last)
+                  {tickerRenderQuotes.length ? (
+                    tickerRenderQuotes.map((quote, index) => {
+                      const bid = Number.isFinite(Number(quote?.bid)) ? Number(quote.bid) : null;
+                      const ask = Number.isFinite(Number(quote?.ask)) ? Number(quote.ask) : null;
+                      const last = Number.isFinite(Number(quote?.last)) ? Number(quote.last) : null;
+                      const mid =
+                        bid != null && ask != null
+                          ? (bid + ask) / 2
+                          : bid != null
+                            ? bid
+                            : ask != null
+                              ? ask
+                              : last;
+
+                      const symbolValue = quote?.symbol || quote?.pair;
+                      const symbolText = String(symbolValue ?? '').trim();
+                      const symbolUpper = symbolText.toUpperCase();
+
+                      const looksLikeFxPair = /^[A-Z]{6}$/.test(symbolUpper);
+                      const digits = Number.isFinite(Number(quote?.digits))
+                        ? Math.max(0, Math.min(8, Math.trunc(Number(quote.digits))))
+                        : null;
+                      const displayDigits = digits != null ? digits : looksLikeFxPair ? 5 : 3;
+
+                      const broker = String(
+                        quote?.broker || effectivePlatformId || ''
+                      ).toLowerCase();
+                      const symbolNormalized = normalizeTickerSymbol(symbolValue);
+                      const deltaKey = `${broker}:${symbolNormalized}`;
+                      const prevMid = lastMidBySymbolRef.current.get(deltaKey);
+                      const delta =
+                        mid != null && prevMid != null && Number.isFinite(prevMid)
+                          ? mid - prevMid
                           : null;
-                        const mid =
-                          bid != null && ask != null
-                            ? (bid + ask) / 2
-                            : bid != null
-                              ? bid
-                              : ask != null
-                                ? ask
-                                : last;
 
-                        const symbolValue = quote?.symbol || quote?.pair;
-                        const symbolText = String(symbolValue ?? '').trim();
-                        const symbolUpper = symbolText.toUpperCase();
-
-                        const looksLikeFxPair = /^[A-Z]{6}$/.test(symbolUpper);
-                        const digits = Number.isFinite(Number(quote?.digits))
-                          ? Math.max(0, Math.min(8, Math.trunc(Number(quote.digits))))
-                          : null;
-                        const displayDigits = digits != null ? digits : looksLikeFxPair ? 5 : 3;
-
-                        const broker = String(
-                          quote?.broker || effectivePlatformId || ''
-                        ).toLowerCase();
-                        const symbolNormalized = normalizeTickerSymbol(symbolValue);
-                        const deltaKey = `${broker}:${symbolNormalized}`;
-                        const prevMid = lastMidBySymbolRef.current.get(deltaKey);
-                        const delta =
-                          mid != null && prevMid != null && Number.isFinite(prevMid)
-                            ? mid - prevMid
+                      const pointRaw = Number(quote?.point);
+                      const point =
+                        Number.isFinite(pointRaw) && pointRaw > 0
+                          ? pointRaw
+                          : Number.isFinite(displayDigits)
+                            ? Math.pow(10, -displayDigits)
                             : null;
 
-                        const pointRaw = Number(quote?.point);
-                        const point =
-                          Number.isFinite(pointRaw) && pointRaw > 0
-                            ? pointRaw
-                            : Number.isFinite(displayDigits)
-                              ? Math.pow(10, -displayDigits)
-                              : null;
+                      const deltaPointsInt =
+                        delta != null && point != null && Number.isFinite(delta)
+                          ? Math.round(delta / point)
+                          : null;
+                      const deltaValue =
+                        deltaPointsInt != null && deltaPointsInt !== 0 ? deltaPointsInt : null;
+                      const deltaPointsAbs = deltaValue != null ? Math.abs(deltaValue) : null;
 
-                        const deltaPointsInt =
-                          delta != null && point != null && Number.isFinite(delta)
-                            ? Math.round(delta / point)
-                            : null;
-                        const deltaValue =
-                          deltaPointsInt != null && deltaPointsInt !== 0 ? deltaPointsInt : null;
-                        const deltaPointsAbs = deltaValue != null ? Math.abs(deltaValue) : null;
+                      const arrowClass =
+                        deltaValue != null && deltaValue > 0
+                          ? 'market-ticker__arrow--up'
+                          : deltaValue != null && deltaValue < 0
+                            ? 'market-ticker__arrow--down'
+                            : '';
+                      const deltaClass =
+                        deltaValue != null && deltaValue > 0
+                          ? 'market-ticker__delta--up'
+                          : deltaValue != null && deltaValue < 0
+                            ? 'market-ticker__delta--down'
+                            : '';
 
-                        const arrowClass =
-                          deltaValue != null && deltaValue > 0
-                            ? 'market-ticker__arrow--up'
-                            : deltaValue != null && deltaValue < 0
-                              ? 'market-ticker__arrow--down'
+                      const priceClass =
+                        deltaValue != null && deltaValue > 0
+                          ? 'market-ticker__price--up'
+                          : deltaValue != null && deltaValue < 0
+                            ? 'market-ticker__price--down'
+                            : '';
+
+                      const details =
+                        bid != null && ask != null
+                          ? `${formatNumber(bid, displayDigits)} / ${formatNumber(ask, displayDigits)}`
+                          : bid != null
+                            ? `Bid ${formatNumber(bid, displayDigits)}`
+                            : ask != null
+                              ? `Ask ${formatNumber(ask, displayDigits)}`
                               : '';
-                        const deltaClass =
-                          deltaValue != null && deltaValue > 0
-                            ? 'market-ticker__delta--up'
-                            : deltaValue != null && deltaValue < 0
-                              ? 'market-ticker__delta--down'
-                              : '';
 
-                        const priceClass =
-                          deltaValue != null && deltaValue > 0
-                            ? 'market-ticker__price--up'
-                            : deltaValue != null && deltaValue < 0
-                              ? 'market-ticker__price--down'
-                              : '';
+                      const loopTag = tickerSearchNormalized
+                        ? 's'
+                        : index < tickerQuotes.length
+                          ? 'a'
+                          : 'b';
 
-                        const details =
-                          bid != null && ask != null
-                            ? `${formatNumber(bid, displayDigits)} / ${formatNumber(ask, displayDigits)}`
-                            : bid != null
-                              ? `Bid ${formatNumber(bid, displayDigits)}`
-                              : ask != null
-                                ? `Ask ${formatNumber(ask, displayDigits)}`
-                                : '';
-
-                        const loopTag = tickerSearchNormalized
-                          ? 's'
-                          : index < tickerQuotes.length
-                            ? 'a'
-                            : 'b';
-
-                        return (
-                          <button
-                            key={`${quote?.broker || effectivePlatformId}:${symbolUpper || symbolValue}:${loopTag}`}
-                            type="button"
-                            className="market-ticker__item"
-                            title="Click to select"
-                            onClick={() => {
-                              const selected = String(
-                                symbolUpper || symbolText || symbolValue || ''
-                              ).trim();
-                              if (selected) {
-                                setTickerSearch(selected);
-                                openAnalyzerForSymbolAndRequestSnapshot(selected);
-                              }
-                            }}
+                      return (
+                        <button
+                          key={`${quote?.broker || effectivePlatformId}:${symbolUpper || symbolValue}:${loopTag}:${index}`}
+                          type="button"
+                          className="market-ticker__item"
+                          title="Click to select"
+                          onClick={() => {
+                            const selected = String(
+                              symbolUpper || symbolText || symbolValue || ''
+                            ).trim();
+                            if (selected) {
+                              setTickerSearch(selected);
+                              openAnalyzerForSymbolAndRequestSnapshot(selected);
+                            }
+                          }}
+                        >
+                          <span className={`market-ticker__arrow ${arrowClass}`} aria-hidden="true">
+                            {deltaValue != null
+                              ? deltaValue > 0
+                                ? '▲'
+                                : deltaValue < 0
+                                  ? '▼'
+                                  : '•'
+                              : '•'}
+                          </span>
+                          <span className="market-ticker__symbol">
+                            {symbolUpper || symbolText || symbolValue}
+                          </span>
+                          <span className={`market-ticker__price ${priceClass}`}>
+                            {mid != null ? formatNumber(mid, displayDigits) : '—'}
+                          </span>
+                          <span
+                            className={`market-ticker__delta ${deltaClass} ${deltaValue == null ? 'market-ticker__delta--empty' : ''}`}
                           >
-                            <span
-                              className={`market-ticker__arrow ${arrowClass}`}
-                              aria-hidden="true"
-                            >
-                              {deltaValue != null
-                                ? deltaValue > 0
-                                  ? '▲'
-                                  : deltaValue < 0
-                                    ? '▼'
-                                    : '•'
-                                : '•'}
-                            </span>
-                            <span className="market-ticker__symbol">
-                              {symbolUpper || symbolText || symbolValue}
-                            </span>
-                            <span className={`market-ticker__price ${priceClass}`}>
-                              {mid != null ? formatNumber(mid, displayDigits) : '—'}
-                            </span>
-                            <span
-                              className={`market-ticker__delta ${deltaClass} ${deltaValue == null ? 'market-ticker__delta--empty' : ''}`}
-                            >
-                              {deltaPointsAbs != null ? `${deltaPointsAbs}p` : ''}
-                            </span>
-                            <span
-                              className={`market-ticker__details ${details ? '' : 'market-ticker__details--empty'}`}
-                            >
-                              {details || '—'}
-                            </span>
-                          </button>
-                        );
-                      }
-                    )
+                            {deltaPointsAbs != null ? `${deltaPointsAbs}p` : ''}
+                          </span>
+                          <span
+                            className={`market-ticker__details ${details ? '' : 'market-ticker__details--empty'}`}
+                          >
+                            {details || '—'}
+                          </span>
+                        </button>
+                      );
+                    })
                   ) : (
                     <span className="market-ticker__meta">Waiting for EA price feed…</span>
                   )}

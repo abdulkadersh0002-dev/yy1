@@ -18,12 +18,15 @@ import SecretManager from './services/security/secret-manager.js';
 import AuditLogger from './services/logging/audit-logger.js';
 import { metrics as metricsRegistry } from './services/metrics.js';
 import PairPrefetchScheduler from './services/pair-prefetch-scheduler.js';
+import JobQueue from './services/jobs/job-queue.js';
 import { pairCatalog } from './config/pair-catalog.js';
 import { appConfig } from './app/config.js';
 import { startServer } from './app/startup.js';
 import { buildProviderAvailabilitySnapshot } from './services/health-summary.js';
 import { startRssToEaBridgeIngestor } from './services/bridge/rss-to-ea-bridge.js';
 import EconomicCalendarService from './services/economic-calendar-service.js';
+import { createMarketRules } from './engine/market-rules.js';
+import { eaOnlyMode } from './config/runtime-flags.js';
 
 // Default to EA-only in the real server unless explicitly overridden.
 // Tests that construct the app directly won't hit this file.
@@ -101,6 +104,25 @@ void auditLogger.init().catch((error) => {
   logger.error({ err: error }, 'Failed to initialize audit logger');
 });
 
+const jobQueueConfig = appConfig.services?.jobQueue || {};
+const jobQueue =
+  jobQueueConfig.enabled !== false
+    ? new JobQueue({
+        logger,
+        auditLogger,
+        concurrency: jobQueueConfig.concurrency,
+        retryAttempts: jobQueueConfig.retryAttempts,
+        retryBaseMs: jobQueueConfig.retryBaseMs,
+        retryMaxMs: jobQueueConfig.retryMaxMs,
+        maxQueueSize: jobQueueConfig.maxQueueSize,
+        deadLetterMax: jobQueueConfig.deadLetterMax
+      })
+    : null;
+
+if (jobQueue) {
+  jobQueue.start();
+}
+
 // Initialize alert bus
 const alertBus = new AlertBus({
   slackWebhookUrl: alertingConfig.slackWebhookUrl,
@@ -113,7 +135,14 @@ const alertBus = new AlertBus({
 // Initialize broker router
 const brokerRouter = new BrokerRouter({
   logger,
+  auditLogger,
   defaultBroker: brokerRoutingConfig.defaultBroker || 'mt5',
+  idempotencyTtlMs: brokerRoutingConfig.idempotencyTtlMs,
+  retryAttempts: brokerRoutingConfig.retryAttempts,
+  retryBaseMs: brokerRoutingConfig.retryBaseMs,
+  breakerThreshold: brokerRoutingConfig.breakerThreshold,
+  breakerCooldownMs: brokerRoutingConfig.breakerCooldownMs,
+  marketRules: createMarketRules(appConfig.trading?.marketRules || {}),
   oanda: brokerConfig.oanda?.enabled
     ? {
         accountMode: brokerConfig.oanda.accountMode || 'demo',
@@ -150,6 +179,8 @@ const brokerRouter = new BrokerRouter({
 // Build trading engine config
 const config = { ...tradingConfig };
 config.brokerRouting = { ...brokerRoutingConfig };
+config.auditLogger = auditLogger;
+config.jobQueue = jobQueue;
 config.dependencies = {
   ...(config.dependencies || {}),
   alertBus,
@@ -181,32 +212,38 @@ try {
   }
 }
 
-// Log API keys status
-logger.info(
-  {
-    providers: {
-      twelveData: Boolean(config.apiKeys.twelveData),
-      alphaVantage: Boolean(config.apiKeys.alphaVantage),
-      finnhub: Boolean(config.apiKeys.finnhub),
-      polygon: Boolean(config.apiKeys.polygon),
-      newsApi: Boolean(config.apiKeys.newsApi)
-    }
-  },
-  'API keys configuration status'
-);
-
-const missingPriceProviders = ['twelveData', 'polygon', 'finnhub', 'alphaVantage'].filter(
-  (key) => !config.apiKeys[key]
-);
-if (missingPriceProviders.length > 0) {
-  logger.warn({ providers: missingPriceProviders }, 'Real-time price data providers missing keys');
-  logger.warn('Price fetcher will fall back to cached/simulated data if live calls fail.');
-}
-
-if (!config.apiKeys.fred) {
-  logger.warn(
-    'FRED_API_KEY is not configured. Retail sales and manufacturing metrics will be unavailable.'
+// Log provider credentials status
+const isEaOnlyMode = eaOnlyMode(rawEnv);
+if (!isEaOnlyMode) {
+  logger.info(
+    {
+      providers: {
+        twelveData: Boolean(config.apiKeys.twelveData),
+        alphaVantage: Boolean(config.apiKeys.alphaVantage),
+        finnhub: Boolean(config.apiKeys.finnhub),
+        polygon: Boolean(config.apiKeys.polygon),
+        newsApi: Boolean(config.apiKeys.newsApi)
+      }
+    },
+    'Provider credentials configuration status'
   );
+
+  const missingPriceProviders = ['twelveData', 'polygon', 'finnhub', 'alphaVantage'].filter(
+    (key) => !config.apiKeys[key]
+  );
+  if (missingPriceProviders.length > 0) {
+    logger.warn(
+      { providers: missingPriceProviders },
+      'Real-time price data providers missing credentials'
+    );
+    logger.warn('Price fetcher will fall back to cached/simulated data if live calls fail.');
+  }
+
+  if (!config.apiKeys.fred) {
+    logger.warn(
+      'FRED credentials are not configured. Retail sales and manufacturing metrics will be unavailable.'
+    );
+  }
 }
 
 if (!databaseConfig.host || !databaseConfig.user || !databaseConfig.password) {
@@ -227,7 +264,8 @@ const heartbeatMonitor = new HeartbeatMonitor({ tradingEngine, tradeManager });
 const eaBridgeService = new EaBridgeService({
   tradingEngine,
   brokerRouter,
-  logger
+  logger,
+  brokerMeta: appConfig.brokerMeta
 });
 logger.info('EA Bridge Service initialized for intelligent MT4/MT5 integration');
 
@@ -243,7 +281,8 @@ try {
   const rssStatus = startRssToEaBridgeIngestor({
     eaBridgeService,
     brokers: ['mt5', 'mt4'],
-    logger
+    logger,
+    calendarService: economicCalendarService
   });
   if (rssStatus?.started) {
     logger.info(

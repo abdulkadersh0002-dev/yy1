@@ -16,6 +16,7 @@ import { executionEngine } from './modules/execution-engine.js';
 import { persistenceHub } from './modules/persistence-hub.js';
 import { orchestrationCoordinator } from './modules/orchestration-coordinator.js';
 import { dataQualityGuard } from './modules/data-quality-guard.js';
+import { createMarketRules } from './market-rules.js';
 import {
   getPairMetadata,
   getPipSize,
@@ -113,6 +114,7 @@ class TradingEngine {
 
     this.alertBus = dependencyAlertBus;
     this.brokerRouter = dependencies.brokerRouter || config.brokerRouter || null;
+    this.jobQueue = dependencies.jobQueue || config.jobQueue || null;
     this.externalMarketContextProvider =
       dependencies.externalMarketContextProvider || config.externalMarketContextProvider || null;
     this.config.brokerRouting = this.config.brokerRouting || config.brokerRouting || {};
@@ -216,8 +218,12 @@ class TradingEngine {
       adaptiveScorer: this.adaptiveScorer,
       alertBus: this.alertBus,
       brokerRouter: this.brokerRouter,
+      jobQueue: this.jobQueue,
       externalMarketContextProvider: this.externalMarketContextProvider
     };
+
+    this.marketRules = createMarketRules(this.config.marketRules || {});
+    this.dependencies.marketRules = this.marketRules;
 
     this.newsInsights = new Map();
     this.activeTrades = new Map();
@@ -246,6 +252,14 @@ class TradingEngine {
       marketMemoryByPair: new Map(),
       quoteTelemetryByPair: new Map(),
       telemetryByPair: new Map()
+    };
+
+    this.rejectionStats = {
+      total: 0,
+      byPrimary: new Map(),
+      bySecondary: new Map(),
+      recent: [],
+      maxRecent: 200
     };
 
     this.bindAnalysisCoreMethods();
@@ -1211,6 +1225,30 @@ class TradingEngine {
       return clamp01(0.5 * atrFactor + 0.5 * tpFactor);
     })();
 
+    const enforceSpreadToAtrHard =
+      this.config?.enforceSpreadToAtrHard != null
+        ? Boolean(this.config.enforceSpreadToAtrHard)
+        : false;
+    const maxSpreadToAtrHard = Number.isFinite(Number(this.config?.maxSpreadToAtrHard))
+      ? Number(this.config.maxSpreadToAtrHard)
+      : 0.2;
+    const maxSpreadToTpHard = Number.isFinite(Number(this.config?.maxSpreadToTpHard))
+      ? Number(this.config.maxSpreadToTpHard)
+      : 0.3;
+
+    const executionCostOk = (() => {
+      if (!enforceSpreadToAtrHard) {
+        return true;
+      }
+      if (spreadToAtr != null && Number.isFinite(spreadToAtr) && spreadToAtr > maxSpreadToAtrHard) {
+        return false;
+      }
+      if (spreadToTp != null && Number.isFinite(spreadToTp) && spreadToTp > maxSpreadToTpHard) {
+        return false;
+      }
+      return true;
+    })();
+
     // Optional hard gates (smart automation). These never block when data is missing.
     const autoTradingAutostart =
       String(process.env.AUTO_TRADING_AUTOSTART || '')
@@ -1235,6 +1273,14 @@ class TradingEngine {
       technical?.timeframes && typeof technical.timeframes === 'object' ? technical.timeframes : {};
     const dir = String(signal?.direction || '').toUpperCase();
     const isDirectional = dir === 'BUY' || dir === 'SELL';
+
+    const layered = signal?.components?.layeredAnalysis || null;
+    const layer1 = Array.isArray(layered?.layers)
+      ? layered.layers.find(
+          (layer) => String(layer?.key || '') === 'L1' || Number(layer?.layer) === 1
+        )
+      : null;
+    const barsCoverage = layer1?.metrics?.barsCoverage || null;
 
     const tfDir = (tf) => {
       const frame = frames?.[tf] || frames?.[String(tf || '').toLowerCase()] || null;
@@ -1295,9 +1341,44 @@ class TradingEngine {
       const w1 = tfDir('W1');
       const dirs = [h4, d1, w1].filter((d) => d && d !== 'NEUTRAL').map(String);
       if (dirs.length === 0) {
-        return true;
+        return this.config?.requireHtfDirection ? false : true;
       }
       return dirs.every((d) => d === dir);
+    })();
+
+    const barsCoverageOk = (() => {
+      if (!this.config?.requireBarsCoverage) {
+        return true;
+      }
+      if (!barsCoverage || typeof barsCoverage !== 'object') {
+        return false;
+      }
+      const m15 = barsCoverage.M15 || null;
+      const h1 = barsCoverage.H1 || null;
+      const m15Count = Number(m15?.count);
+      const h1Count = Number(h1?.count);
+      const m15Age = Number(m15?.ageMs);
+      const h1Age = Number(h1?.ageMs);
+
+      const m15Min = Number.isFinite(Number(this.config?.barsMinM15))
+        ? Number(this.config.barsMinM15)
+        : 60;
+      const h1Min = Number.isFinite(Number(this.config?.barsMinH1))
+        ? Number(this.config.barsMinH1)
+        : 20;
+      const m15MaxAge = Number.isFinite(Number(this.config?.barsMaxAgeM15Ms))
+        ? Number(this.config.barsMaxAgeM15Ms)
+        : null;
+      const h1MaxAge = Number.isFinite(Number(this.config?.barsMaxAgeH1Ms))
+        ? Number(this.config.barsMaxAgeH1Ms)
+        : null;
+
+      const m15CountOk = !Number.isFinite(m15Count) || m15Count >= m15Min;
+      const h1CountOk = !Number.isFinite(h1Count) || h1Count >= h1Min;
+      const m15AgeOk = m15MaxAge == null || !Number.isFinite(m15Age) || m15Age <= m15MaxAge;
+      const h1AgeOk = h1MaxAge == null || !Number.isFinite(h1Age) || h1Age <= h1MaxAge;
+
+      return m15CountOk && h1CountOk && m15AgeOk && h1AgeOk;
     })();
 
     const atrPct = Number(technical?.volatilitySummary?.averageScore);
@@ -1321,6 +1402,8 @@ class TradingEngine {
     hardChecks.momentumMacdOk = macdGuardOk;
     hardChecks.htfAlignmentOk = htfAlignmentOk;
     hardChecks.cryptoVolSpikeOk = cryptoVolSpikeOk;
+    hardChecks.executionCostOk = executionCostOk;
+    hardChecks.barsCoverageOk = barsCoverageOk;
     blocked = Object.values(hardChecks).some((v) => v !== true);
 
     // News modifier (soft): upcoming events reduce confidence but do not veto.
@@ -5376,6 +5459,16 @@ class TradingEngine {
 
     this.recordDecisionMemory(pair, { at: now, score01, state });
 
+    if (state !== 'ENTER') {
+      this.recordSignalRejection({
+        signal,
+        decision,
+        blockers,
+        missing,
+        now
+      });
+    }
+
     return {
       isValid: state === 'ENTER',
       checks: {
@@ -5384,6 +5477,86 @@ class TradingEngine {
       },
       reason,
       decision
+    };
+  }
+
+  recordSignalRejection({ signal, decision, blockers = [], missing = [], now = Date.now() } = {}) {
+    try {
+      if (!this.rejectionStats || typeof this.rejectionStats !== 'object') {
+        this.rejectionStats = {
+          total: 0,
+          byPrimary: new Map(),
+          bySecondary: new Map(),
+          recent: [],
+          maxRecent: 200
+        };
+      }
+
+      const state = decision?.state || 'UNKNOWN';
+      const category = decision?.category || null;
+      const killSwitchIds = Array.isArray(decision?.killSwitch?.ids) ? decision.killSwitch.ids : [];
+
+      const primary =
+        killSwitchIds[0] ||
+        blockers?.[0] ||
+        missing?.[0] ||
+        (state === 'WAIT_MONITOR' ? 'waiting_for_alignment' : 'blocked');
+      const secondary = killSwitchIds[1] || blockers?.[1] || missing?.[1] || null;
+
+      const entry = {
+        at: new Date(now).toISOString(),
+        pair: signal?.pair || null,
+        timeframe: signal?.timeframe || signal?.components?.marketData?.timeframe || null,
+        state,
+        category,
+        primary,
+        secondary,
+        score: decision?.score ?? null,
+        reason: decision?.state === 'WAIT_MONITOR' ? 'missing_requirements' : 'blocked'
+      };
+
+      this.rejectionStats.total += 1;
+      this.incrementRejectionCounter(this.rejectionStats.byPrimary, primary);
+      if (secondary) {
+        this.incrementRejectionCounter(this.rejectionStats.bySecondary, secondary);
+      }
+
+      this.rejectionStats.recent.unshift(entry);
+      if (this.rejectionStats.recent.length > this.rejectionStats.maxRecent) {
+        this.rejectionStats.recent.length = this.rejectionStats.maxRecent;
+      }
+
+      this.config?.auditLogger?.record?.('trade.candidate.rejected', entry);
+    } catch (_error) {
+      // best-effort logging only
+    }
+  }
+
+  incrementRejectionCounter(map, key) {
+    if (!map || !key) {
+      return;
+    }
+    const current = map.get(key) || 0;
+    map.set(key, current + 1);
+  }
+
+  getRejectionSummary() {
+    const stats = this.rejectionStats;
+    if (!stats || typeof stats !== 'object') {
+      return { total: 0, topPrimary: [], topSecondary: [], recent: [] };
+    }
+
+    const mapToSorted = (map) =>
+      Array.from(map.entries())
+        .map(([reason, count]) => ({ reason, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+    return {
+      total: stats.total || 0,
+      topPrimary: mapToSorted(stats.byPrimary || new Map()),
+      topSecondary: mapToSorted(stats.bySecondary || new Map()),
+      recent: Array.isArray(stats.recent) ? stats.recent.slice(0, 50) : []
     };
   }
 

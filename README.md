@@ -41,7 +41,7 @@ npm ci
 # Copy environment configuration
 cp .env.example .env
 
-# Edit .env with your API keys and configuration
+# Edit .env with your configuration
 
 # Start backend + dashboard (recommended dev workflow)
 npm run start:all
@@ -107,18 +107,6 @@ cp .env.example .env
 | `ALLOW_SYNTHETIC_DATA`  | Allow synthetic/simulated data (dev)                   |
 | `REQUIRE_REALTIME_DATA` | Require real-time feeds                                |
 | `ALLOW_ALL_SYMBOLS`     | Allow any EA-streamed symbol (disable asset filtering) |
-
-#### API Keys
-
-| Variable                | Description                       |
-| ----------------------- | --------------------------------- |
-| `TWELVE_DATA_API_KEY`   | TwelveData API key for price data |
-| `POLYGON_API_KEY`       | Polygon.io API key                |
-| `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key             |
-| `FINNHUB_API_KEY`       | Finnhub API key                   |
-| `NEWSAPI_KEY`           | NewsAPI key for news sentiment    |
-| `FRED_API_KEY`          | FRED API key for economic data    |
-| `OPENAI_API_KEY`        | OpenAI API key (optional)         |
 
 #### Database Configuration
 

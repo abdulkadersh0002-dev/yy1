@@ -5,6 +5,9 @@ export function createWebSocketLayer({ server, config, logger }) {
   const enableWebSockets = config.enableWebSockets;
   const websocketPath = config.websocketPath;
   const websocketPingIntervalMs = config.websocketPingIntervalMs;
+  const maxBufferedBytes = Number.isFinite(Number(process.env.WS_MAX_BUFFERED_BYTES))
+    ? Math.max(64 * 1024, Number(process.env.WS_MAX_BUFFERED_BYTES))
+    : 1_000_000;
 
   const recentSignals = [];
   const maxRecentSignals = 40;
@@ -21,6 +24,7 @@ export function createWebSocketLayer({ server, config, logger }) {
   let websocketHeartbeat;
   let wss;
   let initializeLogged = false;
+  const lastBackpressureLog = new Map();
 
   const broadcast = (type, payload) => {
     if (!enableWebSockets) {
@@ -61,6 +65,18 @@ export function createWebSocketLayer({ server, config, logger }) {
 
     for (const client of websocketClients) {
       if (client.readyState === WebSocket.OPEN) {
+        if (client.bufferedAmount > maxBufferedBytes) {
+          const lastLogged = lastBackpressureLog.get(client) || 0;
+          const now = Date.now();
+          if (now - lastLogged > 30000) {
+            lastBackpressureLog.set(client, now);
+            logger?.warn?.(
+              { bufferedAmount: client.bufferedAmount, maxBufferedBytes },
+              'WebSocket backpressure: dropping broadcast for slow client'
+            );
+          }
+          continue;
+        }
         try {
           client.send(message);
         } catch (error) {
@@ -100,6 +116,7 @@ export function createWebSocketLayer({ server, config, logger }) {
 
       socket.on('close', () => {
         websocketClients.delete(socket);
+        lastBackpressureLog.delete(socket);
         logger?.info?.({ activeClients: websocketClients.size }, 'WebSocket client disconnected');
       });
 

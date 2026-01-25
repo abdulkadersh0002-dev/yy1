@@ -1,6 +1,14 @@
 export const executionEngine = {
   async executeTrade(signal) {
+    const auditLogger = this.config?.auditLogger;
+
     if (!signal.isValid.isValid) {
+      auditLogger?.record?.('execution.trade.blocked', {
+        reason: signal.isValid.reason,
+        pair: signal?.pair || null,
+        direction: signal?.direction || null,
+        source: signal?.source || null
+      });
       return {
         success: false,
         reason: signal.isValid.reason,
@@ -11,6 +19,12 @@ export const executionEngine = {
     const now = Date.now();
     const expiresAt = Number(signal?.expiresAt);
     if (Number.isFinite(expiresAt) && expiresAt > 0 && now > expiresAt) {
+      auditLogger?.record?.('execution.trade.blocked', {
+        reason: 'signal_expired',
+        pair: signal?.pair || null,
+        direction: signal?.direction || null,
+        expiresAt
+      });
       return {
         success: false,
         reason: 'Signal expired',
@@ -19,6 +33,28 @@ export const executionEngine = {
     }
 
     try {
+      const rules = this.marketRules || this.dependencies?.marketRules || null;
+      if (rules) {
+        const validation = rules.validateOrder({
+          symbol: signal.pair,
+          pair: signal.pair,
+          volume: signal?.riskManagement?.positionSize
+        });
+        if (!validation.allowed) {
+          auditLogger?.record?.('execution.trade.blocked', {
+            reason: 'market_rules',
+            pair: signal?.pair || null,
+            direction: signal?.direction || null,
+            details: validation.reasons
+          });
+          return {
+            success: false,
+            reason: `Market rules blocked execution: ${validation.reasons.join(', ')}`,
+            signal
+          };
+        }
+      }
+
       const entryPrice = Number(signal?.entry?.price);
       const takeProfit = Number(signal?.entry?.takeProfit);
       const targetDistance =
@@ -75,6 +111,31 @@ export const executionEngine = {
       };
 
       this.activeTrades.set(trade.id, trade);
+
+      if (Number.isFinite(this.config.maxRiskPerSymbol)) {
+        const perSymbolRisk = Array.from(this.activeTrades.values()).reduce((sum, t) => {
+          if (t?.pair === trade.pair) {
+            return sum + (t.riskFraction || this.config.riskPerTrade || 0);
+          }
+          return sum;
+        }, 0);
+        if (perSymbolRisk > this.config.maxRiskPerSymbol) {
+          this.activeTrades.delete(trade.id);
+          auditLogger?.record?.('execution.trade.blocked', {
+            reason: 'max_risk_per_symbol',
+            tradeId: trade.id,
+            pair: trade.pair,
+            riskFraction: trade.riskFraction,
+            totalRiskFraction: perSymbolRisk
+          });
+          return {
+            success: false,
+            reason: 'Max risk per symbol exceeded',
+            signal
+          };
+        }
+      }
+
       this.dailyRisk += trade.riskFraction || this.config.riskPerTrade;
       this.logger?.info?.(
         {
@@ -87,11 +148,26 @@ export const executionEngine = {
         'Trade executed'
       );
 
+      auditLogger?.record?.('execution.trade.accepted', {
+        tradeId: trade.id,
+        pair: trade.pair,
+        direction: trade.direction,
+        entryPrice: trade.entryPrice,
+        riskFraction: trade.riskFraction,
+        source: signal?.source || null
+      });
+
       if (this.brokerRouter) {
         const brokerResult = await this.commitBrokerOrder(trade, signal);
         if (!brokerResult.success) {
           this.activeTrades.delete(trade.id);
           this.dailyRisk -= trade.riskFraction || this.config.riskPerTrade;
+          auditLogger?.record?.('execution.trade.broker_failed', {
+            tradeId: trade.id,
+            pair: trade.pair,
+            direction: trade.direction,
+            error: brokerResult.error || 'unknown error'
+          });
           return {
             success: false,
             reason: `Broker execution failed: ${brokerResult.error || 'unknown error'}`,
@@ -111,6 +187,11 @@ export const executionEngine = {
       };
     } catch (error) {
       this.logger?.error?.({ module: 'ExecutionEngine', err: error }, 'Trade execution error');
+      auditLogger?.record?.('execution.trade.error', {
+        reason: error?.message || 'unknown error',
+        pair: signal?.pair || null,
+        direction: signal?.direction || null
+      });
       return {
         success: false,
         reason: error.message,
@@ -423,10 +504,14 @@ export const executionEngine = {
   buildBrokerOrderPayload(trade, signal, routing) {
     const preferredBroker = signal?.brokerPreference || trade.broker || routing?.defaultBroker;
     const entryPrice = Number(trade.entryPrice) || Number(signal?.entry?.price) || null;
+    const rules = this.marketRules || this.dependencies?.marketRules || null;
+    const brokerSymbol = rules?.resolveBrokerSymbol
+      ? rules.resolveBrokerSymbol(trade.pair)
+      : trade.pair;
     return {
       broker: preferredBroker,
       pair: trade.pair,
-      symbol: trade.pair,
+      symbol: brokerSymbol,
       direction: trade.direction,
       side: trade.direction === 'BUY' ? 'buy' : 'sell',
       units: Number(trade.positionSize) || Number(signal?.riskManagement?.positionSize) || 0,
@@ -436,6 +521,7 @@ export const executionEngine = {
       stopLoss: Number(trade.stopLoss) || Number(signal?.entry?.stopLoss) || null,
       comment: `trade:${trade.id}`,
       tradeId: trade.id,
+      idempotencyKey: trade.id,
       source: 'trading-engine',
       timeInForce: routing?.timeInForce || 'GTC'
     };

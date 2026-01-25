@@ -53,7 +53,7 @@ describe('EaBridgeService market bars', () => {
     // Mark BTCEUR as active (dashboard behavior).
     svc.setActiveSymbols({ broker: 'mt5', symbols: ['BTCEUR'], ttlMs: 60_000 });
 
-    const base = Date.UTC(2026, 0, 10, 10, 0, 0);
+    const base = Date.now() - 60_000;
     // Broker streams BTCEURm; server should still build candles for requested BTCEUR.
     svc.recordQuotes({
       broker: 'mt5',

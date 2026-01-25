@@ -14,6 +14,7 @@ import {
   getSyntheticVolatility,
   getPipSize
 } from '../config/pair-catalog.js';
+import { recordDataQuality } from '../services/metrics.js';
 
 const PROVIDERS = ['twelveData', 'polygon', 'finnhub', 'alphaVantage'];
 
@@ -251,6 +252,14 @@ export default class PriceDataFetcher {
 
     this.cacheOptions = {
       defaultTtlMs: options.defaultCacheTtlMs || 45_000
+    };
+
+    this.barQuality = {
+      maxFutureMs: options.barQuality?.maxFutureMs ?? 2 * 60 * 1000,
+      maxAgeMultiplier: options.barQuality?.maxAgeMultiplier ?? 2.6,
+      gapMultiplier: options.barQuality?.gapMultiplier ?? 1.8,
+      maxGapRatio: options.barQuality?.maxGapRatio ?? 0.35,
+      enforceQuality: options.barQuality?.enforceQuality ?? requireRealTimeData()
     };
 
     this.circuitBreakerConfig = {
@@ -1042,6 +1051,42 @@ export default class PriceDataFetcher {
       return null;
     }
     sanitized.sort((a, b) => a.time - b.time);
+    const quality = this.assessSeriesQuality(sanitized, context);
+    if (quality) {
+      const tf = quality.timeframe || 'unknown';
+      const gapRatio = Number.isFinite(quality.gapRatio) ? quality.gapRatio : 0;
+      const outOfOrderRatio =
+        sanitized.length > 1 ? quality.outOfOrder / (sanitized.length - 1) : 0;
+      recordDataQuality('price_bars', `gap_ratio_${tf}`, gapRatio);
+      recordDataQuality('price_bars', `out_of_order_${tf}`, outOfOrderRatio);
+      recordDataQuality('price_bars', `stale_${tf}`, quality.stale ? 1 : 0);
+    }
+    if (
+      quality?.stale ||
+      (quality?.gapRatio != null && quality.gapRatio > this.barQuality.maxGapRatio)
+    ) {
+      if (this.barQuality.enforceQuality) {
+        this.logger?.warn?.(
+          {
+            pair: context.pair,
+            timeframe: context.timeframe,
+            provider: context.provider,
+            quality
+          },
+          'Price series rejected due to data quality'
+        );
+        return null;
+      }
+      this.logger?.warn?.(
+        {
+          pair: context.pair,
+          timeframe: context.timeframe,
+          provider: context.provider,
+          quality
+        },
+        'Price series quality warning'
+      );
+    }
     return sanitized.slice(-context.bars || sanitized.length);
   }
 
@@ -1052,8 +1097,18 @@ export default class PriceDataFetcher {
     const seen = new Set();
     const sanitized = [];
     const provider = context.provider || 'unknown';
+    const now = Date.now();
+    const maxFutureMs = this.barQuality.maxFutureMs;
+    const stats = {
+      total: series.length,
+      kept: 0,
+      duplicates: 0,
+      future: 0,
+      invalid: 0,
+      adjustedOhlc: 0
+    };
     for (const entry of series) {
-      const time = safeNumber(entry.time ?? entry.timestamp ?? entry[0]);
+      let time = safeNumber(entry.time ?? entry.timestamp ?? entry[0]);
       const open = safeNumber(entry.open ?? entry[1]);
       const high = safeNumber(entry.high ?? entry[2]);
       const low = safeNumber(entry.low ?? entry[3]);
@@ -1066,25 +1121,92 @@ export default class PriceDataFetcher {
         !Number.isFinite(low) ||
         !Number.isFinite(close)
       ) {
+        stats.invalid += 1;
+        continue;
+      }
+      if (time < 10_000_000_000) {
+        time = Math.trunc(time * 1000);
+      }
+      if (Number.isFinite(maxFutureMs) && time - now > maxFutureMs) {
+        stats.future += 1;
         continue;
       }
       const key = `${time}`;
       if (seen.has(key)) {
+        stats.duplicates += 1;
         continue;
       }
       seen.add(key);
+      const adjustedHigh = Math.max(high, open, close, low);
+      const adjustedLow = Math.min(low, open, close, high);
+      if (adjustedHigh !== high || adjustedLow !== low) {
+        stats.adjustedOhlc += 1;
+      }
       sanitized.push({
         time,
         timestamp: time,
         open,
-        high,
-        low,
+        high: adjustedHigh,
+        low: adjustedLow,
         close,
         volume,
         provider
       });
+      stats.kept += 1;
     }
+    context.quality = { ...context.quality, ...stats };
     return sanitized;
+  }
+
+  assessSeriesQuality(series, context = {}) {
+    if (!Array.isArray(series) || series.length === 0) {
+      return null;
+    }
+    const timeframe = normalizeTimeframe(context.timeframe || 'M15');
+    const expectedMs = timeframeToMilliseconds(timeframe);
+    const maxAgeMultiplier = this.barQuality.maxAgeMultiplier;
+    const gapMultiplier = this.barQuality.gapMultiplier;
+    const now = Date.now();
+
+    let gaps = 0;
+    let outOfOrder = 0;
+    let maxGapMs = 0;
+
+    for (let i = 1; i < series.length; i += 1) {
+      const prev = Number(series[i - 1]?.time || 0);
+      const curr = Number(series[i]?.time || 0);
+      if (!prev || !curr) {
+        continue;
+      }
+      const delta = curr - prev;
+      if (delta <= 0) {
+        outOfOrder += 1;
+        continue;
+      }
+      if (expectedMs && delta > expectedMs * gapMultiplier) {
+        gaps += 1;
+        if (delta > maxGapMs) {
+          maxGapMs = delta;
+        }
+      }
+    }
+
+    const gapRatio = series.length > 1 ? gaps / (series.length - 1) : 0;
+    const lastTime = Number(series[series.length - 1]?.time || 0);
+    const maxAgeMs = expectedMs ? expectedMs * maxAgeMultiplier : null;
+    const stale =
+      Number.isFinite(maxAgeMs) && Number.isFinite(lastTime) ? now - lastTime > maxAgeMs : false;
+
+    return {
+      timeframe,
+      expectedMs,
+      gapRatio,
+      gaps,
+      maxGapMs,
+      outOfOrder,
+      lastTime,
+      stale
+    };
   }
 
   normalizeTwelveDataSeries(rawValues) {

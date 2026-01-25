@@ -418,7 +418,12 @@ const describeDataFeeds = (featureSnapshots = [], options = {}) => {
   const latestSnapshotTs = getLatestTimestamp(featureSnapshots, ['ts', 'timestamp', 'updatedAt']);
   const count = Array.isArray(featureSnapshots) ? featureSnapshots.length : 0;
 
-  const latestQuoteTs = getLatestTimestamp(eaQuotes, ['timestamp', 'ts', 'updatedAt']);
+  const latestQuoteTs = getLatestTimestamp(eaQuotes, [
+    'receivedAt',
+    'timestamp',
+    'ts',
+    'updatedAt'
+  ]);
   const quoteCount = eaQuotes.length;
   const quoteDetail = latestQuoteTs
     ? `EA quotes ${quoteCount} · Latest quote ${formatRelativeTime(latestQuoteTs)}`
@@ -485,7 +490,12 @@ const describeSignalFlow = (signals = [], events = [], options = {}) => {
     : null;
   const signalCount = signals.length;
 
-  const latestQuoteTs = getLatestTimestamp(eaQuotes, ['timestamp', 'ts', 'updatedAt']);
+  const latestQuoteTs = getLatestTimestamp(eaQuotes, [
+    'receivedAt',
+    'timestamp',
+    'ts',
+    'updatedAt'
+  ]);
   const quoteCount = eaQuotes.length;
   const eaDetail = eaBridgeConnected
     ? latestQuoteTs

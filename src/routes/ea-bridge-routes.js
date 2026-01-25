@@ -6,7 +6,12 @@
 import { Router } from 'express';
 import { badRequest, ok, serverError } from '../utils/http-response.js';
 import { RealtimeEaSignalRunner } from '../services/realtime-ea-signal-runner.js';
-import { validateMarketBarsIngestDTO } from '../models/dtos.js';
+import {
+  validateMarketBarsIngestDTO,
+  validateMarketQuotesIngestDTO,
+  validateMarketSnapshotIngestDTO,
+  validateMarketNewsIngestDTO
+} from '../models/dtos.js';
 import { buildEaConnectionDiagnostics } from '../utils/ea-bridge-diagnostics.js';
 
 export default function eaBridgeRoutes({
@@ -549,10 +554,12 @@ export default function eaBridgeRoutes({
   router.post('/broker/bridge/:broker/market/quotes', async (req, res) => {
     try {
       const broker = req.params.broker;
-      const payload = {
-        ...(req.body || {}),
-        broker
-      };
+      let payload;
+      try {
+        payload = validateMarketQuotesIngestDTO({ ...(req.body || {}), broker });
+      } catch (error) {
+        return badRequest(res, { message: error?.message || 'Invalid quotes payload' });
+      }
 
       const result = eaBridgeService.recordQuotes(payload);
 
@@ -692,10 +699,12 @@ export default function eaBridgeRoutes({
   router.post('/broker/bridge/:broker/market/news', async (req, res) => {
     try {
       const broker = req.params.broker;
-      const payload = {
-        ...(req.body || {}),
-        broker
-      };
+      let payload;
+      try {
+        payload = validateMarketNewsIngestDTO({ ...(req.body || {}), broker });
+      } catch (error) {
+        return badRequest(res, { message: error?.message || 'Invalid news payload' });
+      }
 
       const result = eaBridgeService.recordNews(payload);
 
@@ -718,10 +727,12 @@ export default function eaBridgeRoutes({
   router.post('/broker/bridge/:broker/market/snapshot', async (req, res) => {
     try {
       const broker = req.params.broker;
-      const payload = {
-        ...(req.body || {}),
-        broker
-      };
+      let payload;
+      try {
+        payload = validateMarketSnapshotIngestDTO({ ...(req.body || {}), broker });
+      } catch (error) {
+        return badRequest(res, { message: error?.message || 'Invalid snapshot payload' });
+      }
 
       const result = eaBridgeService.recordMarketSnapshot(payload);
 

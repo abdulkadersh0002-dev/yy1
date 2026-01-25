@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { getPool, closePool } from '../src/storage/database.js';
 
@@ -19,6 +20,24 @@ async function runMigrations() {
     process.exit(1);
   }
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      filename TEXT PRIMARY KEY,
+      checksum TEXT NOT NULL,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  const appliedRows = await pool.query(
+    'SELECT filename, checksum FROM schema_migrations ORDER BY applied_at ASC'
+  );
+  const applied = new Map();
+  for (const row of appliedRows.rows || []) {
+    if (row?.filename) {
+      applied.set(row.filename, row.checksum || null);
+    }
+  }
+
   const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith('.sql')).sort();
 
   if (files.length === 0) {
@@ -30,6 +49,10 @@ async function runMigrations() {
   console.log(`Applying ${files.length} migration(s) to ${process.env.DB_NAME}...`);
 
   for (const file of files) {
+    if (applied.has(file)) {
+      console.log(`- Skipping ${file} (already applied)`);
+      continue;
+    }
     const fullPath = path.join(migrationsDir, file);
     const sql = await fs.readFile(fullPath, 'utf8');
     const statements = sql.trim();
@@ -38,9 +61,24 @@ async function runMigrations() {
       continue;
     }
 
+    const checksum = crypto.createHash('sha256').update(sql, 'utf8').digest('hex');
+    const recordedChecksum = applied.get(file);
+    if (recordedChecksum && recordedChecksum !== checksum) {
+      console.error(
+        `\nMigration checksum mismatch for ${file}. ` +
+          'The migration file has changed after being applied.'
+      );
+      await closePool();
+      process.exit(1);
+    }
+
     process.stdout.write(`- Running ${file}... `);
     try {
       await pool.query(statements);
+      await pool.query(
+        'INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [file, checksum]
+      );
       console.log('done');
     } catch (error) {
       console.error('\nMigration failed:', error.message);

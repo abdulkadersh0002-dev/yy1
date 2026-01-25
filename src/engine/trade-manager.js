@@ -156,6 +156,73 @@ class TradeManager {
     // Require the canonical 18-layer payload to be present/ready before executing.
     this.realtimeRequireLayers18 = autoTradingConfig.realtimeRequireLayers18 !== false;
 
+    // Smart-strong execution mode (stricter, more human-like gating)
+    const smartStrongRaw = String(
+      process.env.AUTO_TRADING_SMART_STRONG || process.env.EA_SMART_STRONG || ''
+    )
+      .trim()
+      .toLowerCase();
+    this.autoTradingSmartStrong =
+      truthy.has(smartStrongRaw) || autoTradingConfig.smartStrong === true;
+
+    this.smartMinConfidence = Number.isFinite(Number(autoTradingConfig.smartMinConfidence))
+      ? Number(autoTradingConfig.smartMinConfidence)
+      : Number.isFinite(readEnvNumber('AUTO_TRADING_SMART_MIN_CONFIDENCE'))
+        ? readEnvNumber('AUTO_TRADING_SMART_MIN_CONFIDENCE')
+        : 55;
+
+    this.smartMinStrength = Number.isFinite(Number(autoTradingConfig.smartMinStrength))
+      ? Number(autoTradingConfig.smartMinStrength)
+      : Number.isFinite(readEnvNumber('AUTO_TRADING_SMART_MIN_STRENGTH'))
+        ? readEnvNumber('AUTO_TRADING_SMART_MIN_STRENGTH')
+        : 45;
+
+    this.smartMinDecisionScore = Number.isFinite(Number(autoTradingConfig.smartMinDecisionScore))
+      ? Number(autoTradingConfig.smartMinDecisionScore)
+      : Number.isFinite(readEnvNumber('AUTO_TRADING_SMART_MIN_SCORE'))
+        ? readEnvNumber('AUTO_TRADING_SMART_MIN_SCORE')
+        : 50;
+
+    // Smart exit logic: close trades on strong opposite signal
+    const smartExitRaw = String(process.env.AUTO_TRADING_SMART_EXIT_REVERSE || '')
+      .trim()
+      .toLowerCase();
+    this.smartExitReverseEnabled =
+      truthy.has(smartExitRaw) ||
+      autoTradingConfig.smartExitReverse === true ||
+      this.autoTradingSmartStrong;
+
+    this.smartExitMinConfidence = Number.isFinite(Number(autoTradingConfig.smartExitMinConfidence))
+      ? Number(autoTradingConfig.smartExitMinConfidence)
+      : Number.isFinite(readEnvNumber('AUTO_TRADING_SMART_EXIT_MIN_CONFIDENCE'))
+        ? readEnvNumber('AUTO_TRADING_SMART_EXIT_MIN_CONFIDENCE')
+        : 60;
+
+    this.smartExitMinStrength = Number.isFinite(Number(autoTradingConfig.smartExitMinStrength))
+      ? Number(autoTradingConfig.smartExitMinStrength)
+      : Number.isFinite(readEnvNumber('AUTO_TRADING_SMART_EXIT_MIN_STRENGTH'))
+        ? readEnvNumber('AUTO_TRADING_SMART_EXIT_MIN_STRENGTH')
+        : 50;
+
+    this.smartExitMinDecisionScore = Number.isFinite(
+      Number(autoTradingConfig.smartExitMinDecisionScore)
+    )
+      ? Number(autoTradingConfig.smartExitMinDecisionScore)
+      : Number.isFinite(readEnvNumber('AUTO_TRADING_SMART_EXIT_MIN_SCORE'))
+        ? readEnvNumber('AUTO_TRADING_SMART_EXIT_MIN_SCORE')
+        : 60;
+
+    this.smartExitRequireLayers18 = autoTradingConfig.smartExitRequireLayers18 !== false;
+
+    this.smartExitRecheckMs = Number.isFinite(Number(autoTradingConfig.smartExitRecheckMs))
+      ? Number(autoTradingConfig.smartExitRecheckMs)
+      : Number.isFinite(readEnvNumber('AUTO_TRADING_SMART_EXIT_RECHECK_MS'))
+        ? readEnvNumber('AUTO_TRADING_SMART_EXIT_RECHECK_MS')
+        : 30 * 1000;
+
+    this.lastSmartExitCheck = new Map();
+    this.smartExitInFlight = new Set();
+
     // Dynamic universe: include all symbols recently seen in EA quotes (ticker/price bar).
     this.dynamicUniverseEnabled = autoTradingConfig.dynamicUniverseEnabled !== false;
     this.universeMaxAgeMs = Number.isFinite(Number(autoTradingConfig.universeMaxAgeMs))
@@ -295,6 +362,46 @@ class TradeManager {
           strength
         }
       };
+    }
+
+    if (this.autoTradingSmartStrong) {
+      const minConf = Math.max(this.realtimeMinConfidence, this.smartMinConfidence || 0);
+      const minStrength = Math.max(this.realtimeMinStrength, this.smartMinStrength || 0);
+      const minScore = Number.isFinite(this.smartMinDecisionScore) ? this.smartMinDecisionScore : 0;
+
+      if (confidence < minConf || strength < minStrength) {
+        return {
+          ok: false,
+          reason: `Smart-strong gate failed (confidence=${confidence}, strength=${strength})`,
+          details: {
+            broker: brokerId,
+            pair,
+            source,
+            decisionState,
+            decisionScore,
+            confidence,
+            strength,
+            minConf,
+            minStrength
+          }
+        };
+      }
+
+      if (Number.isFinite(decisionScore) && decisionScore < minScore) {
+        return {
+          ok: false,
+          reason: `Smart-strong decision score too low (${decisionScore} < ${minScore})`,
+          details: {
+            broker: brokerId,
+            pair,
+            source,
+            decisionState,
+            decisionScore,
+            confidence,
+            strength
+          }
+        };
+      }
     }
 
     if (this.realtimeRequireLayers18) {
@@ -1125,6 +1232,7 @@ class TradeManager {
 
     try {
       await this.tradingEngine.manageActiveTrades();
+      await this.monitorSmartExits();
     } catch (error) {
       const classified = this.tradingEngine.classifyError?.(error, {
         scope: 'TradeManager.monitorActiveTrades'
@@ -1137,6 +1245,115 @@ class TradeManager {
         { module: 'TradeManager', err: error, errorType: classified.type },
         'Error monitoring trades'
       );
+    }
+  }
+
+  shouldEvaluateSmartExit(trade) {
+    if (!this.smartExitReverseEnabled) {
+      return false;
+    }
+    if (!trade || !trade.id || !trade.pair) {
+      return false;
+    }
+    const key = String(trade.id);
+    const now = Date.now();
+    const last = Number(this.lastSmartExitCheck.get(key) || 0);
+    if (this.smartExitRecheckMs > 0 && now - last < this.smartExitRecheckMs) {
+      return false;
+    }
+    if (this.smartExitInFlight.has(key)) {
+      return false;
+    }
+    this.lastSmartExitCheck.set(key, now);
+    return true;
+  }
+
+  async monitorSmartExits() {
+    if (!this.smartExitReverseEnabled) {
+      return;
+    }
+    const trades = this.tradingEngine?.activeTrades;
+    if (!trades || typeof trades.values !== 'function') {
+      return;
+    }
+
+    for (const trade of trades.values()) {
+      if (!trade || String(trade?.status || '').toLowerCase() !== 'open') {
+        continue;
+      }
+      if (!this.shouldEvaluateSmartExit(trade)) {
+        continue;
+      }
+
+      const tradeId = String(trade.id);
+      this.smartExitInFlight.add(tradeId);
+
+      try {
+        const broker = trade?.broker || trade?.brokerRoute || null;
+        const signal = await this.tradingEngine.generateSignal(trade.pair, {
+          broker,
+          analysisMode: 'ea',
+          eaOnly: true
+        });
+
+        if (!signal || typeof signal !== 'object') {
+          continue;
+        }
+
+        const direction = String(signal.direction || '').toUpperCase();
+        const tradeDir = String(trade.direction || '').toUpperCase();
+        const opposite =
+          (tradeDir === 'BUY' && direction === 'SELL') ||
+          (tradeDir === 'SELL' && direction === 'BUY');
+
+        if (!opposite) {
+          continue;
+        }
+
+        const decisionState = signal?.isValid?.decision?.state || null;
+        const decisionScore = Number(signal?.isValid?.decision?.score ?? null);
+        const confidence = Number(signal?.confidence) || 0;
+        const strength = Number(signal?.strength) || 0;
+
+        if (signal?.isValid?.isValid !== true || decisionState !== 'ENTER') {
+          continue;
+        }
+
+        if (confidence < this.smartExitMinConfidence || strength < this.smartExitMinStrength) {
+          continue;
+        }
+
+        if (Number.isFinite(decisionScore) && decisionScore < this.smartExitMinDecisionScore) {
+          continue;
+        }
+
+        if (this.smartExitRequireLayers18) {
+          const layersStatus = getLayers18Status(signal);
+          if (!layersStatus.ok) {
+            continue;
+          }
+        }
+
+        const currentPrice = await this.tradingEngine.getCurrentPriceForPair(trade.pair, {
+          broker
+        });
+
+        const closed = await this.tradingEngine.closeTrade(
+          tradeId,
+          currentPrice,
+          'smart_exit_reverse'
+        );
+
+        this.emitEvent('trade_closed', {
+          ...(closed || {}),
+          reason: 'smart_exit_reverse',
+          originSignal: signal
+        });
+      } catch (error) {
+        logger.warn({ module: 'TradeManager', err: error }, 'Smart exit evaluation failed');
+      } finally {
+        this.smartExitInFlight.delete(tradeId);
+      }
     }
   }
 
@@ -1211,7 +1428,8 @@ class TradeManager {
       pairs: signalUniverse,
       configuredPairs: this.configuredPairs,
       activeTrades: this.tradingEngine.activeTrades.size,
-      statistics: this.tradingEngine.getStatistics()
+      statistics: this.tradingEngine.getStatistics(),
+      rejectionSummary: this.tradingEngine.getRejectionSummary?.()
     };
   }
   addPair(pair) {

@@ -1,5 +1,5 @@
 #property copyright "Neon Trading Stack"
-#property version   "1.00"
+#property version   "1.02"
 #property strict
 
 input string BridgeUrl          = "http://127.0.0.1:4101/api/broker/bridge/mt5";
@@ -58,6 +58,24 @@ input int    MaxIndicatorHandleCache     = 120;
 // === Reliability / Auto-Reconnect ===
 input int    MaxConsecutiveFailures = 3;
 input int    ReconnectBackoffSec    = 5;
+
+// === SMART STRONG Mode (recommended) ===
+// Makes the EA more resilient + enforces stronger execution gating.
+input bool   SmartStrongMode               = true;
+input bool   EnforceSmartStrongThresholds  = true;
+input double SmartStrongMinStrengthTrade   = 60.0;
+input double SmartStrongMinConfidenceTrade = 75.0;
+input int    ServerPolicyRefreshSec        = 300;
+input int    SmartMaxTickAgeSec            = 6;
+input double SmartMinAtrPips               = 5.0;
+input double SmartMaxAtrPips               = 120.0;
+input double SmartMaxSpreadToAtrPct        = 15.0;
+
+// Smart close: exit open trades when a strong opposite signal appears
+input bool   SmartStrongCloseOnOpposite    = true;
+input double SmartCloseMinStrength         = 60.0;
+input double SmartCloseMinConfidence       = 75.0;
+input int    SmartCloseCheckIntervalSec    = 30;
 
 // === Auto-Trading (Optional) ===
 input bool   EnableAutoTrading      = true;
@@ -121,6 +139,14 @@ input double        AtrTrailMultiplier      = 2.0;       // trailing distance = 
 datetime g_lastHeartbeat = 0;
 bool     g_isConnected   = false;
 
+// Server policy (synced from /agent/config)
+bool     g_serverPolicyLoaded = false;
+datetime g_lastServerPolicyFetch = 0;
+double   g_serverMinStrength = 0.0;
+double   g_serverMinConfidence = 0.0;
+bool     g_serverRequireLayers18 = false;
+bool     g_serverRequiresEnterState = true;
+
 datetime g_lastMarketFeed = 0;
 datetime g_lastSignalCheck = 0;
 datetime g_lastSignalOverlay = 0;
@@ -130,6 +156,8 @@ string   g_lastOverlayKey = "";
 
 datetime g_lastMarketSnapshot = 0;
 datetime g_lastSnapshotRequestPoll = 0;
+
+datetime g_lastSmartCloseCheck = 0;
 
 datetime g_lastActiveSymbolsPoll = 0;
 
@@ -437,7 +465,17 @@ bool GetIndicatorHandles(const string sym, const ENUM_TIMEFRAMES tf, int &rsiH, 
    if(!EnableIndicatorHandleCache)
       return false;
 
-   string key = sym + "|" + IntegerToString((int)tf);
+   string resolved = ResolveBrokerSymbol(sym);
+   StringTrimLeft(resolved);
+   StringTrimRight(resolved);
+   if(StringLen(resolved) <= 0)
+      return false;
+
+   // Avoid MT terminal spam: don't create indicators for symbols that can't be selected.
+   if(!SymbolSelect(resolved, true))
+      return false;
+
+   string key = resolved + "|" + IntegerToString((int)tf);
    datetime now = TimeCurrent();
    int idx = FindIndicatorCacheIndex(key);
    if(idx >= 0)
@@ -452,9 +490,9 @@ bool GetIndicatorHandles(const string sym, const ENUM_TIMEFRAMES tf, int &rsiH, 
       ReleaseIndicatorCacheAt(idx);
    }
 
-   int newRsi = iRSI(sym, tf, 14, PRICE_CLOSE);
-   int newAtr = iATR(sym, tf, 14);
-   int newMacd = iMACD(sym, tf, 12, 26, 9, PRICE_CLOSE);
+   int newRsi = iRSI(resolved, tf, 14, PRICE_CLOSE);
+   int newAtr = iATR(resolved, tf, 14);
+   int newMacd = iMACD(resolved, tf, 12, 26, 9, PRICE_CLOSE);
    if(newRsi <= 0 || newAtr <= 0 || newMacd <= 0)
    {
       if(newRsi > 0) IndicatorRelease(newRsi);
@@ -580,6 +618,17 @@ string ResolveBrokerSymbol(string requested)
    string best = requested;
    int bestScore = -1;
 
+   // If the requested symbol looks like an inverted FX pair (e.g., USDGBP instead of GBPUSD),
+   // try the reversed canonical (quote+base) as a fallback, but only for major currencies.
+   string revCan = "";
+   if(StringLen(reqCan) >= 6)
+   {
+      string base = StringSubstr(reqCan, 0, 3);
+      string quote = StringSubstr(reqCan, 3, 3);
+      if(IsMajorCurrency(base) && IsMajorCurrency(quote))
+         revCan = quote + base;
+   }
+
    // First scan MarketWatch (selected symbols)
    int totalSelected = SymbolsTotal(true);
    for(int i = 0; i < totalSelected; i++)
@@ -595,6 +644,23 @@ string ResolveBrokerSymbol(string requested)
       }
    }
 
+   // If not found, try reversed FX canonical (e.g., USDGBP -> GBPUSD)
+   if(bestScore < 0 && StringLen(revCan) >= 6)
+   {
+      for(int i = 0; i < totalSelected; i++)
+      {
+         string name = SymbolName(i, true);
+         int score = ScoreSymbolCandidate(revCan, name);
+         if(score > bestScore)
+         {
+            bestScore = score;
+            best = name;
+            if(bestScore >= 10000)
+               break;
+         }
+      }
+   }
+
    // Fallback scan all symbols (bounded)
    if(bestScore < 0)
    {
@@ -604,6 +670,25 @@ string ResolveBrokerSymbol(string requested)
       {
          string name = SymbolName(i, false);
          int score = ScoreSymbolCandidate(reqCan, name);
+         if(score > bestScore)
+         {
+            bestScore = score;
+            best = name;
+            if(bestScore >= 10000)
+               break;
+         }
+      }
+   }
+
+   // Fallback scan all symbols using reversed FX canonical
+   if(bestScore < 0 && StringLen(revCan) >= 6)
+   {
+      int totalAll = SymbolsTotal(false);
+      int cap = (int)MathMin((double)totalAll, (double)MathMax(500, MaxMarketWatchSymbols));
+      for(int i = 0; i < cap; i++)
+      {
+         string name = SymbolName(i, false);
+         int score = ScoreSymbolCandidate(revCan, name);
          if(score > bestScore)
          {
             bestScore = score;
@@ -995,7 +1080,7 @@ bool ParseSignalForExecution(const string json,
                              bool &shouldExecuteOut)
 {
    shouldExecuteOut = true;
-   if(RespectServerExecution)
+   if(RespectServerExecution || SmartStrongMode)
    {
       bool tmp = false;
       int execPos = StringFind(json, "\"execution\"");
@@ -1094,18 +1179,22 @@ double ReadIndicatorValue(const int handle, const int bufferIndex)
 
 double ReadAtrPips(const string symbol, const ENUM_TIMEFRAMES tf)
 {
-   double pip = PipSize(symbol);
+   string sym = ResolveBrokerSymbol(symbol);
+   if(!SymbolSelect(sym, true))
+      return 0.0;
+
+   double pip = PipSize(sym);
    if(!(pip > 0.0))
       return 0.0;
 
    int rsiH = 0;
    int atrH = 0;
    int macdH = 0;
-   bool cached = GetIndicatorHandles(symbol, tf, rsiH, atrH, macdH);
+   bool cached = GetIndicatorHandles(sym, tf, rsiH, atrH, macdH);
    if(!cached)
    {
       // Handle cache disabled (or cache miss and disabled): create ATR only.
-      atrH = iATR(symbol, tf, 14);
+      atrH = iATR(sym, tf, 14);
       if(atrH <= 0)
          return 0.0;
    }
@@ -1843,7 +1932,14 @@ bool PostMarketSnapshotForSymbol(string sym, bool force)
    if(StringLen(sym) <= 0)
       return false;
 
-   SymbolSelect(sym, true);
+   sym = ResolveBrokerSymbol(sym);
+   StringTrimLeft(sym);
+   StringTrimRight(sym);
+   if(StringLen(sym) <= 0)
+      return false;
+
+   if(!SymbolSelect(sym, true))
+      return false;
 
    int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
 
@@ -1966,6 +2062,76 @@ bool PostMarketSnapshotForSymbol(string sym, bool force)
    return false;
 }
 
+string NormalizeBridgeBaseUrl(string raw)
+{
+   string s = raw;
+   StringTrimLeft(s);
+   StringTrimRight(s);
+
+   if(StringLen(s) <= 0)
+      return "http://127.0.0.1:4101/api/broker/bridge/mt5";
+
+   // Strip trailing '/'
+   while(StringLen(s) > 0 && StringGetCharacter(s, StringLen(s) - 1) == '/')
+      s = StringSubstr(s, 0, StringLen(s) - 1);
+
+   // Already a full bridge base URL
+   if(StringFind(s, "/api/broker/bridge/") >= 0)
+      return s;
+
+   // If user provided .../api, append broker bridge path without duplicating '/api'
+   if(StringLen(s) >= 3 && StringSubstr(s, StringLen(s) - 3, 3) == "/api")
+      return s + "/broker/bridge/mt5";
+
+   // Otherwise treat it as a host base (e.g. http://127.0.0.1:4101)
+   return s + "/api/broker/bridge/mt5";
+}
+
+bool FetchServerPolicy(const bool logOnSuccess)
+{
+   string response = "";
+   if(!BridgeRequest("GET", "/agent/config", "", response, false))
+      return false;
+
+   int policyPos = StringFind(response, "\"serverPolicy\"");
+   if(policyPos < 0)
+      return false;
+
+   int execPos = StringFind(response, "\"execution\"", policyPos);
+   if(execPos < 0)
+      execPos = policyPos;
+
+   double minC = g_serverMinConfidence;
+   double minS = g_serverMinStrength;
+   bool requireLayers = g_serverRequireLayers18;
+   bool requireEnter = g_serverRequiresEnterState;
+
+   JsonGetNumberFrom(response, execPos, "\"minConfidence\"", minC);
+   JsonGetNumberFrom(response, execPos, "\"minStrength\"", minS);
+   JsonGetBoolFrom(response, execPos, "\"requireLayers18\"", requireLayers);
+   JsonGetBoolFrom(response, execPos, "\"requiresEnterState\"", requireEnter);
+
+   g_serverMinConfidence = minC;
+   g_serverMinStrength = minS;
+   g_serverRequireLayers18 = requireLayers;
+   g_serverRequiresEnterState = requireEnter;
+   g_serverPolicyLoaded = true;
+   g_lastServerPolicyFetch = TimeCurrent();
+
+   if(logOnSuccess)
+   {
+      PrintFormat(
+         "Server policy synced: minConfidence=%.0f minStrength=%.0f requireLayers18=%s requiresEnterState=%s",
+         g_serverMinConfidence,
+         g_serverMinStrength,
+         g_serverRequireLayers18 ? "true" : "false",
+         g_serverRequiresEnterState ? "true" : "false"
+      );
+   }
+
+   return true;
+}
+
 bool HttpRequest(const string method,
                  const string path,
                  const string payload,
@@ -1989,7 +2155,8 @@ bool HttpRequest(const string method,
    string resultHeaders = "";
 
    // Allow leaving BridgeUrl empty ("just attach EA"), defaulting to local bridge.
-   string baseUrl = StringLen(BridgeUrl) > 0 ? BridgeUrl : "http://127.0.0.1:4101/api/broker/bridge/mt5";
+   // Also normalize common misconfigurations (e.g. BridgeUrl="http://127.0.0.1:4101").
+   string baseUrl = NormalizeBridgeBaseUrl(BridgeUrl);
    string url = baseUrl;
    if(StringSubstr(path, 0, 1) != "/")
       url = url + "/" + path;
@@ -2039,7 +2206,11 @@ bool HttpRequest(const string method,
    if(status >= 200 && status < 300)
       return true;
 
-   PrintFormat("Bridge request failed: %d -> %s", status, response);
+   PrintFormat("Bridge request failed: %s %s -> %d -> %s", method, url, status, response);
+   if(status == 404)
+   {
+      Print("Tip: 404 often means BridgeUrl is wrong. It should be like http://127.0.0.1:4101/api/broker/bridge/mt5 (and MT5 WebRequest must allowlist http://127.0.0.1:4101)");
+   }
    return false;
 }
 
@@ -2594,6 +2765,140 @@ void ManagePositionsTrailingStop()
    }
 }
 
+bool ClosePositionOppositeSignal(const string sym, const long posType, const string signalDir)
+{
+   if(StringLen(sym) <= 0)
+      return false;
+
+   string dir = signalDir;
+   StringToUpper(dir);
+   bool opposite = (posType == POSITION_TYPE_BUY && (dir == "SELL" || dir == "SHORT")) ||
+                   (posType == POSITION_TYPE_SELL && (dir == "BUY" || dir == "LONG"));
+   if(!opposite)
+      return false;
+
+   double volume = PositionGetDouble(POSITION_VOLUME);
+   if(!(volume > 0.0))
+      return false;
+
+   MqlTick tick;
+   if(!SymbolInfoTick(sym, tick) || !(tick.bid > 0.0) || !(tick.ask > 0.0))
+      return false;
+
+   MqlTradeRequest req;
+   MqlTradeResult res;
+   ZeroMemory(req);
+   ZeroMemory(res);
+
+   req.action = TRADE_ACTION_DEAL;
+   req.symbol = sym;
+   req.magic = MagicNumber;
+   req.volume = volume;
+   req.deviation = MaxSlippagePoints;
+   req.type_time = ORDER_TIME_GTC;
+   req.position = (ulong)PositionGetInteger(POSITION_TICKET);
+
+   long fillMode = 0;
+   if(SymbolInfoInteger(sym, SYMBOL_FILLING_MODE, fillMode))
+      req.type_filling = (ENUM_ORDER_TYPE_FILLING)fillMode;
+   else
+      req.type_filling = ORDER_FILLING_FOK;
+
+   if(!IsMarketFillMode(req.type_filling))
+      req.type_filling = ORDER_FILLING_FOK;
+
+   if(posType == POSITION_TYPE_BUY)
+   {
+      req.type = ORDER_TYPE_SELL;
+      req.price = tick.bid;
+   }
+   else
+   {
+      req.type = ORDER_TYPE_BUY;
+      req.price = tick.ask;
+   }
+
+   int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+   if(digits < 0) digits = 5;
+   req.price = NormalizeDouble(req.price, digits);
+
+   if(!OrderSend(req, res))
+   {
+      if(VerboseTradeLogs)
+         PrintFormat("Smart close failed for %s: err=%d retcode=%d", sym, GetLastError(), (int)res.retcode);
+      return false;
+   }
+
+   if(res.retcode == TRADE_RETCODE_DONE || res.retcode == TRADE_RETCODE_PLACED)
+   {
+      if(VerboseTradeLogs)
+         PrintFormat("Smart close executed for %s (retcode=%d)", sym, (int)res.retcode);
+      return true;
+   }
+
+   return false;
+}
+
+void CheckSmartCloseOppositeSignals()
+{
+   if(!SmartStrongMode || !SmartStrongCloseOnOpposite)
+      return;
+   if(SmartCloseCheckIntervalSec > 0 && g_lastSmartCloseCheck > 0 && (TimeCurrent() - g_lastSmartCloseCheck) < (datetime)SmartCloseCheckIntervalSec)
+      return;
+
+   int total = PositionsTotal();
+   for(int i = 0; i < total; i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+
+      string sym = PositionGetString(POSITION_SYMBOL);
+      long magic = PositionGetInteger(POSITION_MAGIC);
+      if(magic != MagicNumber)
+         continue;
+
+      long type = PositionGetInteger(POSITION_TYPE);
+
+      string response = "";
+      string path = StringFormat("/signal/get?symbol=%s&accountMode=%s", sym, AccountMode());
+      if(!BridgeRequest("GET", path, "", response, true))
+         continue;
+
+      if(StringFind(response, "\"success\":true") < 0 && StringFind(response, "\"success\" : true") < 0)
+         continue;
+
+      bool shouldExecute = true;
+      string direction = "";
+      double entry = 0.0, sl = 0.0, tp = 0.0, lots = DefaultLots;
+      if(!ParseSignalForExecution(response, direction, entry, sl, tp, lots, shouldExecute))
+         continue;
+
+      bool effectiveRespect = RespectServerExecution || SmartStrongMode;
+      if(effectiveRespect && !shouldExecute)
+         continue;
+
+      double strength = 0.0;
+      double confidence = 0.0;
+      ExtractSignalStrengthConfidence(response, strength, confidence);
+
+      double minS = SmartCloseMinStrength;
+      double minC = SmartCloseMinConfidence;
+      if(g_serverPolicyLoaded)
+      {
+         if(g_serverMinStrength > 0.0) minS = MathMax(minS, g_serverMinStrength);
+         if(g_serverMinConfidence > 0.0) minC = MathMax(minC, g_serverMinConfidence);
+      }
+
+      if(strength < minS || confidence < minC)
+         continue;
+
+      ClosePositionOppositeSignal(sym, type, direction);
+   }
+
+   g_lastSmartCloseCheck = TimeCurrent();
+}
+
 void CheckAndExecuteSignals()
 {
    if(!EnableAutoTrading || !g_isConnected)
@@ -2757,6 +3062,33 @@ void CheckAndExecuteSignals()
          }
       }
 
+      if(SmartStrongMode)
+      {
+         double atrPipsSmart = ReadAtrPips(sym, VolatilityFilterTf);
+         if(atrPipsSmart > 0.0)
+         {
+            if(SmartMinAtrPips > 0.0 && atrPipsSmart < SmartMinAtrPips)
+               continue;
+            if(SmartMaxAtrPips > 0.0 && atrPipsSmart > SmartMaxAtrPips)
+               continue;
+
+            if(SmartMaxSpreadToAtrPct > 0.0)
+            {
+               double point = SymbolInfoDouble(sym, SYMBOL_POINT);
+               if(!(point > 0.0))
+                  point = 0.00001;
+               double pip = PipSize(sym);
+               if(pip > 0.0)
+               {
+                  int spreadPts = CurrentSpreadPoints(sym);
+                  double spreadPips = (spreadPts * point) / pip;
+                  if(spreadPips > (atrPipsSmart * (SmartMaxSpreadToAtrPct / 100.0)))
+                     continue;
+               }
+            }
+         }
+      }
+
       string response = "";
       string path = StringFormat("/signal/get?symbol=%s&accountMode=%s", sym, AccountMode());
       if(!BridgeRequest("GET", path, "", response, true))
@@ -2770,12 +3102,26 @@ void CheckAndExecuteSignals()
       double entry = 0.0, sl = 0.0, tp = 0.0, lots = DefaultLots;
       if(!ParseSignalForExecution(response, direction, entry, sl, tp, lots, shouldExecute))
          continue;
-      if(RespectServerExecution && !shouldExecute)
+      bool effectiveRespect = RespectServerExecution || SmartStrongMode;
+      if(effectiveRespect && !shouldExecute)
          continue;
 
       double strength = 0.0;
       double confidence = 0.0;
       ExtractSignalStrengthConfidence(response, strength, confidence);
+
+      if(SmartStrongMode && EnforceSmartStrongThresholds)
+      {
+         double minS = SmartStrongMinStrengthTrade;
+         double minC = SmartStrongMinConfidenceTrade;
+         if(g_serverPolicyLoaded)
+         {
+            if(g_serverMinStrength > 0.0) minS = MathMax(minS, g_serverMinStrength);
+            if(g_serverMinConfidence > 0.0) minC = MathMax(minC, g_serverMinConfidence);
+         }
+         if(strength < minS || confidence < minC)
+            continue;
+      }
 
       bool better = false;
       if(!found)
@@ -2834,6 +3180,17 @@ void CheckAndExecuteSignals()
          PrintFormat("No valid tick for %s (bid=%.5f ask=%.5f err=%d)", bestSym, tick.bid, tick.ask, GetLastError());
       return;
    }
+
+      if(SmartStrongMode && SmartMaxTickAgeSec > 0)
+      {
+         long age = (long)(TimeCurrent() - tick.time);
+         if(age > SmartMaxTickAgeSec)
+         {
+            if(VerboseTradeLogs)
+               PrintFormat("Skipping %s due to stale tick (%ds)", bestSym, (int)age);
+            return;
+         }
+      }
 
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) || !AccountInfoInteger(ACCOUNT_TRADE_ALLOWED))
    {
@@ -3244,7 +3601,8 @@ void UpdateSignalOverlay()
       ClearSignalOverlayObjects();
       return;
    }
-   if(OverlayRespectServerExecution && !shouldExecute)
+   bool effectiveRespect = OverlayRespectServerExecution || SmartStrongMode;
+   if(effectiveRespect && !shouldExecute)
    {
       ClearSignalOverlayObjects();
       return;
@@ -3256,7 +3614,14 @@ void UpdateSignalOverlay()
 
    if(OverlayStrongOnly)
    {
-      if(strength < OverlayMinStrength || confidence < OverlayMinConfidence)
+      double minS = OverlayMinStrength;
+      double minC = OverlayMinConfidence;
+      if(SmartStrongMode && g_serverPolicyLoaded)
+      {
+         if(g_serverMinStrength > 0.0) minS = MathMax(minS, g_serverMinStrength);
+         if(g_serverMinConfidence > 0.0) minC = MathMax(minC, g_serverMinConfidence);
+      }
+      if(strength < minS || confidence < minC)
       {
          ClearSignalOverlayObjects();
          return;
@@ -3287,7 +3652,7 @@ string BuildSessionPayload(bool includeForceFlag)
 
    // Report key EA settings so the backend/dashboard can verify the EA and server are aligned.
    payload += StringFormat(
-      ",\"ea\":{\"platform\":\"mt5\",\"respectServerExecution\":%s,\"tradeMajorsAndMetalsOnly\":%s,\"maxFreeMarginUsagePct\":%.3f,\"maxSpreadPoints\":%d,\"enableVolatilityFilter\":%s,\"volatilityTf\":%d,\"minAtrPips\":%.2f,\"maxAtrPips\":%.2f,\"maxSpreadToAtrPct\":%.2f,\"enableAtrTrailing\":%s,\"atrTrailingTf\":%d,\"atrStartMultiplier\":%.2f,\"atrTrailMultiplier\":%.2f,\"enableDailyGuards\":%s,\"dailyProfitTargetCurrency\":%.2f,\"dailyProfitTargetPct\":%.2f,\"dailyMaxLossCurrency\":%.2f,\"dailyMaxLossPct\":%.2f,\"enforceMaxTradesPerDay\":%s,\"maxTradesPerDay\":%d}",
+      ",\"ea\":{\"platform\":\"mt5\",\"respectServerExecution\":%s,\"tradeMajorsAndMetalsOnly\":%s,\"maxFreeMarginUsagePct\":%.3f,\"maxSpreadPoints\":%d,\"enableVolatilityFilter\":%s,\"volatilityTf\":%d,\"minAtrPips\":%.2f,\"maxAtrPips\":%.2f,\"maxSpreadToAtrPct\":%.2f,\"enableAtrTrailing\":%s,\"atrTrailingTf\":%d,\"atrStartMultiplier\":%.2f,\"atrTrailMultiplier\":%.2f,\"enableDailyGuards\":%s,\"dailyProfitTargetCurrency\":%.2f,\"dailyProfitTargetPct\":%.2f,\"dailyMaxLossCurrency\":%.2f,\"dailyMaxLossPct\":%.2f,\"enforceMaxTradesPerDay\":%s,\"maxTradesPerDay\":%d,\"smartStrongMode\":%s,\"smartMinStrength\":%.2f,\"smartMinConfidence\":%.2f,\"smartMaxTickAgeSec\":%d,\"smartMinAtrPips\":%.2f,\"smartMaxAtrPips\":%.2f,\"smartMaxSpreadToAtrPct\":%.2f}",
       RespectServerExecution ? "true" : "false",
       TradeMajorsAndMetalsOnly ? "true" : "false",
       MaxFreeMarginUsagePct,
@@ -3307,7 +3672,14 @@ string BuildSessionPayload(bool includeForceFlag)
       DailyMaxLossCurrency,
       DailyMaxLossPct,
       EnforceMaxTradesPerDay ? "true" : "false",
-      MaxTradesPerDay
+      MaxTradesPerDay,
+      SmartStrongMode ? "true" : "false",
+      SmartStrongMinStrengthTrade,
+      SmartStrongMinConfidenceTrade,
+      SmartMaxTickAgeSec,
+      SmartMinAtrPips,
+      SmartMaxAtrPips,
+      SmartMaxSpreadToAtrPct
    );
    if(includeForceFlag)
       payload += StringFormat(",\"forceReconnect\":%s", ForceReconnect ? "true" : "false");
@@ -3325,6 +3697,11 @@ bool SendSessionConnect()
       g_marketWatchPrepared = false;
       g_marketFeedCursor = 0;
       Print("Bridge session registered: ", response);
+
+      // In SMART STRONG mode, fetch server policy so the EA can align thresholds.
+      if(SmartStrongMode)
+         FetchServerPolicy(true);
+
       return true;
    }
    g_isConnected = false;
@@ -3397,6 +3774,13 @@ void OnTimer()
          return;
       SendSessionConnect();
       return;
+   }
+
+   // Periodically refresh server policy (keeps EA aligned with backend config changes).
+   if(SmartStrongMode && ServerPolicyRefreshSec > 0)
+   {
+      if(g_lastServerPolicyFetch == 0 || (TimeCurrent() - g_lastServerPolicyFetch) >= ServerPolicyRefreshSec)
+         FetchServerPolicy(false);
    }
 
    if(EnableMarketFeed && IncludeMarketWatch && AutoPopulateMarketWatch && !g_marketWatchPrepared)
@@ -3491,6 +3875,7 @@ void OnTimer()
    // Position management
    ManagePositionsBreakeven();
    ManagePositionsTrailingStop();
+   CheckSmartCloseOppositeSignals();
 }
 
 string TransactionTypeToString(const ENUM_TRADE_TRANSACTION_TYPE type)

@@ -44,7 +44,9 @@ function isReachable(url, timeoutMs = 1500) {
       },
       (res) => {
         res.resume();
-        finish(Boolean(res.statusCode && res.statusCode >= 200 && res.statusCode < 400));
+        const status = res.statusCode || 0;
+        const ok = (status >= 200 && status < 400) || status === 503;
+        finish(Boolean(status && ok));
       }
     );
 
@@ -102,11 +104,24 @@ function isPortInUse(port, host = '127.0.0.1', timeoutMs = 400) {
 }
 
 function spawnBackend() {
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const rawTradingScope = String(process.env.TRADING_SCOPE || '')
+    .trim()
+    .toLowerCase();
+  const allowExecutionScope =
+    nodeEnv !== 'production' &&
+    nodeEnv !== 'test' &&
+    (rawTradingScope === '' || rawTradingScope === 'signals');
+  const resolvedTradingScope = allowExecutionScope ? 'execution' : rawTradingScope || 'execution';
+
   const env = {
     ...process.env,
-    NODE_ENV: process.env.NODE_ENV || 'development',
+    NODE_ENV: nodeEnv,
     REQUIRE_REALTIME_DATA: process.env.REQUIRE_REALTIME_DATA ?? 'false',
-    ALLOW_SYNTHETIC_DATA: process.env.ALLOW_SYNTHETIC_DATA ?? 'false',
+    ALLOW_SYNTHETIC_DATA: process.env.ALLOW_SYNTHETIC_DATA ?? 'true',
+    TRADING_SCOPE: resolvedTradingScope,
+    EA_ONLY_MODE: process.env.EA_ONLY_MODE ?? 'true',
+    NEWS_RSS_ONLY: process.env.NEWS_RSS_ONLY ?? 'true',
     // Dev UX: allow showing analyzed WAIT/monitor candidates in the dashboard.
     // Auto-trading remains gated by the stronger ENTER + validity rules.
     EA_DASHBOARD_ALLOW_CANDIDATES: process.env.EA_DASHBOARD_ALLOW_CANDIDATES ?? 'true',

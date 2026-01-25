@@ -12,6 +12,27 @@ This document provides a complete reference for all environment variables used b
 | `ENABLE_WEBSOCKETS`          | boolean | true        | Enable WebSocket support                    |
 | `WEBSOCKET_PATH`             | string  | /ws/trading | WebSocket endpoint path                     |
 | `WEBSOCKET_PING_INTERVAL_MS` | number  | 30000       | WebSocket ping interval                     |
+| `WS_MAX_BUFFERED_BYTES`      | number  | 1000000     | Drop WS broadcasts when client buffer grows |
+
+## Security Configuration
+
+| Variable                 | Type    | Default | Description                                  |
+| ------------------------ | ------- | ------- | -------------------------------------------- |
+| `ALLOW_PUBLIC_EA_BRIDGE` | boolean | false   | Allow EA bridge routes without API auth      |
+| `CORS_ALLOWED_ORIGINS`   | string  | -       | Comma-separated list of allowed CORS origins |
+| `CORS_ALLOW_CREDENTIALS` | boolean | false   | Allow credentials in CORS responses          |
+
+## Job Queue Configuration
+
+| Variable                    | Type    | Default | Description                                     |
+| --------------------------- | ------- | ------- | ----------------------------------------------- |
+| `ENABLE_JOB_QUEUE`          | boolean | true    | Enable background job queue                     |
+| `JOB_QUEUE_CONCURRENCY`     | number  | 2       | Max concurrent jobs                             |
+| `JOB_QUEUE_RETRY_ATTEMPTS`  | number  | 2       | Retry attempts per job (excludes first attempt) |
+| `JOB_QUEUE_RETRY_BASE_MS`   | number  | 500     | Base retry backoff (ms)                         |
+| `JOB_QUEUE_RETRY_MAX_MS`    | number  | 10000   | Max retry backoff (ms)                          |
+| `JOB_QUEUE_MAX_SIZE`        | number  | 5000    | Max queued jobs before dropping                 |
+| `JOB_QUEUE_DEAD_LETTER_MAX` | number  | 200     | Max retained dead-letter jobs                   |
 
 ## Data Providers
 
@@ -22,20 +43,7 @@ This document provides a complete reference for all environment variables used b
 | `ALLOW_SYNTHETIC_DATA`  | boolean | true (dev)  | Allow synthetic/simulated data                          |
 | `REQUIRE_REALTIME_DATA` | boolean | false (dev) | Require real-time data feeds                            |
 | `ALLOW_ALL_SYMBOLS`     | boolean | false       | Allow all EA-streamed symbols (disable asset filtering) |
-
-### API Keys
-
-| Variable                | Description                           | Required    |
-| ----------------------- | ------------------------------------- | ----------- |
-| `TWELVE_DATA_API_KEY`   | TwelveData API key                    | Recommended |
-| `POLYGON_API_KEY`       | Polygon.io API key                    | Optional    |
-| `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key                 | Optional    |
-| `FINNHUB_API_KEY`       | Finnhub API key                       | Optional    |
-| `NEWSAPI_KEY`           | NewsAPI.org API key                   | Recommended |
-| `FRED_API_KEY`          | Federal Reserve Economic Data API key | Optional    |
-| `OPENAI_API_KEY`        | OpenAI API key (for AI analysis)      | Optional    |
-| `EXCHANGERATE_API_KEY`  | ExchangeRate-API key                  | Optional    |
-| `FIXER_API_KEY`         | Fixer.io API key                      | Optional    |
+| `EA_ONLY_MODE`          | boolean | true        | Use EA + RSS only (skip provider enforcement)           |
 
 ### Provider Configuration
 
@@ -58,6 +66,25 @@ This document provides a complete reference for all environment variables used b
 | `PRICE_PROVIDER_FAST_TIMEFRAMES`              | string | M1,M5,M15,M30   | Fast provider timeframes                    |
 | `PRICE_PROVIDER_SLOW_TIMEFRAMES`              | string | H4,H6,H12,D1,W1 | Slow provider timeframes                    |
 
+### Price Bar Data Quality
+
+| Variable                        | Type    | Default | Description                                     |
+| ------------------------------- | ------- | ------- | ----------------------------------------------- |
+| `PRICE_BARS_MAX_FUTURE_MS`      | number  | 120000  | Max future timestamp tolerance for bars (ms)    |
+| `PRICE_BARS_MAX_AGE_MULTIPLIER` | number  | 2.6     | Max age multiplier vs timeframe before stale    |
+| `PRICE_BARS_GAP_MULTIPLIER`     | number  | 1.8     | Gap threshold multiplier vs timeframe           |
+| `PRICE_BARS_MAX_GAP_RATIO`      | number  | 0.35    | Max allowed gap ratio before warnings/rejection |
+| `PRICE_BARS_ENFORCE_QUALITY`    | boolean | false   | Reject low-quality series instead of warning    |
+
+### Data Quality Circuit Breaker
+
+| Variable                            | Type    | Default | Description                                               |
+| ----------------------------------- | ------- | ------- | --------------------------------------------------------- |
+| `DATA_QUALITY_AUTO_REENABLE`        | boolean | true    | Auto-clear pair circuit breaker after healthy assessments |
+| `DATA_QUALITY_REENABLE_MIN_SCORE`   | number  | 78      | Minimum quality score to count as healthy                 |
+| `DATA_QUALITY_REENABLE_MIN_HEALTHY` | number  | 2       | Consecutive healthy assessments required to auto-clear    |
+| `DATA_QUALITY_REENABLE_WINDOW_MS`   | number  | 240000  | Max time window for consecutive healthy assessments (ms)  |
+
 ## News Configuration
 
 | Variable                  | Type    | Default | Description                     |
@@ -75,7 +102,6 @@ This document provides a complete reference for all environment variables used b
 | `AUTO_TRADING_PROFILE`                  | string  | -       | Decision profile (`balanced`, `smart_strong`, `aggressive`) |
 | `AUTO_TRADING_FORCE_BROKER`             | string  | -       | Force auto-trading broker (e.g. `mt5`)                      |
 | `AUTO_TRADING_SMART_STRONG_ENTER_SCORE` | number  | 45      | Smart-strong entry score (0..100, lower = more entries)     |
-| `AUTO_TRADING_REALTIME_MIN_CONFIDENCE`  | number  | -       | Execution confidence floor (overrides smart_strong default) |
 | `AUTO_TRADING_REALTIME_MIN_STRENGTH`    | number  | -       | Execution strength floor (overrides smart_strong default)   |
 | `AUTO_TRADING_ASSET_CLASSES`            | string  | -       | Auto-trade universe filter (e.g. `forex,metals`)            |
 | `AUTO_TRADING_ALLOW_ALL_ASSETS`         | boolean | false   | Disable asset-class filter (allow any symbol)               |
@@ -83,6 +109,33 @@ This document provides a complete reference for all environment variables used b
 | `AUTO_TRADING_SIGNAL_INTERVAL_MS`       | number  | -       | Signal generation interval                                  |
 | `AUTO_TRADING_SIGNAL_CHECK_INTERVAL_MS` | number  | -       | Signal check interval                                       |
 | `ADVANCED_SIGNAL_FILTER_ENABLED`        | boolean | false   | Enable stricter, multi-layer signal gating                  |
+
+## Market Rules (UTC-only)
+
+| Variable                    | Type    | Default | Description                           |
+| --------------------------- | ------- | ------- | ------------------------------------- |
+| `MARKET_FOREX_OPEN_UTC`     | string  | 21:00   | Sunday open time (UTC)                |
+| `MARKET_FOREX_CLOSE_UTC`    | string  | 21:00   | Friday close time (UTC)               |
+| `MARKET_ROLLOVER_START_UTC` | string  | 21:55   | Rollover window start (UTC)           |
+| `MARKET_ROLLOVER_END_UTC`   | string  | 22:10   | Rollover window end (UTC)             |
+| `MARKET_BLOCK_ROLLOVER`     | boolean | true    | Block execution during rollover       |
+| `MARKET_BLOCK_CLOSED`       | boolean | true    | Block execution when market is closed |
+
+## Risk Caps
+
+| Variable              | Type   | Default | Description                  |
+| --------------------- | ------ | ------- | ---------------------------- |
+| `MAX_RISK_PER_SYMBOL` | number | 0.04    | Max risk fraction per symbol |
+
+## EA Ingest Guards
+
+| Variable                 | Type   | Default     | Description                             |
+| ------------------------ | ------ | ----------- | --------------------------------------- |
+| `EA_MAX_QUOTE_AGE_MS`    | number | 120000      | Max age for EA quotes (ms)              |
+| `EA_MAX_QUOTE_FUTURE_MS` | number | 120000      | Max future tolerance for EA quotes (ms) |
+| `EA_MAX_NEWS_AGE_MS`     | number | 1209600000  | Max age for EA news (ms)                |
+| `EA_MAX_NEWS_FUTURE_MS`  | number | 31536000000 | Max future tolerance for EA news (ms)   |
+| `EA_MAX_BAR_FUTURE_MS`   | number | 300000      | Max future tolerance for EA bars (ms)   |
 
 ## SMC (Candle-Derived) Heuristics
 
@@ -161,6 +214,15 @@ These tuning knobs affect best-effort SMC-style features computed from EA candle
 | `DB_PASSWORD` | string  | -                | Database password     |
 | `DB_SSL`      | boolean | false            | Enable SSL connection |
 
+## Persistence Configuration
+
+| Variable                        | Type    | Default | Description                                  |
+| ------------------------------- | ------- | ------- | -------------------------------------------- |
+| `PERSISTENCE_RETRY_BASE_MS`     | number  | 5000    | Base retry backoff for DB writes (ms)        |
+| `PERSISTENCE_RETRY_MAX_MS`      | number  | 60000   | Max retry backoff for DB writes (ms)         |
+| `PERSISTENCE_MAX_FAILURES`      | number  | 10      | Failures before permanent disable (optional) |
+| `PERSISTENCE_DISABLE_PERMANENT` | boolean | false   | Permanently disable after max failures       |
+
 ## Broker Configuration
 
 ### OANDA
@@ -202,17 +264,38 @@ The MT5 bridge service is expected to expose (at minimum) these endpoints:
 
 ### General Broker Settings
 
-| Variable                       | Type   | Default | Description             |
-| ------------------------------ | ------ | ------- | ----------------------- |
-| `BROKER_DEFAULT`               | string | mt5     | Default broker          |
-| `BROKER_TIME_IN_FORCE`         | string | GTC     | Order time in force     |
-| `BROKER_RECONCILE_INTERVAL_MS` | number | 60000   | Reconciliation interval |
+| Variable                       | Type   | Default       | Description              |
+| ------------------------------ | ------ | ------------- | ------------------------ |
+| `BROKER_DEFAULT`               | string | mt5           | Default broker           |
+| `BROKER_TIME_IN_FORCE`         | string | GTC           | Order time in force      |
+| `BROKER_IDEMPOTENCY_TTL_MS`    | number | 600000        | Idempotency cache TTL    |
+| `BROKER_RETRY_ATTEMPTS`        | number | 1             | Retry attempts per order |
+| `BROKER_RETRY_BASE_MS`         | number | 400           | Base retry delay (ms)    |
+| `BROKER_BREAKER_THRESHOLD`     | number | 3             | Failures to open breaker |
+| `BROKER_BREAKER_COOLDOWN_MS`   | number | 60000         | Breaker cooldown (ms)    |
+| `BROKER_RECONCILE_INTERVAL_MS` | number | 60000         | Reconciliation interval  |
+| `BROKER_SERVER_TIMEZONE`       | string | UTC           | Broker server timezone   |
+| `BROKER_SYMBOL_SUFFIX`         | string | -             | Broker symbol suffix     |
+| `BROKER_SYMBOL_ALLOWLIST`      | string | -             | Allowed symbols (CSV)    |
+| `BROKER_SYMBOL_MAP`            | JSON   | -             | Symbol alias map JSON    |
+| `BROKER_METALS_SYMBOLS`        | string | XAUUSD,XAGUSD | Metals symbols (CSV)     |
 
 ### Broker Modification API (optional)
 
 | Variable                    | Type    | Default | Description                                                                               |
 | --------------------------- | ------- | ------- | ----------------------------------------------------------------------------------------- |
 | `ENABLE_TRADING_MODIFY_API` | boolean | false   | Enable `POST /api/broker/positions/modify` for manual/diagnostic SL/TP modification calls |
+
+## Governance & Targets
+
+| Variable                    | Type   | Default | Description                                                   |
+| --------------------------- | ------ | ------- | ------------------------------------------------------------- |
+| `TRADING_SCOPE`             | string | signals | `signals`, `execution`, or `autonomous`                       |
+| `TARGET_UPTIME_PCT`         | number | 99.9    | Target uptime percentage                                      |
+| `TARGET_P95_LATENCY_MS`     | number | 250     | Target API p95 latency in milliseconds                        |
+| `TARGET_MAX_ERROR_RATE_PCT` | number | 0.5     | Target max error rate percentage                              |
+| `TARGET_MAX_DRAWDOWN_PCT`   | number | 8       | Target max drawdown percentage                                |
+| `TARGET_MAX_SLIPPAGE_PIPS`  | number | 0.8     | Target max slippage in pips (forex) / points (metals, broker) |
 
 ## Service Configuration
 
@@ -291,10 +374,6 @@ ALLOW_SYNTHETIC_DATA=false
 REQUIRE_REALTIME_DATA=true
 AUTO_TRADING_AUTOSTART=true
 
-# Required API keys
-TWELVE_DATA_API_KEY=your_key
-NEWSAPI_KEY=your_key
-
 # Database
 DB_HOST=your_db_host
 DB_USER=your_db_user
@@ -307,5 +386,4 @@ DB_SSL=true
 
 - **Never commit** `.env` files to version control
 - Use a **secrets manager** in production (AWS Secrets Manager, HashiCorp Vault, etc.)
-- Rotate API keys regularly
 - Use separate credentials for development and production

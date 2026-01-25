@@ -37,6 +37,21 @@
       "isBackground": true
     },
     {
+      "label": "🚀 Start Server + Dashboard (NO DB/NO KEYS - synthetic dev)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set ALLOW_SYNTHETIC_DATA=true&& set REQUIRE_REALTIME_DATA=false&& set NEWS_RSS_ONLY=true&& npm run start:all"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
       "label": "🚀 Start Server + Dashboard (ALL symbols)",
       "type": "shell",
       "command": "cmd",
@@ -426,6 +441,21 @@
       "type": "shell",
       "command": "cmd",
       "args": ["/c", "set PORT=4101&& npm start"],
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "group": "build"
+    },
+    {
+      "label": "🚀 Start Backend (4101, NO DB/NO KEYS - synthetic dev)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set PORT=4101&& set ALLOW_SYNTHETIC_DATA=true&& set REQUIRE_REALTIME_DATA=false&& set NEWS_RSS_ONLY=true&& npm start"
+      ],
       "isBackground": true,
       "presentation": {
         "reveal": "always",

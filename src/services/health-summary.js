@@ -1,4 +1,4 @@
-import { requireRealTimeData } from '../config/runtime-flags.js';
+import { requireRealTimeData, eaOnlyMode } from '../config/runtime-flags.js';
 import { appConfig } from '../app/config.js';
 
 const CRITICAL_PROVIDER_STATUSES = new Set(['missing', 'disabled', 'breaker']);
@@ -23,6 +23,15 @@ const secondsAgo = (timestamp) => {
 };
 
 function summarizeProviderHealth(priceDataFetcher, heartbeat, requireRealtime) {
+  if (eaOnlyMode(appConfig.env)) {
+    return {
+      id: 'price-feeds',
+      label: 'Price Data Feeds',
+      state: 'operational',
+      detail: 'EA bridge provides live prices',
+      meta: { providers: [] }
+    };
+  }
   if (!priceDataFetcher) {
     return {
       id: 'price-feeds',
@@ -127,6 +136,7 @@ function summarizeProviderHealth(priceDataFetcher, heartbeat, requireRealtime) {
 }
 
 function summarizeNewsHealth(newsAnalyzer) {
+  const rssOnlyMode = appConfig.env.NEWS_RSS_ONLY === 'true' || eaOnlyMode(appConfig.env);
   if (!newsAnalyzer) {
     return {
       id: 'news',
@@ -136,7 +146,6 @@ function summarizeNewsHealth(newsAnalyzer) {
     };
   }
 
-  const rssOnlyMode = appConfig.env.NEWS_RSS_ONLY === 'true';
   if (rssOnlyMode) {
     const feedCount = Array.isArray(newsAnalyzer.aggregator?.feeds)
       ? newsAnalyzer.aggregator.feeds.length
@@ -167,7 +176,7 @@ function summarizeNewsHealth(newsAnalyzer) {
 
   if (missing.length > 0) {
     state = 'critical';
-    detail = `Missing API keys: ${missing.join(', ')}`;
+    detail = `Missing provider configuration: ${missing.join(', ')}`;
   } else if (optionalMissing.length > 0) {
     state = 'degraded';
     detail = `Optional feeds offline: ${optionalMissing.join(', ')}`;
@@ -185,6 +194,14 @@ function summarizeNewsHealth(newsAnalyzer) {
 }
 
 function summarizeEconomicHealth(economicAnalyzer) {
+  if (eaOnlyMode(appConfig.env)) {
+    return {
+      id: 'macro',
+      label: 'Economic Analyzer',
+      state: 'operational',
+      detail: 'EA-only mode (optional)'
+    };
+  }
   if (!economicAnalyzer) {
     return {
       id: 'macro',
@@ -203,7 +220,7 @@ function summarizeEconomicHealth(economicAnalyzer) {
 
   if (!hasKey) {
     state = 'degraded';
-    detail = 'Operating without API keys';
+    detail = 'Operating without provider configuration';
   }
 
   return {
@@ -270,7 +287,80 @@ function summarizeHeartbeat(heartbeatMonitor) {
   }
 }
 
-export function buildModuleHealthSummary({ tradingEngine, tradeManager, heartbeatMonitor }) {
+function summarizeEaBridgeHealth(eaBridgeService) {
+  if (!eaBridgeService) {
+    return null;
+  }
+
+  try {
+    const sessions =
+      typeof eaBridgeService.getActiveSessions === 'function'
+        ? eaBridgeService.getActiveSessions()
+        : [];
+    const count = Array.isArray(sessions) ? sessions.length : 0;
+
+    let latestQuoteAgeMs = null;
+    let latestQuoteSymbol = null;
+
+    if (typeof eaBridgeService.getQuotes === 'function') {
+      const quotes = eaBridgeService.getQuotes({ maxAgeMs: 10 * 60 * 1000 });
+      if (Array.isArray(quotes) && quotes.length > 0) {
+        const newest = quotes[0];
+        latestQuoteSymbol = newest?.symbol || null;
+        if (newest?.receivedAt) {
+          latestQuoteAgeMs = Math.max(0, Date.now() - Number(newest.receivedAt));
+        }
+      }
+    }
+
+    const maxAgeMs = Number.isFinite(Number(process.env.EA_HEALTH_MAX_QUOTE_AGE_MS))
+      ? Number(process.env.EA_HEALTH_MAX_QUOTE_AGE_MS)
+      : 60 * 1000;
+
+    const connected = count > 0;
+    const quoteFresh = latestQuoteAgeMs == null ? false : latestQuoteAgeMs <= maxAgeMs;
+
+    let state = connected && quoteFresh ? 'operational' : connected ? 'degraded' : 'degraded';
+    const detail = !connected
+      ? 'EA not connected'
+      : latestQuoteAgeMs == null
+        ? 'EA connected · Waiting for first quote'
+        : !quoteFresh
+          ? `EA quote stale (${Math.round((latestQuoteAgeMs || 0) / 1000)}s)`
+          : 'EA bridge healthy';
+
+    if (eaOnlyMode(appConfig.env) && connected && latestQuoteAgeMs == null) {
+      state = 'operational';
+    }
+
+    return {
+      id: 'ea_bridge',
+      label: 'EA Bridge',
+      state,
+      detail,
+      meta: {
+        sessions: count,
+        latestQuoteSymbol,
+        latestQuoteAgeMs,
+        maxAgeMs
+      }
+    };
+  } catch (_error) {
+    return {
+      id: 'ea_bridge',
+      label: 'EA Bridge',
+      state: 'degraded',
+      detail: 'EA bridge status unavailable'
+    };
+  }
+}
+
+export function buildModuleHealthSummary({
+  tradingEngine,
+  tradeManager,
+  heartbeatMonitor,
+  eaBridgeService
+}) {
   const requireRealtime = requireRealTimeData();
   const heartbeat = summarizeHeartbeat(heartbeatMonitor);
   const modules = [];
@@ -281,6 +371,10 @@ export function buildModuleHealthSummary({ tradingEngine, tradeManager, heartbea
   modules.push(summarizeNewsHealth(tradingEngine?.newsAnalyzer));
   modules.push(summarizeEconomicHealth(tradingEngine?.economicAnalyzer));
   modules.push(summarizeSignalEngine(tradeManager, tradingEngine));
+  const eaBridgeSummary = summarizeEaBridgeHealth(eaBridgeService);
+  if (eaBridgeSummary) {
+    modules.push(eaBridgeSummary);
+  }
 
   const overallState = modules.some((module) => module.state === 'critical')
     ? 'critical'

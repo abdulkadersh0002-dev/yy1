@@ -1098,6 +1098,30 @@ export const orchestrationCoordinator = {
       }
 
       if (signal && typeof signal === 'object') {
+        const bucketize = (value, step = 10, max = 100) => {
+          const n = Number(value);
+          if (!Number.isFinite(n)) {
+            return null;
+          }
+          const clamped = Math.max(0, Math.min(max, n));
+          const low = Math.floor(clamped / step) * step;
+          const high = Math.min(max, low + step);
+          return `${low}-${high}`;
+        };
+
+        if (!signal.components || typeof signal.components !== 'object') {
+          signal.components = {};
+        }
+
+        signal.components.calibration = {
+          scoreBucket: bucketize(signal.finalScore, 10, 100),
+          strengthBucket: bucketize(signal.strength, 10, 100),
+          confidenceBucket: bucketize(signal.confidence, 10, 100),
+          winRateBucket: bucketize(signal.estimatedWinRate, 5, 100)
+        };
+      }
+
+      if (signal && typeof signal === 'object') {
         const reasons = Array.isArray(signal.reasoning) ? signal.reasoning : [];
         signal.finalDecision = {
           ...(signal.finalDecision && typeof signal.finalDecision === 'object'

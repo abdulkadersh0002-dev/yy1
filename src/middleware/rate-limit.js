@@ -19,7 +19,10 @@ export function createRateLimiter({
 
   return function rateLimiter(req, res, next) {
     const now = Date.now();
-    const key = `${req.identity?.id || 'anonymous'}|${req.method}|${req.path}`;
+    const identity = req.identity?.id || 'anonymous';
+    const ip =
+      req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+    const key = `${identity}|${ip}|${req.method}|${req.path}`;
     const existing = hits.get(key);
 
     if (!existing || existing.resetAt <= now) {

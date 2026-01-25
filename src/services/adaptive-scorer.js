@@ -6,17 +6,43 @@ import AdaptiveThresholdManager from './ml/adaptive-threshold-manager.js';
 
 class AdaptiveScorer {
   constructor(options = {}) {
+    const readEnvNumber = (name, fallback = null) => {
+      const value = Number(process.env[name]);
+      return Number.isFinite(value) ? value : fallback;
+    };
+    const readEnvWeight = (name, fallback) => {
+      const value = Number(process.env[name]);
+      return Number.isFinite(value) ? value : fallback;
+    };
+
+    const envRuleEconomic = readEnvWeight('ADAPTIVE_RULE_WEIGHT_ECONOMIC', 0.2);
+    const envRuleNews = readEnvWeight('ADAPTIVE_RULE_WEIGHT_NEWS', 0.2);
+    const envRuleTechnical = readEnvWeight('ADAPTIVE_RULE_WEIGHT_TECHNICAL', 0.6);
+    const envEnsembleRule = readEnvWeight('ADAPTIVE_ENSEMBLE_RULE_WEIGHT', 0.5);
+    const envEnsembleModel = readEnvWeight('ADAPTIVE_ENSEMBLE_MODEL_WEIGHT', 0.5);
+
+    const envDefaultThreshold = readEnvNumber('ADAPTIVE_DEFAULT_THRESHOLD', 0.62);
+    const envMinThreshold = readEnvNumber('ADAPTIVE_MIN_THRESHOLD', 0.5);
+    const envMaxThreshold = readEnvNumber('ADAPTIVE_MAX_THRESHOLD', 0.8);
+
     this.config = {
       modelPath: options.modelPath || path.resolve('data/models/adaptive-ensemble-model.json'),
       thresholdsPath: options.thresholdsPath || path.resolve('data/models/pair-thresholds.json'),
       shapSummaryPath:
         options.shapSummaryPath || path.resolve('data/models/ensemble-shap-summary.json'),
-      ruleWeights: options.ruleWeights || { economic: 0.2, news: 0.2, technical: 0.6 },
+      ruleWeights: options.ruleWeights || {
+        economic: envRuleEconomic,
+        news: envRuleNews,
+        technical: envRuleTechnical
+      },
       ruleTemperature: options.ruleTemperature || 22,
-      ensembleWeights: options.ensembleWeights || { rule: 0.55, model: 0.45 },
-      defaultThreshold: options.defaultThreshold || 0.6,
-      minThreshold: options.minThreshold || 0.45,
-      maxThreshold: options.maxThreshold || 0.75
+      ensembleWeights: options.ensembleWeights || {
+        rule: envEnsembleRule,
+        model: envEnsembleModel
+      },
+      defaultThreshold: options.defaultThreshold || envDefaultThreshold,
+      minThreshold: options.minThreshold || envMinThreshold,
+      maxThreshold: options.maxThreshold || envMaxThreshold
     };
 
     this.model = null;

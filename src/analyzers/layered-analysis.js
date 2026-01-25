@@ -311,11 +311,15 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
   const quoteMid = toFiniteNumber(quote.mid);
   const quoteMidDelta = toFiniteNumber(quote.midDelta);
   const quoteMidVelocityPerSec = toFiniteNumber(quote.midVelocityPerSec);
+  const quoteMidAccelerationPerSec2 = toFiniteNumber(quote.midAccelerationPerSec2);
   const liquidityHint = quote?.liquidityHint || null;
   const quoteVolume = toFiniteNumber(quote.volume);
   const gapToMid = toFiniteNumber(quote.gapToMid);
   const gapOpen = toFiniteNumber(quote.gapOpen);
   const quotePending = Boolean(quote.pending);
+  const barsCoverage = safeObj(market?.barsCoverage) || null;
+  const m15Bars = safeObj(barsCoverage?.M15) || null;
+  const h1Bars = safeObj(barsCoverage?.H1) || null;
 
   const regime = safeObj(pickAnalysis?.regime) || safeObj(candlesSummary?.regime) || null;
   const volatility =
@@ -392,6 +396,18 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
   if (spreadPoints != null && spreadPoints > 30) {
     rawWarnings.push('Spread is wide (execution risk).');
   }
+  if (!barsCoverage || Object.keys(barsCoverage).length === 0) {
+    rawWarnings.push('EA bars missing (no timeframe coverage).');
+  }
+  if (m15Bars?.count != null && m15Bars.count < 30) {
+    rawWarnings.push('M15 bars insufficient (<30).');
+  }
+  if (m15Bars?.ageMs != null && m15Bars.ageMs > 30 * 60 * 1000) {
+    rawWarnings.push('M15 bars stale (>30m).');
+  }
+  if (h1Bars?.count != null && h1Bars.count < 10) {
+    rawWarnings.push('H1 bars insufficient (<10).');
+  }
 
   layers.push(
     buildLayer({
@@ -401,8 +417,8 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       direction: finalDirection,
       confidence: finalConfidence,
       score: null,
-      summaryEn: `Quote ${quoteLast != null ? `last=${quoteLast}` : 'unavailable'} · spread=${spreadPoints ?? '—'} pts · age=${quoteAgeMs ?? '—'}ms · v=${quoteMidVelocityPerSec ?? '—'}/s · gap=${gapToMid ?? '—'} · vol=${quoteVolume ?? '—'} · source=${String(quote?.source || scn?.sources?.quote?.broker || '—')}`,
-      summaryAr: `سعر ${quoteLast != null ? `آخر=${quoteLast}` : 'غير متوفر'} · السبريد=${spreadPoints ?? '—'} نقطة · عمر السعر=${quoteAgeMs ?? '—'}ms · السرعة=${quoteMidVelocityPerSec ?? '—'}/ث · الفجوة=${gapToMid ?? '—'} · الحجم=${quoteVolume ?? '—'} · المصدر=${String(quote?.source || scn?.sources?.quote?.broker || '—')}`,
+      summaryEn: `Quote ${quoteLast != null ? `last=${quoteLast}` : 'unavailable'} · spread=${spreadPoints ?? '—'} pts · age=${quoteAgeMs ?? '—'}ms · v=${quoteMidVelocityPerSec ?? '—'}/s · a=${quoteMidAccelerationPerSec2 ?? '—'}/s² · gap=${gapToMid ?? '—'} · vol=${quoteVolume ?? '—'} · source=${String(quote?.source || scn?.sources?.quote?.broker || '—')}`,
+      summaryAr: `سعر ${quoteLast != null ? `آخر=${quoteLast}` : 'غير متوفر'} · السبريد=${spreadPoints ?? '—'} نقطة · عمر السعر=${quoteAgeMs ?? '—'}ms · السرعة=${quoteMidVelocityPerSec ?? '—'}/ث · التسارع=${quoteMidAccelerationPerSec2 ?? '—'}/ث² · الفجوة=${gapToMid ?? '—'} · الحجم=${quoteVolume ?? '—'} · المصدر=${String(quote?.source || scn?.sources?.quote?.broker || '—')}`,
       metrics: {
         pair,
         bid: quoteBid,
@@ -411,6 +427,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         mid: quoteMid,
         midDelta: quoteMidDelta,
         midVelocityPerSec: quoteMidVelocityPerSec,
+        midAccelerationPerSec2: quoteMidAccelerationPerSec2,
         spread,
         spreadPct,
         spreadPoints,
@@ -418,6 +435,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         volume: quoteVolume,
         gapToMid,
         gapOpen,
+        barsCoverage,
         quoteAgeMs,
         pending: quotePending,
         quoteSource: quote?.source || null,

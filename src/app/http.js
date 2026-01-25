@@ -39,13 +39,11 @@ export function createHttpApp({
   const {
     server: serverConfig,
     apiAuth: apiAuthConfig,
-    brokerRouting: brokerRoutingConfig
+    brokerRouting: brokerRoutingConfig,
+    security: securityConfig
   } = appConfig;
 
-  const allowPublicEaBridge =
-    String(process.env.ALLOW_PUBLIC_EA_BRIDGE || '')
-      .trim()
-      .toLowerCase() === 'true' || serverConfig.nodeEnv !== 'production';
+  const allowPublicEaBridge = securityConfig?.allowPublicEaBridge === true;
 
   const requestBodyLimit = serverConfig.requestJsonLimit;
 
@@ -67,7 +65,27 @@ export function createHttpApp({
     next();
   });
   app.use(compression());
-  app.use(cors());
+  const allowedOrigins = Array.isArray(securityConfig?.cors?.allowedOrigins)
+    ? securityConfig.cors.allowedOrigins
+    : [];
+
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (!origin) {
+          return callback(null, true);
+        }
+        if (!allowedOrigins.length) {
+          if (serverConfig.nodeEnv !== 'production') {
+            return callback(null, true);
+          }
+          return callback(null, false);
+        }
+        return callback(null, allowedOrigins.includes(origin));
+      },
+      credentials: securityConfig?.cors?.allowCredentials === true
+    })
+  );
   app.use(requestIdMiddleware());
   app.use(express.json({ limit: requestBodyLimit }));
   app.use(express.urlencoded({ extended: true, limit: requestBodyLimit }));
@@ -77,6 +95,7 @@ export function createHttpApp({
     secretManager,
     logger,
     auditLogger,
+    allowQueryKey: securityConfig?.apiAuth?.allowQueryKey,
     exemptRoutes: [
       { method: 'GET', path: /^\/api\/health(\/.*)?$/ },
       { method: 'GET', path: /^\/api\/health\/heartbeat(\/.*)?$/ },
@@ -97,6 +116,18 @@ export function createHttpApp({
   const requireConfigRead = apiAuth.requireAnyRole(['config.read', 'admin']);
   const requireConfigWrite = apiAuth.requireAnyRole(['config.write', 'admin']);
 
+  const requireExecutionScope = (req, res, next) => {
+    if (appConfig.tradingScope?.allowExecution) {
+      return next();
+    }
+    const _requestId = res?.locals?.requestId;
+    return res.status(403).json({
+      success: false,
+      error: 'Trade execution is disabled (TRADING_SCOPE=signals)',
+      ...(_requestId ? { requestId: _requestId } : null)
+    });
+  };
+
   const sensitiveRateLimiter = createRateLimiter({
     windowMs: 60 * 1000,
     max: 20,
@@ -111,6 +142,7 @@ export function createHttpApp({
       tradingEngine,
       tradeManager,
       heartbeatMonitor,
+      eaBridgeService,
       metricsRegistry,
       logger,
       providerAvailabilityState
@@ -128,9 +160,9 @@ export function createHttpApp({
       broadcast,
       requireBasicRead,
       requireSignalsGenerate,
-      requireTradeExecute,
+      requireTradeExecute: [requireExecutionScope, requireTradeExecute],
       requireTradeRead,
-      requireTradeClose
+      requireTradeClose: [requireExecutionScope, requireTradeClose]
     })
   );
 
@@ -152,7 +184,11 @@ export function createHttpApp({
       auditLogger,
       logger,
       broadcast,
-      requireAutomationControl: [sensitiveRateLimiter, requireAutomationControl],
+      requireAutomationControl: [
+        requireExecutionScope,
+        sensitiveRateLimiter,
+        requireAutomationControl
+      ],
       requireBasicRead
     })
   );
@@ -178,7 +214,7 @@ export function createHttpApp({
       logger,
       config: { brokerRouting: brokerRoutingConfig },
       requireBrokerRead,
-      requireBrokerWrite: [sensitiveRateLimiter, requireBrokerWrite]
+      requireBrokerWrite: [requireExecutionScope, sensitiveRateLimiter, requireBrokerWrite]
     })
   );
 

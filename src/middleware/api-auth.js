@@ -101,6 +101,7 @@ export const createApiAuthMiddleware = (options = {}) => {
     DEFAULT_HEADER
   ).toLowerCase();
   const secretName = options.secretName || securityConfig.secretName || DEFAULT_SECRET_NAME;
+  const allowQueryKey = options.allowQueryKey ?? securityConfig.allowQueryKey ?? false;
   const cacheMs = Number.isFinite(options.cacheMs)
     ? options.cacheMs
     : Number.isFinite(securityConfig.cacheMs)
@@ -176,8 +177,7 @@ export const createApiAuthMiddleware = (options = {}) => {
     const supplied = (
       req.headers[headerName] ||
       req.headers[headerName.toLowerCase()] ||
-      req.query.api_key ||
-      req.query.key ||
+      (allowQueryKey ? req.query.api_key || req.query.key : '') ||
       ''
     )
       .toString()

@@ -6,6 +6,8 @@ import IbkrConnector from './ibkr-connector.js';
 class BrokerRouter {
   constructor(options = {}) {
     this.logger = options.logger || console;
+    this.auditLogger = options.auditLogger || null;
+    this.marketRules = options.marketRules || null;
     this.defaultBroker = options.defaultBroker || 'mt5';
     this.killSwitchEnabled = false;
     this.killSwitchReason = null;
@@ -13,6 +15,23 @@ class BrokerRouter {
     this.auditLimit = options.auditLimit || 200;
     this.connectors = new Map();
     this.lastSyncAt = null;
+    this.idempotencyTtlMs = Number.isFinite(Number(options.idempotencyTtlMs))
+      ? Math.max(60 * 1000, Number(options.idempotencyTtlMs))
+      : 10 * 60 * 1000;
+    this.idempotencyCache = new Map();
+    this.brokerBreakers = new Map();
+    this.brokerRetryAttempts = Number.isFinite(Number(options.retryAttempts))
+      ? Math.max(0, Number(options.retryAttempts))
+      : 1;
+    this.brokerRetryBaseMs = Number.isFinite(Number(options.retryBaseMs))
+      ? Math.max(100, Number(options.retryBaseMs))
+      : 400;
+    this.brokerBreakerThreshold = Number.isFinite(Number(options.breakerThreshold))
+      ? Math.max(1, Number(options.breakerThreshold))
+      : 3;
+    this.brokerBreakerCooldownMs = Number.isFinite(Number(options.breakerCooldownMs))
+      ? Math.max(5_000, Number(options.breakerCooldownMs))
+      : 60_000;
 
     this.initializeConnectors(options);
   }
@@ -183,7 +202,29 @@ class BrokerRouter {
     }
 
     const normalized = this.normalizeOrderRequest(request);
-    const result = await connector.placeOrder(normalized);
+    const validation = this.marketRules?.validateOrder
+      ? this.marketRules.validateOrder(normalized, Date.now())
+      : { allowed: true, reasons: [] };
+    if (!validation.allowed) {
+      return { success: false, error: `Market rules blocked: ${validation.reasons.join(', ')}` };
+    }
+    const idempotencyKey =
+      normalized?.routerMeta?.idempotencyKey || normalized?.routerMeta?.tradeId || null;
+    if (idempotencyKey) {
+      const cached = this.getIdempotentResult(idempotencyKey);
+      if (cached) {
+        return { ...cached, broker: cached.broker || connector.id, idempotentReplay: true };
+      }
+    }
+    if (this.isBrokerBreakerActive(connector.id)) {
+      return { success: false, error: `Broker ${connector.id} temporarily disabled (circuit)` };
+    }
+
+    const result = await this.retryBrokerCall(
+      () => connector.placeOrder(normalized),
+      connector.id,
+      'placeOrder'
+    );
 
     this.recordOrder({
       broker: connector.id,
@@ -191,6 +232,10 @@ class BrokerRouter {
       result,
       timestamp: new Date().toISOString()
     });
+
+    if (idempotencyKey) {
+      this.storeIdempotentResult(idempotencyKey, { ...result, broker: connector.id });
+    }
 
     return {
       ...result,
@@ -272,7 +317,8 @@ class BrokerRouter {
       accountNumber: request.accountNumber || null,
       routerMeta: {
         source: request.source || 'trading-engine',
-        tradeId: request.tradeId || null
+        tradeId: request.tradeId || null,
+        idempotencyKey: request.idempotencyKey || request.idempotency || null
       }
     };
   }
@@ -299,9 +345,112 @@ class BrokerRouter {
 
   recordOrder(entry) {
     this.orderLog.push(entry);
+    try {
+      this.auditLogger?.record?.('broker.order', {
+        broker: entry?.broker || null,
+        type: entry?.type || 'place',
+        success: Boolean(entry?.result?.success ?? entry?.result?.order ?? entry?.result?.orderId),
+        tradeId: entry?.request?.routerMeta?.tradeId || null,
+        idempotencyKey: entry?.request?.routerMeta?.idempotencyKey || null,
+        symbol: entry?.request?.symbol || entry?.request?.pair || null,
+        source: entry?.request?.routerMeta?.source || null
+      });
+    } catch (_error) {
+      // best-effort
+    }
     if (this.orderLog.length > this.auditLimit) {
       this.orderLog.splice(0, this.orderLog.length - this.auditLimit);
     }
+  }
+
+  isBrokerBreakerActive(brokerId) {
+    const entry = this.brokerBreakers.get(brokerId);
+    if (!entry) {
+      return false;
+    }
+    if (entry.expiresAt && entry.expiresAt <= Date.now()) {
+      this.brokerBreakers.delete(brokerId);
+      return false;
+    }
+    return Boolean(entry.active);
+  }
+
+  recordBrokerSuccess(brokerId) {
+    const entry = this.brokerBreakers.get(brokerId);
+    if (!entry) {
+      return;
+    }
+    entry.failures = 0;
+    entry.active = false;
+    entry.expiresAt = 0;
+    this.brokerBreakers.set(brokerId, entry);
+  }
+
+  recordBrokerFailure(brokerId) {
+    const now = Date.now();
+    const entry = this.brokerBreakers.get(brokerId) || {
+      failures: 0,
+      active: false,
+      expiresAt: 0
+    };
+    entry.failures += 1;
+    if (entry.failures >= this.brokerBreakerThreshold) {
+      entry.active = true;
+      entry.expiresAt = now + this.brokerBreakerCooldownMs;
+      this.logger?.warn?.(
+        { broker: brokerId, cooldownMs: this.brokerBreakerCooldownMs },
+        'Broker circuit breaker activated'
+      );
+    }
+    this.brokerBreakers.set(brokerId, entry);
+  }
+
+  async retryBrokerCall(fn, brokerId, label) {
+    let lastError = null;
+    const attempts = Math.max(1, this.brokerRetryAttempts + 1);
+    for (let i = 0; i < attempts; i += 1) {
+      try {
+        const result = await fn();
+        if (result?.success === false) {
+          lastError = new Error(result?.error || `${label} failed`);
+          this.recordBrokerFailure(brokerId);
+        } else {
+          this.recordBrokerSuccess(brokerId);
+          return result;
+        }
+      } catch (error) {
+        lastError = error;
+        this.recordBrokerFailure(brokerId);
+      }
+      if (i < attempts - 1) {
+        const delay = this.brokerRetryBaseMs * Math.pow(2, i);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+    return { success: false, error: lastError?.message || `${label} failed` };
+  }
+
+  getIdempotentResult(key) {
+    if (!key) {
+      return null;
+    }
+    const entry = this.idempotencyCache.get(key);
+    if (!entry) {
+      return null;
+    }
+    if (entry.expiresAt && entry.expiresAt <= Date.now()) {
+      this.idempotencyCache.delete(key);
+      return null;
+    }
+    return entry.result || null;
+  }
+
+  storeIdempotentResult(key, result) {
+    if (!key) {
+      return;
+    }
+    const expiresAt = Date.now() + this.idempotencyTtlMs;
+    this.idempotencyCache.set(key, { result, expiresAt });
   }
 
   async runReconciliation() {
@@ -353,7 +502,29 @@ class BrokerRouter {
       return { success: false, error: `Unknown broker: ${request.broker || this.defaultBroker}` };
     }
     const normalized = this.normalizeOrderRequest(request);
-    const result = await connector.placeOrder(normalized);
+    const validation = this.marketRules?.validateOrder
+      ? this.marketRules.validateOrder(normalized, Date.now())
+      : { allowed: true, reasons: [] };
+    if (!validation.allowed) {
+      return { success: false, error: `Market rules blocked: ${validation.reasons.join(', ')}` };
+    }
+    const idempotencyKey =
+      normalized?.routerMeta?.idempotencyKey || normalized?.routerMeta?.tradeId || null;
+    if (idempotencyKey) {
+      const cached = this.getIdempotentResult(idempotencyKey);
+      if (cached) {
+        return { ...cached, broker: cached.broker || connector.id, idempotentReplay: true };
+      }
+    }
+    if (this.isBrokerBreakerActive(connector.id)) {
+      return { success: false, error: `Broker ${connector.id} temporarily disabled (circuit)` };
+    }
+
+    const result = await this.retryBrokerCall(
+      () => connector.placeOrder(normalized),
+      connector.id,
+      'placeOrder'
+    );
     this.recordOrder({
       broker: connector.id,
       request: normalized,
@@ -361,6 +532,9 @@ class BrokerRouter {
       timestamp: new Date().toISOString(),
       type: 'manual'
     });
+    if (idempotencyKey) {
+      this.storeIdempotentResult(idempotencyKey, { ...result, broker: connector.id });
+    }
     return {
       ...result,
       broker: connector.id

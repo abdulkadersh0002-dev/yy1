@@ -23,8 +23,58 @@ function loadExampleEnvironment() {
   return dotenv.parse(fileContents);
 }
 
+function loadMigrations(projectRoot) {
+  const migrationsDir = path.join(projectRoot, 'db', 'migrations');
+  if (!fs.existsSync(migrationsDir)) {
+    fail(`Missing migrations directory at ${migrationsDir}`);
+  }
+
+  const files = fs
+    .readdirSync(migrationsDir)
+    .filter((file) => file.endsWith('.sql'))
+    .sort();
+
+  if (files.length === 0) {
+    fail('No migration files found');
+  }
+
+  return { migrationsDir, files };
+}
+
+function validateMigrations(projectRoot) {
+  const { migrationsDir, files } = loadMigrations(projectRoot);
+
+  const prefixRegex = /^(\d{3,})_.*\.sql$/;
+  const seenPrefixes = new Set();
+  let hasSchemaLedger = false;
+
+  for (const file of files) {
+    const match = file.match(prefixRegex);
+    if (!match) {
+      fail(`Migration file does not match naming convention: ${file}`);
+    }
+    const prefix = match[1];
+    if (seenPrefixes.has(prefix)) {
+      fail(`Duplicate migration prefix detected: ${prefix}`);
+    }
+    seenPrefixes.add(prefix);
+
+    if (!hasSchemaLedger) {
+      const contents = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+      if (contents.includes('schema_migrations')) {
+        hasSchemaLedger = true;
+      }
+    }
+  }
+
+  if (!hasSchemaLedger) {
+    fail('Missing schema_migrations ledger migration');
+  }
+}
+
 function main() {
   const exampleEnv = loadExampleEnvironment();
+  const projectRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
 
   const overrides = {
     NODE_ENV: 'test',
@@ -108,7 +158,9 @@ function main() {
     fail(failed.map((check) => check.message).join('; '));
   }
 
-  console.log('Config quality gates passed');
+  validateMigrations(projectRoot);
+
+  console.log('Quality gates passed');
 }
 
 main();

@@ -5,12 +5,15 @@ import { ModuleHealthProvider } from './context/ModuleHealthContext.jsx';
 import { ProviderAvailabilityProvider } from './context/ProviderAvailabilityContext.jsx';
 import './styles/global.css';
 
+const RootWrapper =
+  import.meta.env.VITE_DISABLE_STRICT_MODE === 'true' ? React.Fragment : React.StrictMode;
+
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
+  <RootWrapper>
     <ProviderAvailabilityProvider>
       <ModuleHealthProvider>
         <App />
       </ModuleHealthProvider>
     </ProviderAvailabilityProvider>
-  </React.StrictMode>
+  </RootWrapper>
 );

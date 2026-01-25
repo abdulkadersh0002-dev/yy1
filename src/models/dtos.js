@@ -278,6 +278,107 @@ export const PriceBarSchema = z
   })
   .passthrough();
 
+export const MarketQuoteSchema = z
+  .object({
+    symbol: z.string().min(1),
+    pair: z.string().min(1).optional(),
+    bid: z.number().nullable().optional(),
+    ask: z.number().nullable().optional(),
+    last: z.number().nullable().optional(),
+    digits: z.number().nullable().optional(),
+    point: z.number().nullable().optional(),
+    spreadPoints: z.number().nullable().optional(),
+    tickSize: z.number().nullable().optional(),
+    tickValue: z.number().nullable().optional(),
+    contractSize: z.number().nullable().optional(),
+    timestamp: z.number().nullable().optional(),
+    time: z.number().nullable().optional(),
+    source: z.string().nullable().optional()
+  })
+  .passthrough();
+
+export const MarketQuotesIngestSchema = z
+  .object({
+    broker: z.string().min(1),
+    quotes: z.array(MarketQuoteSchema).optional()
+  })
+  .passthrough()
+  .refine(
+    (value) =>
+      (Array.isArray(value.quotes) && value.quotes.length > 0) ||
+      Boolean(value.symbol || value.pair),
+    {
+      message: 'quotes[] or single quote payload is required'
+    }
+  )
+  .transform((value) => {
+    if (Array.isArray(value.quotes) && value.quotes.length > 0) {
+      return { ...value, quotes: value.quotes };
+    }
+    const single = {
+      ...value,
+      symbol: value.symbol ?? value.pair
+    };
+    return { broker: value.broker, quotes: [single] };
+  });
+
+export const MarketSnapshotSchema = z
+  .object({
+    broker: z.string().min(1),
+    symbol: z.string().min(1),
+    pair: z.string().min(1).optional(),
+    timeframes: z.record(z.any()).optional(),
+    timestamp: z.number().optional(),
+    time: z.number().optional(),
+    source: z.string().optional(),
+    quote: z.record(z.any()).optional()
+  })
+  .passthrough();
+
+export const MarketNewsItemSchema = z
+  .object({
+    id: z.string().min(1).nullable().optional(),
+    eventId: z.string().min(1).nullable().optional(),
+    guid: z.string().min(1).nullable().optional(),
+    title: z.string().min(1).nullable().optional(),
+    headline: z.string().min(1).nullable().optional(),
+    symbol: z.string().min(1).nullable().optional(),
+    currency: z.string().min(1).nullable().optional(),
+    impact: z.union([z.number(), z.string()]).optional(),
+    importance: z.union([z.number(), z.string()]).optional(),
+    time: z.number().nullable().optional(),
+    timestamp: z.number().nullable().optional(),
+    date: z.union([z.number(), z.string()]).nullable().optional(),
+    forecast: z.any().optional(),
+    previous: z.any().optional(),
+    actual: z.any().optional(),
+    source: z.string().nullable().optional(),
+    notes: z.any().optional(),
+    comment: z.any().optional(),
+    kind: z.string().nullable().optional(),
+    url: z.string().nullable().optional(),
+    link: z.string().nullable().optional()
+  })
+  .passthrough();
+
+export const MarketNewsIngestSchema = z
+  .object({
+    broker: z.string().min(1),
+    items: z.array(MarketNewsItemSchema).optional(),
+    news: z.array(MarketNewsItemSchema).optional()
+  })
+  .passthrough()
+  .refine(
+    (value) =>
+      (Array.isArray(value.items) && value.items.length > 0) ||
+      (Array.isArray(value.news) && value.news.length > 0),
+    { message: 'items/news array is required' }
+  )
+  .transform((value) => ({
+    broker: value.broker,
+    items: Array.isArray(value.items) && value.items.length ? value.items : value.news || []
+  }));
+
 export const MarketBarsIngestSchema = z
   .object({
     broker: z.string().min(1),
@@ -621,6 +722,18 @@ export function validateTechnicalAnalysisDTO(dto) {
 
 export function validateMarketBarsIngestDTO(dto) {
   return MarketBarsIngestSchema.parse(dto);
+}
+
+export function validateMarketQuotesIngestDTO(dto) {
+  return MarketQuotesIngestSchema.parse(dto);
+}
+
+export function validateMarketSnapshotIngestDTO(dto) {
+  return MarketSnapshotSchema.parse(dto);
+}
+
+export function validateMarketNewsIngestDTO(dto) {
+  return MarketNewsIngestSchema.parse(dto);
 }
 
 export function validateModifyPositionDTO(dto) {

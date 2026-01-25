@@ -59,7 +59,6 @@ const sanitizeBaseUrl = (value) => {
 };
 
 const baseUrl = sanitizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
-const apiKey = (import.meta.env.VITE_API_KEY || '').trim() || null;
 
 const resolveWebSocketUrl = () => {
   const explicit = (import.meta.env.VITE_WS_URL || '').trim();
@@ -86,19 +85,31 @@ const resolveWebSocketUrl = () => {
 
 const wsUrl = resolveWebSocketUrl();
 
+const inflightRequests = new Map();
+const cachedResponses = new Map();
+
+const resolveDefaultCacheTtlMs = () => {
+  const raw = (import.meta.env.VITE_FETCH_CACHE_TTL_MS || '').trim();
+  if (raw) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  return import.meta.env.DEV ? 250 : 0;
+};
+
+const defaultCacheTtlMs = resolveDefaultCacheTtlMs();
+
 export const getApiConfig = () => ({
   baseUrl,
-  apiKey,
   wsUrl
 });
 
-const buildHeaders = (baseHeaders = {}, skipAuth = false) => {
+const buildHeaders = (baseHeaders = {}) => {
   const headers = new Headers(baseHeaders);
   if (!headers.has('Accept')) {
     headers.set('Accept', 'application/json');
-  }
-  if (!skipAuth && apiKey) {
-    headers.set('x-api-key', apiKey);
   }
   return headers;
 };
@@ -124,8 +135,33 @@ const joinApiUrl = (path) => {
 export async function fetchJson(path, options = {}) {
   const url = joinApiUrl(path);
   const method = options.method || 'GET';
-  const skipAuth = Boolean(options.skipAuth);
-  const headers = buildHeaders(options.headers, skipAuth);
+  const headers = buildHeaders(options.headers);
+
+  const canDedupe =
+    method === 'GET' &&
+    options.body === undefined &&
+    options.signal === undefined &&
+    (options.headers == null || Object.keys(options.headers).length === 0);
+  const dedupeKey = canDedupe ? `${method} ${url} expect:${options.expect || 'json'}` : null;
+
+  const cacheTtlMsRaw = options.cacheTtlMs;
+  const cacheTtlMs =
+    typeof cacheTtlMsRaw === 'number' && Number.isFinite(cacheTtlMsRaw) && cacheTtlMsRaw >= 0
+      ? cacheTtlMsRaw
+      : defaultCacheTtlMs;
+  const cacheKey = canDedupe && cacheTtlMs > 0 ? dedupeKey : null;
+
+  if (cacheKey) {
+    const cached = cachedResponses.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.promise;
+    }
+    cachedResponses.delete(cacheKey);
+  }
+
+  if (dedupeKey && inflightRequests.has(dedupeKey)) {
+    return inflightRequests.get(dedupeKey);
+  }
 
   const init = {
     method,
@@ -142,27 +178,53 @@ export async function fetchJson(path, options = {}) {
     init.body = isObjectBody ? JSON.stringify(options.body) : options.body;
   }
 
-  const response = await fetch(url, init);
-  if (!response.ok) {
-    let detail = response.statusText || 'Request failed';
-    try {
-      const payload = await response.json();
-      detail = payload.error || payload.message || detail;
-    } catch (_error) {
-      // Silent fallback to status text
+  const requestPromise = (async () => {
+    const response = await fetch(url, init);
+    if (!response.ok) {
+      let detail = response.statusText || 'Request failed';
+      try {
+        const payload = await response.json();
+        detail = payload.error || payload.message || detail;
+      } catch (_error) {
+        // Silent fallback to status text
+      }
+      throw new Error(`${method} ${path} -> ${detail}`);
     }
-    throw new Error(`${method} ${path} -> ${detail}`);
+
+    if (options.expect === 'text') {
+      return response.text();
+    }
+
+    if (response.status === 204) {
+      return null;
+    }
+
+    return response.json();
+  })();
+
+  if (cacheKey) {
+    const expiresAt = Date.now() + cacheTtlMs;
+    const cachedPromise = requestPromise.catch((error) => {
+      const current = cachedResponses.get(cacheKey);
+      if (current?.promise === cachedPromise) {
+        cachedResponses.delete(cacheKey);
+      }
+      throw error;
+    });
+    cachedResponses.set(cacheKey, { expiresAt, promise: cachedPromise });
   }
 
-  if (options.expect === 'text') {
-    return response.text();
+  if (dedupeKey) {
+    inflightRequests.set(dedupeKey, requestPromise);
   }
 
-  if (response.status === 204) {
-    return null;
+  try {
+    return await requestPromise;
+  } finally {
+    if (dedupeKey) {
+      inflightRequests.delete(dedupeKey);
+    }
   }
-
-  return response.json();
 }
 
 export function postJson(path, body, options = {}) {

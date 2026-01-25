@@ -286,7 +286,6 @@ const signalQueue = new Bull('signal-processing', {
 ```javascript
 // Need:
 - Rate limiting per user/IP
-- API key rotation mechanism
 - Request signing/verification
 - Input validation library (Joi/Zod)
 - SQL injection prevention (parameterized queries)
@@ -310,15 +309,15 @@ const SignalSchema = z.object({
   confidence: z.number().min(0).max(100)
 });
 
-// Add rate limiting per API key
+// Add rate limiting per user/IP
 import rateLimit from 'express-rate-limit';
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // per API key
+  max: 100, // per user
   standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => req.headers['x-api-key']
+  legacyHeaders: false
+  keyGenerator: (req) => req.user?.id || req.ip
 });
 ```
 

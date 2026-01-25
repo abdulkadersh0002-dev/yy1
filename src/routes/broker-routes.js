@@ -57,8 +57,11 @@ export default function brokerRoutes({
       return serviceUnavailable(res, 'Broker routing disabled');
     }
     try {
+      const idempotencyKey =
+        req.headers['idempotency-key'] || req.headers['x-idempotency-key'] || null;
       const payload = {
         ...req.body,
+        ...(idempotencyKey ? { idempotencyKey } : null),
         source: 'manual-override'
       };
       const result = await brokerRouter.manualOrder(payload);

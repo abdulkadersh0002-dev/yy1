@@ -5,6 +5,44 @@ const toNumberOrNull = (value) => {
   return Number.isFinite(n) ? n : null;
 };
 
+const getBarsCoverage = ({ eaBridgeService, broker, symbol, now } = {}) => {
+  if (!eaBridgeService || typeof eaBridgeService.getMarketBars !== 'function') {
+    return null;
+  }
+  const nowMs = toNumberOrNull(now) ?? Date.now();
+  const timeframes = ['M1', 'M15', 'H1', 'H4', 'D1'];
+  const coverage = {};
+
+  for (const timeframe of timeframes) {
+    try {
+      const bars = eaBridgeService.getMarketBars({
+        broker,
+        symbol,
+        timeframe,
+        limit: 3,
+        maxAgeMs: 0
+      });
+      const list = Array.isArray(bars) ? bars : [];
+      const latest = list[0] || null;
+      const latestTime = toNumberOrNull(latest?.time ?? latest?.timestamp ?? latest?.t);
+      const receivedAt = toNumberOrNull(latest?.receivedAt);
+
+      coverage[timeframe] = {
+        count: list.length,
+        latestTime,
+        receivedAt,
+        ageMs: latestTime != null ? Math.max(0, nowMs - latestTime) : null,
+        receivedAgeMs: receivedAt != null ? Math.max(0, nowMs - receivedAt) : null,
+        source: latest?.source ?? null
+      };
+    } catch (_error) {
+      // best-effort
+    }
+  }
+
+  return Object.keys(coverage).length ? coverage : null;
+};
+
 export const normalizeLayeredAnalysis = (layers) => ({
   layers: Array.isArray(layers) ? layers : []
 });
@@ -56,6 +94,7 @@ export const buildScenarioForLayeredAnalysis = ({
   symbol,
   effectiveQuote,
   barFallback,
+  barsCoverage,
   now
 } = {}) => {
   const nowMs = toNumberOrNull(now) ?? Date.now();
@@ -143,9 +182,14 @@ export const buildScenarioForLayeredAnalysis = ({
               gapOpen,
               midVelocityPerSec:
                 telemetry?.quote?.midVelocityPerSec ?? telemetry?.quote?.velocityPerSec ?? null,
+              midAccelerationPerSec2:
+                telemetry?.quote?.midAccelerationPerSec2 ??
+                telemetry?.quote?.accelerationPerSec2 ??
+                null,
               midDelta: telemetry?.quote?.midDelta ?? null
             }
-          : { ageMs, pending: true }
+          : { ageMs, pending: true },
+      barsCoverage: barsCoverage && typeof barsCoverage === 'object' ? barsCoverage : null
     },
     telemetry,
     factors: {
@@ -190,11 +234,14 @@ export const attachLayeredAnalysisToSignal = ({
       now
     });
 
+    const barsCoverage = getBarsCoverage({ eaBridgeService, broker, symbol, now });
+
     const scenario = buildScenarioForLayeredAnalysis({
       rawSignal,
       symbol,
       effectiveQuote,
       barFallback,
+      barsCoverage,
       now
     });
     const layers = buildLayeredAnalysis({ scenario, signal: rawSignal });
@@ -215,7 +262,7 @@ export const evaluateLayers18Readiness = ({
   minConfluence,
   decisionStateFallback
 } = {}) => {
-  const min = Number.isFinite(Number(minConfluence)) ? Number(minConfluence) : 55;
+  const min = Number.isFinite(Number(minConfluence)) ? Number(minConfluence) : 60;
   const layers = Array.isArray(layeredAnalysis?.layers) ? layeredAnalysis.layers : [];
 
   if (layers.length !== 18) {

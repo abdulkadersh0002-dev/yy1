@@ -39,8 +39,11 @@ describe('Trading routes (integration)', () => {
 
   let tradeManager;
   let tradingEngine;
+  let originalEaOnlyMode;
 
   beforeEach(async () => {
+    originalEaOnlyMode = process.env.EA_ONLY_MODE;
+    process.env.EA_ONLY_MODE = 'false';
     const tradingPairs = ['EURUSD', 'GBPUSD'];
 
     tradeManager = {
@@ -181,6 +184,11 @@ describe('Trading routes (integration)', () => {
   });
 
   afterEach(async () => {
+    if (originalEaOnlyMode === undefined) {
+      delete process.env.EA_ONLY_MODE;
+    } else {
+      process.env.EA_ONLY_MODE = originalEaOnlyMode;
+    }
     if (!server) {
       return;
     }

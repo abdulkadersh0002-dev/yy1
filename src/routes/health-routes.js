@@ -11,6 +11,7 @@ export default function healthRoutes({
   tradingEngine,
   tradeManager,
   heartbeatMonitor,
+  eaBridgeService,
   metricsRegistry,
   logger,
   providerAvailabilityState
@@ -21,7 +22,8 @@ export default function healthRoutes({
     const payload = buildHealthzPayload({
       tradingEngine,
       tradeManager,
-      heartbeatMonitor
+      heartbeatMonitor,
+      eaBridgeService
     });
 
     const statusCode = payload.status === 'critical' ? 503 : 200;
@@ -32,7 +34,8 @@ export default function healthRoutes({
     const summary = buildModuleHealthSummary({
       tradingEngine,
       tradeManager,
-      heartbeatMonitor
+      heartbeatMonitor,
+      eaBridgeService
     });
 
     return ok(res, {

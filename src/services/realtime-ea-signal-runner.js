@@ -214,6 +214,104 @@ export class RealtimeEaSignalRunner {
       .toLowerCase();
     const isNonProd = nodeEnv !== 'production';
 
+    const envSmartStrong = String(process.env.EA_SMART_STRONG || '')
+      .trim()
+      .toLowerCase();
+    const smartStrong =
+      typeof options.smartStrong === 'boolean'
+        ? options.smartStrong
+        : envSmartStrong === '1' || envSmartStrong === 'true' || envSmartStrong === 'yes'
+          ? true
+          : eaOnlyMode;
+    this.smartStrong = smartStrong;
+
+    const envSmartRequireBarsCoverage = String(process.env.EA_SMART_REQUIRE_BARS_COVERAGE || '')
+      .trim()
+      .toLowerCase();
+    this.smartRequireBarsCoverage =
+      typeof options.smartRequireBarsCoverage === 'boolean'
+        ? options.smartRequireBarsCoverage
+        : envSmartRequireBarsCoverage
+          ? !(
+              envSmartRequireBarsCoverage === '0' ||
+              envSmartRequireBarsCoverage === 'false' ||
+              envSmartRequireBarsCoverage === 'no'
+            )
+          : this.smartStrong;
+
+    const envSmartBarsMinM15 = Number(process.env.EA_SMART_BARS_MIN_M15);
+    const envSmartBarsMinH1 = Number(process.env.EA_SMART_BARS_MIN_H1);
+    const envSmartBarsMaxAgeM15Ms = Number(process.env.EA_SMART_BARS_MAX_AGE_M15_MS);
+    const envSmartBarsMaxAgeH1Ms = Number(process.env.EA_SMART_BARS_MAX_AGE_H1_MS);
+
+    this.smartBarsMinM15 = Number.isFinite(Number(options.smartBarsMinM15))
+      ? Math.max(0, Number(options.smartBarsMinM15))
+      : Number.isFinite(envSmartBarsMinM15)
+        ? Math.max(0, envSmartBarsMinM15)
+        : this.smartStrong
+          ? 60
+          : 30;
+
+    this.smartBarsMinH1 = Number.isFinite(Number(options.smartBarsMinH1))
+      ? Math.max(0, Number(options.smartBarsMinH1))
+      : Number.isFinite(envSmartBarsMinH1)
+        ? Math.max(0, envSmartBarsMinH1)
+        : this.smartStrong
+          ? 20
+          : 10;
+
+    this.smartBarsMaxAgeM15Ms = Number.isFinite(Number(options.smartBarsMaxAgeM15Ms))
+      ? Math.max(0, Number(options.smartBarsMaxAgeM15Ms))
+      : Number.isFinite(envSmartBarsMaxAgeM15Ms)
+        ? Math.max(0, envSmartBarsMaxAgeM15Ms)
+        : this.smartStrong
+          ? 30 * 60 * 1000
+          : null;
+
+    this.smartBarsMaxAgeH1Ms = Number.isFinite(Number(options.smartBarsMaxAgeH1Ms))
+      ? Math.max(0, Number(options.smartBarsMaxAgeH1Ms))
+      : Number.isFinite(envSmartBarsMaxAgeH1Ms)
+        ? Math.max(0, envSmartBarsMaxAgeH1Ms)
+        : this.smartStrong
+          ? 3 * 60 * 60 * 1000
+          : null;
+
+    const envSmartRequireQuote = String(process.env.EA_SMART_REQUIRE_QUOTE || '')
+      .trim()
+      .toLowerCase();
+    this.smartRequireQuote =
+      typeof options.smartRequireQuote === 'boolean'
+        ? options.smartRequireQuote
+        : envSmartRequireQuote
+          ? !(
+              envSmartRequireQuote === '0' ||
+              envSmartRequireQuote === 'false' ||
+              envSmartRequireQuote === 'no'
+            )
+          : this.smartStrong;
+
+    const envSmartMaxBarAgeMs = Number(process.env.EA_SMART_MAX_BAR_AGE_MS);
+    this.smartMaxBarAgeMs = Number.isFinite(Number(options.smartMaxBarAgeMs))
+      ? Math.max(0, Number(options.smartMaxBarAgeMs))
+      : Number.isFinite(envSmartMaxBarAgeMs)
+        ? Math.max(0, envSmartMaxBarAgeMs)
+        : this.smartStrong
+          ? 20 * 60 * 1000
+          : null;
+
+    const envSmartSpreadPct = Number(process.env.EA_SMART_MAX_SPREAD_PCT);
+    const envSmartSpreadPoints = Number(process.env.EA_SMART_MAX_SPREAD_POINTS);
+    this.smartMaxSpreadPct = Number.isFinite(envSmartSpreadPct)
+      ? Math.max(0, envSmartSpreadPct)
+      : this.smartStrong
+        ? 0.12
+        : null;
+    this.smartMaxSpreadPoints = Number.isFinite(envSmartSpreadPoints)
+      ? Math.max(0, envSmartSpreadPoints)
+      : this.smartStrong
+        ? 45
+        : null;
+
     // Default: only publish strict entry-ready signals to the dashboard.
     // This keeps the dashboard focused on tradeable setups (ENTER + trade-valid).
     // Set EA_DASHBOARD_ENTRY_ONLY=0/false/no to restore the previous publish policy.
@@ -228,7 +326,9 @@ export class RealtimeEaSignalRunner {
             envAllowCandidates === 'true' ||
             envAllowCandidates === 'yes'
           ? true
-          : eaOnlyMode || isNonProd;
+          : this.smartStrong
+            ? false
+            : eaOnlyMode || isNonProd;
 
     const envSnapshotSpecified = envRequireSnapshotRaw.trim().length > 0;
     const envBarsSpecified = envRequireBarsRaw.trim().length > 0;
@@ -242,18 +342,22 @@ export class RealtimeEaSignalRunner {
               envRequireSnapshot === 'false' ||
               envRequireSnapshot === 'no'
             )
-          : allowCandidatesByDefault
-            ? false
-            : true;
+          : this.smartStrong
+            ? true
+            : allowCandidatesByDefault
+              ? false
+              : true;
 
     this.dashboardRequireBars =
       typeof options.dashboardRequireBars === 'boolean'
         ? options.dashboardRequireBars
         : envBarsSpecified
           ? envRequireBars === '1' || envRequireBars === 'true' || envRequireBars === 'yes'
-          : allowCandidatesByDefault
-            ? false
-            : false;
+          : this.smartStrong
+            ? true
+            : allowCandidatesByDefault
+              ? false
+              : false;
 
     this.dashboardRequireConfluence =
       typeof options.dashboardRequireConfluence === 'boolean'
@@ -280,9 +384,11 @@ export class RealtimeEaSignalRunner {
             envRequireLayers18 === 'false' ||
             envRequireLayers18 === 'no'
           ? false
-          : allowCandidatesByDefault
-            ? false
-            : true;
+          : this.smartStrong
+            ? true
+            : allowCandidatesByDefault
+              ? false
+              : true;
 
     this.dashboardLayers18MinConfluence = Number.isFinite(
       Number(options.dashboardLayers18MinConfluence)
@@ -290,7 +396,9 @@ export class RealtimeEaSignalRunner {
       ? Number(options.dashboardLayers18MinConfluence)
       : Number.isFinite(envLayers18MinConfluence)
         ? Math.max(0, Math.min(100, envLayers18MinConfluence))
-        : 55;
+        : this.smartStrong
+          ? 60
+          : 55;
 
     // When enabled, broadcast fully-analyzed WAIT/MONITOR candidates (not trade-valid yet).
     // This keeps the dashboard informative even when no strong ENTER signals exist.
@@ -314,13 +422,17 @@ export class RealtimeEaSignalRunner {
       ? Number(options.minConfidence)
       : Number.isFinite(envMinConfidence)
         ? envMinConfidence
-        : 45;
+        : this.smartStrong
+          ? 55
+          : 45;
 
     this.minStrength = Number.isFinite(Number(options.minStrength))
       ? Number(options.minStrength)
       : Number.isFinite(envMinStrength)
         ? envMinStrength
-        : 35;
+        : this.smartStrong
+          ? 45
+          : 35;
 
     // Broadcast thresholds (dashboard visibility).
     // Default to the strong thresholds; strict mode can be relaxed via env if desired.
@@ -328,17 +440,21 @@ export class RealtimeEaSignalRunner {
       ? Number(options.dashboardMinConfidence)
       : Number.isFinite(envDashMinConfidence)
         ? envDashMinConfidence
-        : allowCandidatesByDefault
-          ? 45
-          : this.minConfidence;
+        : this.smartStrong
+          ? Math.max(60, this.minConfidence)
+          : allowCandidatesByDefault
+            ? 45
+            : this.minConfidence;
 
     this.dashboardMinStrength = Number.isFinite(Number(options.dashboardMinStrength))
       ? Number(options.dashboardMinStrength)
       : Number.isFinite(envDashMinStrength)
         ? envDashMinStrength
-        : allowCandidatesByDefault
-          ? 55
-          : this.minStrength;
+        : this.smartStrong
+          ? Math.max(55, this.minStrength)
+          : allowCandidatesByDefault
+            ? 55
+            : this.minStrength;
 
     // Near-strong: allow slightly-under-threshold watch candidates to be broadcast
     // so the dashboard doesn't look empty while a setup is forming.
@@ -349,13 +465,17 @@ export class RealtimeEaSignalRunner {
       ? Math.max(0, Number(options.nearDeltaConfidence))
       : Number.isFinite(envNearDeltaConfidence)
         ? Math.max(0, envNearDeltaConfidence)
-        : 10;
+        : this.smartStrong
+          ? 6
+          : 10;
 
     this.nearDeltaStrength = Number.isFinite(Number(options.nearDeltaStrength))
       ? Math.max(0, Number(options.nearDeltaStrength))
       : Number.isFinite(envNearDeltaStrength)
         ? Math.max(0, envNearDeltaStrength)
-        : 10;
+        : this.smartStrong
+          ? 6
+          : 10;
 
     // Dashboard: allow early-forming setups only when explicitly enabled.
     const envAllowWait = String(process.env.EA_SIGNAL_ALLOW_WAIT_MONITOR || '').toLowerCase();
@@ -763,6 +883,56 @@ export class RealtimeEaSignalRunner {
       return;
     }
 
+    if (this.smartStrong && this.smartRequireQuote) {
+      const hasQuotePrice =
+        quote &&
+        (Number.isFinite(Number(quote.bid)) ||
+          Number.isFinite(Number(quote.ask)) ||
+          Number.isFinite(Number(quote.last)));
+      if (!hasQuotePrice) {
+        return;
+      }
+    }
+
+    const latestBarTime = this.getLatestBarTime({ broker, symbol });
+    const barAgeMs = latestBarTime != null ? Math.max(0, now - latestBarTime) : null;
+    if (this.smartStrong && this.smartMaxBarAgeMs != null) {
+      if (barAgeMs == null || barAgeMs > this.smartMaxBarAgeMs) {
+        return;
+      }
+    }
+
+    if (this.smartStrong && quote && quote.bid != null && quote.ask != null) {
+      const bid = Number(quote.bid);
+      const ask = Number(quote.ask);
+      if (Number.isFinite(bid) && Number.isFinite(ask) && ask > bid) {
+        const spread = ask - bid;
+        const spreadPct = mid > 0 ? (spread / mid) * 100 : null;
+        const spreadPoints =
+          quote.point != null && Number.isFinite(Number(quote.point))
+            ? spread / Number(quote.point)
+            : quote.spreadPoints != null
+              ? Number(quote.spreadPoints)
+              : null;
+
+        if (
+          this.smartMaxSpreadPct != null &&
+          Number.isFinite(spreadPct) &&
+          spreadPct > this.smartMaxSpreadPct
+        ) {
+          return;
+        }
+
+        if (
+          this.smartMaxSpreadPoints != null &&
+          Number.isFinite(spreadPoints) &&
+          spreadPoints > this.smartMaxSpreadPoints
+        ) {
+          return;
+        }
+      }
+    }
+
     const barsReady = this.hasEnoughBars({ broker, symbol, timeframe: 'M15', minBars: 120 });
 
     if (!snapshot) {
@@ -802,6 +972,13 @@ export class RealtimeEaSignalRunner {
       return;
     }
 
+    if (this.smartStrong) {
+      if (!snapshot || !barsReady) {
+        this.lastGeneratedAt.set(key, now);
+        return;
+      }
+    }
+
     let rawSignal;
     try {
       rawSignal = await this.tradingEngine.generateSignal(symbol, {
@@ -836,6 +1013,38 @@ export class RealtimeEaSignalRunner {
       barFallback,
       now
     });
+
+    if (this.smartStrong && this.smartRequireBarsCoverage) {
+      const layers = rawSignal?.components?.layeredAnalysis?.layers;
+      const layer1 = Array.isArray(layers)
+        ? layers.find((layer) => String(layer?.key || '') === 'L1' || Number(layer?.layer) === 1)
+        : null;
+      const barsCoverage = layer1?.metrics?.barsCoverage || null;
+      const m15 = barsCoverage?.M15 || null;
+      const h1 = barsCoverage?.H1 || null;
+
+      const m15Count = Number(m15?.count);
+      const h1Count = Number(h1?.count);
+      const m15Age = Number(m15?.ageMs);
+      const h1Age = Number(h1?.ageMs);
+
+      const m15CountOk = !Number.isFinite(m15Count) || m15Count >= this.smartBarsMinM15;
+      const h1CountOk = !Number.isFinite(h1Count) || h1Count >= this.smartBarsMinH1;
+
+      const m15AgeOk =
+        this.smartBarsMaxAgeM15Ms == null ||
+        !Number.isFinite(m15Age) ||
+        m15Age <= this.smartBarsMaxAgeM15Ms;
+      const h1AgeOk =
+        this.smartBarsMaxAgeH1Ms == null ||
+        !Number.isFinite(h1Age) ||
+        h1Age <= this.smartBarsMaxAgeH1Ms;
+
+      if (!(m15CountOk && h1CountOk && m15AgeOk && h1AgeOk)) {
+        this.lastGeneratedAt.set(key, now);
+        return;
+      }
+    }
 
     // Best-effort timeframe inference for dashboard display.
     // Prefer explicit/technical timeframe; fallback to the bar fallback timeframe if available.
@@ -985,7 +1194,6 @@ export class RealtimeEaSignalRunner {
 
     // Bar-driven behavior: publish at most once per new bar (prefer M15/H1).
     // Lifecycle updates (validity/status/confluence changes) are allowed intra-bar.
-    const latestBarTime = this.getLatestBarTime({ broker, symbol });
     const lastBarTime = this.lastPublishedBarTime.get(broadcastKey) || null;
     if (
       !isLifecycleUpdate &&

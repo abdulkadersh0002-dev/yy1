@@ -95,24 +95,13 @@ const ensureSocket = () => {
     currentConfig = getApiConfig();
   }
 
-  const { wsUrl, apiKey } = currentConfig;
+  const { wsUrl } = currentConfig;
   if (!wsUrl) {
     return;
   }
 
-  let urlString = wsUrl;
   try {
-    const url = new URL(wsUrl);
-    if (apiKey) {
-      url.searchParams.set('api_key', apiKey);
-    }
-    urlString = url.toString();
-  } catch (_error) {
-    // Keep fallback string
-  }
-
-  try {
-    socket = new globalThis.WebSocket(urlString);
+    socket = new globalThis.WebSocket(wsUrl);
   } catch (_error) {
     scheduleReconnect();
     return;

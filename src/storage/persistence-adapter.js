@@ -16,25 +16,62 @@ function safeJSON(value) {
   }
 }
 
-export function createPersistenceAdapter() {
+export function createPersistenceAdapter(options = {}) {
   const pool = getPool();
   if (!pool) {
     return null;
   }
 
   let disabled = false;
+  let disabledUntil = 0;
+  let consecutiveFailures = 0;
 
-  function markDisabled(error) {
-    if (disabled) {
+  const retryBaseMs = Number.isFinite(Number(options.retryBaseMs))
+    ? Math.max(1000, Number(options.retryBaseMs))
+    : 5000;
+  const retryMaxMs = Number.isFinite(Number(options.retryMaxMs))
+    ? Math.max(retryBaseMs, Number(options.retryMaxMs))
+    : 60000;
+  const maxConsecutiveFailures = Number.isFinite(Number(options.maxConsecutiveFailures))
+    ? Math.max(1, Number(options.maxConsecutiveFailures))
+    : 10;
+  const disablePermanently = options.disablePermanently === true;
+
+  function markFailure(error) {
+    consecutiveFailures += 1;
+    const now = Date.now();
+    const backoff = Math.min(
+      retryMaxMs,
+      retryBaseMs * Math.pow(2, Math.max(0, consecutiveFailures - 1))
+    );
+    disabledUntil = now + backoff;
+
+    if (disablePermanently && consecutiveFailures >= maxConsecutiveFailures) {
+      if (!disabled) {
+        disabled = true;
+        const reason = error?.message || error?.code || 'unknown reason';
+        console.warn(`Persistence adapter disabled (database unavailable): ${reason}`);
+      }
       return;
     }
-    disabled = true;
+
     const reason = error?.message || error?.code || 'unknown reason';
-    console.warn(`Persistence adapter disabled (database unavailable): ${reason}`);
+    console.warn(`Persistence adapter backoff (${backoff}ms): ${reason}`);
+  }
+
+  function markSuccess() {
+    consecutiveFailures = 0;
+    disabledUntil = 0;
   }
 
   function ensureActive() {
-    return !disabled;
+    if (disabled) {
+      return false;
+    }
+    if (disabledUntil && Date.now() < disabledUntil) {
+      return false;
+    }
+    return true;
   }
 
   async function recordFeatureSnapshot(snapshot) {
@@ -73,10 +110,11 @@ export function createPersistenceAdapter() {
 
     try {
       await pool.query(queryText, params);
+      markSuccess();
       return true;
     } catch (error) {
       console.error('Failed to persist feature snapshot:', error?.message || error);
-      markDisabled(error);
+      markFailure(error);
       return false;
     }
   }
@@ -121,10 +159,11 @@ export function createPersistenceAdapter() {
 
     try {
       await pool.query(queryText, params);
+      markSuccess();
       return true;
     } catch (error) {
       console.error('Failed to persist provider metric:', error?.message || error);
-      markDisabled(error);
+      markFailure(error);
       return false;
     }
   }
@@ -191,10 +230,11 @@ export function createPersistenceAdapter() {
 
     try {
       await pool.query(queryText, params);
+      markSuccess();
       return true;
     } catch (error) {
       console.error('Failed to persist provider availability snapshot:', error?.message || error);
-      markDisabled(error);
+      markFailure(error);
       return false;
     }
   }
@@ -233,10 +273,11 @@ export function createPersistenceAdapter() {
 
     try {
       const { rows } = await pool.query(queryText, params);
+      markSuccess();
       return rows;
     } catch (error) {
       console.error('Failed to load provider availability history:', error?.message || error);
-      markDisabled(error);
+      markFailure(error);
       return [];
     }
   }
@@ -269,10 +310,11 @@ export function createPersistenceAdapter() {
 
     try {
       await pool.query(queryText, params);
+      markSuccess();
       return true;
     } catch (error) {
       console.error('Failed to persist data quality metric:', error?.message || error);
-      markDisabled(error);
+      markFailure(error);
       return false;
     }
   }
@@ -322,7 +364,7 @@ export function createPersistenceAdapter() {
         inserted += result.rowCount || 0;
       } catch (error) {
         console.error('Failed to persist news item:', error?.message || error);
-        markDisabled(error);
+        markFailure(error);
         break;
       }
     }
@@ -365,10 +407,11 @@ export function createPersistenceAdapter() {
 
     try {
       const { rows } = await pool.query(queryText, params);
+      markSuccess();
       return rows;
     } catch (error) {
       console.error('Failed to load recent news items:', error?.message || error);
-      markDisabled(error);
+      markFailure(error);
       return [];
     }
   }
@@ -379,10 +422,11 @@ export function createPersistenceAdapter() {
     }
     try {
       const { rows } = await pool.query('SELECT * FROM latest_provider_metrics');
+      markSuccess();
       return rows;
     } catch (error) {
       console.error('Failed to load provider metrics:', error?.message || error);
-      markDisabled(error);
+      markFailure(error);
       return [];
     }
   }

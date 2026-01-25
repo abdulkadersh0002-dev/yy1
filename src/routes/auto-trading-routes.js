@@ -210,7 +210,11 @@ export default function autoTradingRoutes({
           thresholds: {
             realtimeMinConfidence: tradeManager?.realtimeMinConfidence ?? null,
             realtimeMinStrength: tradeManager?.realtimeMinStrength ?? null,
-            realtimeRequireLayers18: tradeManager?.realtimeRequireLayers18 ?? null
+            realtimeRequireLayers18: tradeManager?.realtimeRequireLayers18 ?? null,
+            smartStrong: tradeManager?.autoTradingSmartStrong ?? null,
+            smartMinConfidence: tradeManager?.smartMinConfidence ?? null,
+            smartMinStrength: tradeManager?.smartMinStrength ?? null,
+            smartMinDecisionScore: tradeManager?.smartMinDecisionScore ?? null
           },
           sessions: {
             count: sessions.length,

@@ -7,7 +7,15 @@ This project can persist feature snapshots, trade outcomes, and provider telemet
 # and run migrations.
 ```
 
-Once the container is running, apply migrations in `db/migrations/` (any migration tool is fine, for example `psql`):
+Once the container is running, apply migrations in `db/migrations/` using the built-in runner:
+
+```bash
+npm run db:migrate
+```
+
+This runner maintains a `schema_migrations` ledger (filename + checksum). If a migration file changes after being applied, the runner will abort with a checksum mismatch to prevent accidental drift.
+
+If you prefer manual SQL, you can still apply migrations directly (not recommended for production):
 
 ```bash
 psql "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}" -f db/migrations/001_init.sql

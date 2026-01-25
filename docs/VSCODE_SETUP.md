@@ -47,7 +47,7 @@ When you open the project, VS Code will prompt you to install recommended extens
 # Copy environment template
 cp .env.example .env
 
-# Edit .env with your API keys
+# Edit .env with your configuration
 code .env
 ```
 

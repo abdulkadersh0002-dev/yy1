@@ -15,6 +15,7 @@ class EaBridgeService {
     this.logger = options.logger || logger;
     this.tradingEngine = options.tradingEngine;
     this.brokerRouter = options.brokerRouter;
+    this.brokerMeta = options.brokerMeta || {};
 
     // Active EA sessions
     this.sessions = new Map();
@@ -102,6 +103,38 @@ class EaBridgeService {
     // Set ALLOW_ALL_SYMBOLS=true to disable filtering.
     this.restrictSymbols = String(process.env.ALLOW_ALL_SYMBOLS || '').toLowerCase() !== 'true';
 
+    const allowlist = [];
+    if (Array.isArray(this.brokerMeta?.symbolAllowlist)) {
+      allowlist.push(...this.brokerMeta.symbolAllowlist);
+    }
+    if (Array.isArray(this.brokerMeta?.metalsSymbols)) {
+      allowlist.push(...this.brokerMeta.metalsSymbols);
+    }
+    this.symbolAllowlist = new Set(
+      allowlist
+        .map((value) =>
+          String(value || '')
+            .trim()
+            .toUpperCase()
+        )
+        .filter(Boolean)
+    );
+
+    this.symbolAliasMap = new Map();
+    if (this.brokerMeta?.symbolMap && typeof this.brokerMeta.symbolMap === 'object') {
+      Object.entries(this.brokerMeta.symbolMap).forEach(([alias, canonical]) => {
+        const key = String(alias || '')
+          .trim()
+          .toUpperCase();
+        const value = String(canonical || '')
+          .trim()
+          .toUpperCase();
+        if (key && value) {
+          this.symbolAliasMap.set(key, value);
+        }
+      });
+    }
+
     const parseBool = (value) => {
       const raw = String(value ?? '')
         .trim()
@@ -146,6 +179,25 @@ class EaBridgeService {
     this.maxBarsPerIngest = Number.isFinite(Number(process.env.EA_MAX_BARS_PER_INGEST))
       ? Math.max(1, Number(process.env.EA_MAX_BARS_PER_INGEST))
       : 250;
+
+    // Freshness guards (smart ingest). Prevent stale/future data from polluting signals.
+    this.maxQuoteAgeMs = Number.isFinite(Number(process.env.EA_MAX_QUOTE_AGE_MS))
+      ? Math.max(5_000, Number(process.env.EA_MAX_QUOTE_AGE_MS))
+      : 2 * 60 * 1000;
+    this.maxFutureQuoteMs = Number.isFinite(Number(process.env.EA_MAX_QUOTE_FUTURE_MS))
+      ? Math.max(1_000, Number(process.env.EA_MAX_QUOTE_FUTURE_MS))
+      : 2 * 60 * 1000;
+
+    this.maxFutureBarMs = Number.isFinite(Number(process.env.EA_MAX_BAR_FUTURE_MS))
+      ? Math.max(1_000, Number(process.env.EA_MAX_BAR_FUTURE_MS))
+      : 5 * 60 * 1000;
+
+    this.maxNewsAgeMs = Number.isFinite(Number(process.env.EA_MAX_NEWS_AGE_MS))
+      ? Math.max(10 * 60 * 1000, Number(process.env.EA_MAX_NEWS_AGE_MS))
+      : 14 * 24 * 60 * 60 * 1000;
+    this.maxFutureNewsMs = Number.isFinite(Number(process.env.EA_MAX_NEWS_FUTURE_MS))
+      ? Math.max(60 * 1000, Number(process.env.EA_MAX_NEWS_FUTURE_MS))
+      : 365 * 24 * 60 * 60 * 1000;
   }
 
   getMarketCandleAnalysis({ broker, symbol, timeframe, limit = 200, maxAgeMs = 0 } = {}) {
@@ -341,6 +393,21 @@ class EaBridgeService {
   }
 
   isAllowedAssetSymbol(value) {
+    if (this.symbolAllowlist && this.symbolAllowlist.size > 0) {
+      const raw = this.normalizeSymbol(value);
+      if (raw && this.symbolAllowlist.has(raw)) {
+        return true;
+      }
+      const canonical = this.canonicalizeSymbol(value);
+      if (canonical && this.symbolAllowlist.has(canonical)) {
+        return true;
+      }
+      const mapped = this.mapSymbolAlias(value);
+      if (mapped && this.symbolAllowlist.has(mapped)) {
+        return true;
+      }
+      return false;
+    }
     if (!this.restrictSymbols) {
       return true;
     }
@@ -793,13 +860,14 @@ class EaBridgeService {
       return { success: false, message: 'broker and symbol are required' };
     }
 
-    if (!this.isAllowedAssetSymbol(requestedSymbol)) {
+    const mappedSymbol = this.mapSymbolAlias(requestedSymbol) || requestedSymbol;
+    if (!this.isAllowedAssetSymbol(mappedSymbol) && !this.isAllowedAssetSymbol(requestedSymbol)) {
       return { success: false, message: 'Symbol not allowed (FX/metals/crypto only)', broker };
     }
 
     // IMPORTANT: The dashboard may normalize symbols (EURUSD) while the broker uses suffixes (EURUSDm).
     // Resolve to a symbol that actually exists in the MT terminal (based on recent quotes), so the EA can SymbolSelect().
-    const symbol = this.resolveSymbolFromQuotes(broker, requestedSymbol);
+    const symbol = this.resolveSymbolFromQuotes(broker, mappedSymbol);
 
     // Mark symbol as active so the EA can prioritize it.
     this.touchActiveSymbol({ broker, symbol, ttlMs });
@@ -891,6 +959,18 @@ class EaBridgeService {
     return symbol || null;
   }
 
+  mapSymbolAlias(value) {
+    if (!this.symbolAliasMap || this.symbolAliasMap.size === 0) {
+      return null;
+    }
+    const raw = this.normalizeSymbol(value);
+    if (!raw) {
+      return null;
+    }
+    const canonical = this.canonicalizeSymbol(raw);
+    return this.symbolAliasMap.get(raw) || this.symbolAliasMap.get(canonical) || null;
+  }
+
   recordQuote(payload = {}) {
     const broker = this.normalizeBroker(payload.broker);
     const symbol = this.normalizeSymbol(payload.symbol || payload.pair);
@@ -902,7 +982,20 @@ class EaBridgeService {
       return { success: true, message: 'Symbol ignored (asset class not allowed)', broker, symbol };
     }
 
-    const timestamp = Number(payload.timestamp || payload.time || Date.now());
+    const timestamp = this.normalizeEpochMs(payload.timestamp || payload.time || Date.now());
+    if (
+      !this.isTimestampFresh(timestamp, {
+        maxAgeMs: this.maxQuoteAgeMs,
+        maxFutureMs: this.maxFutureQuoteMs
+      })
+    ) {
+      return {
+        success: true,
+        message: 'Quote ignored (stale or future timestamp)',
+        broker,
+        symbol
+      };
+    }
     const bidRaw = payload.bid != null ? Number(payload.bid) : null;
     const askRaw = payload.ask != null ? Number(payload.ask) : null;
     const last = payload.last != null ? Number(payload.last) : null;
@@ -964,6 +1057,11 @@ class EaBridgeService {
       mid != null && prev?.mid != null ? Number((mid - Number(prev.mid)).toFixed(8)) : null;
     const velocityPerSec =
       dMid != null && dtMs != null ? Number((dMid / (dtMs / 1000)).toFixed(8)) : null;
+    const prevVelocity = prev?.velocityPerSec != null ? Number(prev.velocityPerSec) : null;
+    const accelerationPerSec2 =
+      velocityPerSec != null && prevVelocity != null && dtMs != null
+        ? Number(((velocityPerSec - prevVelocity) / (dtMs / 1000)).toFixed(8))
+        : null;
 
     const quote = {
       broker,
@@ -974,6 +1072,7 @@ class EaBridgeService {
       mid: mid != null ? Number(mid.toFixed(8)) : null,
       midDelta: dMid,
       midVelocityPerSec: velocityPerSec,
+      midAccelerationPerSec2: accelerationPerSec2,
       digits: Number.isFinite(digits) ? Math.max(0, Math.min(20, Math.trunc(digits))) : null,
       point: Number.isFinite(point) ? point : null,
       spreadPoints: Number.isFinite(spreadPoints) ? spreadPoints : null,
@@ -994,7 +1093,8 @@ class EaBridgeService {
         mid: quote.mid,
         bid: quote.bid,
         ask: quote.ask,
-        spreadPoints: quote.spreadPoints
+        spreadPoints: quote.spreadPoints,
+        velocityPerSec: quote.midVelocityPerSec
       });
       while (history.length > 6) {
         history.shift();
@@ -1134,6 +1234,34 @@ class EaBridgeService {
     const timeline = this.newsTimeline.get(broker) || [];
     let ingested = 0;
 
+    const normalizeImpact = (value) => {
+      if (value == null) {
+        return null;
+      }
+      const raw = String(value).trim();
+      const num = Number(raw);
+      if (Number.isFinite(num)) {
+        if (num <= 3) {
+          return Math.max(0, Math.min(100, num * 30));
+        }
+        if (num <= 10) {
+          return Math.max(0, Math.min(100, num * 10));
+        }
+        return Math.max(0, Math.min(100, num));
+      }
+      const lower = raw.toLowerCase();
+      if (lower.includes('high')) {
+        return 90;
+      }
+      if (lower.includes('medium')) {
+        return 60;
+      }
+      if (lower.includes('low')) {
+        return 30;
+      }
+      return null;
+    };
+
     for (const raw of items) {
       if (!raw) {
         continue;
@@ -1144,20 +1272,38 @@ class EaBridgeService {
         continue;
       }
 
+      const timeMs =
+        this.normalizeEpochMs(raw.time || raw.timestamp || raw.date || Date.now()) || Date.now();
+      if (
+        !this.isTimestampFresh(timeMs, {
+          maxAgeMs: this.maxNewsAgeMs,
+          maxFutureMs: this.maxFutureNewsMs
+        })
+      ) {
+        continue;
+      }
+
+      const kindRaw = String(raw.kind || raw.topic || '')
+        .trim()
+        .toLowerCase();
+      const kind =
+        kindRaw.includes('calendar') || kindRaw.includes('economic') ? 'calendar' : 'headline';
+
       const item = {
         id,
         broker,
         title: raw.title || raw.headline || 'EA News',
         symbol: raw.symbol ? this.normalizeSymbol(raw.symbol) : null,
         currency: raw.currency ? String(raw.currency).toUpperCase() : null,
-        impact: raw.impact ?? raw.importance ?? null,
-        time: Number(raw.time || raw.timestamp || raw.date || Date.now()),
+        impact: normalizeImpact(raw.impact ?? raw.importance ?? null),
+        time: timeMs,
         forecast: raw.forecast ?? null,
         previous: raw.previous ?? null,
         actual: raw.actual ?? null,
         source: raw.source || 'ea',
         notes: raw.notes || raw.comment || null,
         receivedAt: Date.now(),
+        kind,
         raw
       };
 
@@ -1225,6 +1371,21 @@ class EaBridgeService {
       return Math.trunc(numeric * 1000);
     }
     return Math.trunc(numeric);
+  }
+
+  isTimestampFresh(tsMs, { maxAgeMs, maxFutureMs } = {}) {
+    if (!Number.isFinite(Number(tsMs))) {
+      return false;
+    }
+    const now = Date.now();
+    const ageMs = now - Number(tsMs);
+    if (Number.isFinite(maxAgeMs) && ageMs > maxAgeMs) {
+      return false;
+    }
+    if (Number.isFinite(maxFutureMs) && ageMs < -maxFutureMs) {
+      return false;
+    }
+    return true;
   }
 
   timeframeToMs(timeframe) {
@@ -1551,6 +1712,31 @@ class EaBridgeService {
     const timeframesRaw =
       payload.timeframes && typeof payload.timeframes === 'object' ? payload.timeframes : null;
 
+    const sanitizeTimeframes = (raw) => {
+      if (!raw || typeof raw !== 'object') {
+        return null;
+      }
+      const allowed = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN1']);
+      const cleaned = {};
+      Object.entries(raw).forEach(([tf, value]) => {
+        const key = String(tf || '')
+          .trim()
+          .toUpperCase();
+        if (!allowed.has(key)) {
+          return;
+        }
+        if (value && typeof value === 'object') {
+          cleaned[key] = value;
+        }
+      });
+      return Object.keys(cleaned).length ? cleaned : null;
+    };
+
+    const snapshotTimestamp = this.normalizeEpochMs(
+      payload.timestamp || payload.time || Date.now()
+    );
+    const inputTimeframes = sanitizeTimeframes(timeframesRaw);
+
     const normalizeSnapshotDirection = (value) => {
       const raw = String(value ?? '')
         .trim()
@@ -1606,8 +1792,8 @@ class EaBridgeService {
     };
 
     const normalizedTimeframes = {};
-    if (timeframesRaw) {
-      for (const [tfRaw, frameRaw] of Object.entries(timeframesRaw)) {
+    if (inputTimeframes) {
+      for (const [tfRaw, frameRaw] of Object.entries(inputTimeframes)) {
         const tf = this.normalizeTimeframe(tfRaw);
         if (!tf || !frameRaw || typeof frameRaw !== 'object') {
           continue;
@@ -1704,8 +1890,7 @@ class EaBridgeService {
     const snapshot = {
       broker,
       symbol,
-      timestamp:
-        this.sanitizeNumber(payload.timestamp || payload.time, { allowZero: false }) || Date.now(),
+      timestamp: Number.isFinite(snapshotTimestamp) ? snapshotTimestamp : Date.now(),
       receivedAt: Date.now(),
       source: payload.source || 'ea',
       timeframes: normalizedTimeframes
@@ -1789,6 +1974,9 @@ class EaBridgeService {
       const close = this.sanitizeNumber(raw.close ?? raw.c, { allowZero: false });
       const volume = this.sanitizeNumber(raw.volume ?? raw.v, { allowZero: true });
       if (!time || open == null || high == null || low == null || close == null) {
+        continue;
+      }
+      if (!this.isTimestampFresh(time, { maxFutureMs: this.maxFutureBarMs })) {
         continue;
       }
       normalizedIncoming.push({

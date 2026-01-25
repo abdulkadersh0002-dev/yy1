@@ -87,6 +87,25 @@ export function parseJsonSafe(value, defaultValue = undefined) {
   }
 }
 
+export function normalizeTradingScope(value, fallback = 'signals') {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  if (normalized === 'signals' || normalized === 'signal') {
+    return 'signals';
+  }
+  if (normalized === 'execution' || normalized === 'execute') {
+    return 'execution';
+  }
+  if (normalized === 'autonomous' || normalized === 'auto' || normalized === 'full') {
+    return 'autonomous';
+  }
+  return fallback;
+}
+
 function buildPriceDataConfig(env) {
   const disabledProviders = parseListSafe(env.PRICE_PROVIDERS_DISABLED);
 
@@ -177,6 +196,14 @@ function buildPriceDataConfig(env) {
   const fastTimeframesOverride = parseListSafe(env.PRICE_PROVIDER_FAST_TIMEFRAMES);
   const slowTimeframesOverride = parseListSafe(env.PRICE_PROVIDER_SLOW_TIMEFRAMES);
 
+  const barQuality = {
+    maxFutureMs: parseIntSafe(env.PRICE_BARS_MAX_FUTURE_MS),
+    maxAgeMultiplier: parseFloatSafe(env.PRICE_BARS_MAX_AGE_MULTIPLIER),
+    gapMultiplier: parseFloatSafe(env.PRICE_BARS_GAP_MULTIPLIER),
+    maxGapRatio: parseFloatSafe(env.PRICE_BARS_MAX_GAP_RATIO),
+    enforceQuality: parseBoolSafe(env.PRICE_BARS_ENFORCE_QUALITY, false)
+  };
+
   const priceDataConfig = {};
   if (disabledProviders.length) {
     priceDataConfig.disabledProviders = disabledProviders;
@@ -195,6 +222,9 @@ function buildPriceDataConfig(env) {
   }
   if (slowTimeframesOverride.length) {
     priceDataConfig.slowTimeframes = slowTimeframesOverride;
+  }
+  if (Object.values(barQuality).some((value) => value != null && value !== false)) {
+    priceDataConfig.barQuality = barQuality;
   }
 
   return priceDataConfig;
@@ -229,11 +259,23 @@ function buildTradingEngineConfig(env, priceDataConfig) {
     minSignalStrength: 35,
     riskPerTrade: 0.02,
     maxDailyRisk: 0.06,
+    maxRiskPerSymbol: parseFloatSafe(env.MAX_RISK_PER_SYMBOL),
     maxConcurrentTrades: 5,
     signalAmplifier: 2.5,
     directionThreshold: 12,
     // Used by TradingEngine decision profiles (soft preference).
     minRiskReward: 1.6,
+    enforceSpreadToAtrHard: parseBoolSafe(env.AUTO_TRADING_ENFORCE_SPREAD_TO_ATR, false),
+    maxSpreadToAtrHard: parseFloatSafe(env.AUTO_TRADING_MAX_SPREAD_TO_ATR),
+    maxSpreadToTpHard: parseFloatSafe(env.AUTO_TRADING_MAX_SPREAD_TO_TP),
+    requireBarsCoverage: parseBoolSafe(env.AUTO_TRADING_REQUIRE_BARS_COVERAGE, false),
+    barsMinM15: parseIntSafe(env.AUTO_TRADING_BARS_MIN_M15),
+    barsMinH1: parseIntSafe(env.AUTO_TRADING_BARS_MIN_H1),
+    barsMaxAgeM15Ms: parseIntSafe(env.AUTO_TRADING_BARS_MAX_AGE_M15_MS),
+    barsMaxAgeH1Ms: parseIntSafe(env.AUTO_TRADING_BARS_MAX_AGE_H1_MS),
+    requireHtfDirection: parseBoolSafe(env.AUTO_TRADING_REQUIRE_HTF_DIRECTION, false),
+    newsBlackoutMinutes: parseIntSafe(env.AUTO_TRADING_NEWS_BLACKOUT_MINUTES),
+    newsBlackoutImpactThreshold: parseFloatSafe(env.AUTO_TRADING_NEWS_BLACKOUT_IMPACT),
     apiKeys: {
       openai: env.OPENAI_API_KEY,
       twelveData: env.TWELVE_DATA_API_KEY,
@@ -284,6 +326,39 @@ function buildTradingEngineConfig(env, priceDataConfig) {
     config.maxConcurrentTrades = 4;
     config.minRiskReward = 1.7;
 
+    if (!Number.isFinite(config.newsBlackoutMinutes)) {
+      config.newsBlackoutMinutes = 45;
+    }
+    if (!Number.isFinite(config.newsBlackoutImpactThreshold)) {
+      config.newsBlackoutImpactThreshold = 60;
+    }
+
+    if (!Number.isFinite(config.maxSpreadToAtrHard)) {
+      config.maxSpreadToAtrHard = 0.18;
+    }
+    if (!Number.isFinite(config.maxSpreadToTpHard)) {
+      config.maxSpreadToTpHard = 0.25;
+    }
+    config.enforceSpreadToAtrHard =
+      config.enforceSpreadToAtrHard != null ? Boolean(config.enforceSpreadToAtrHard) : true;
+
+    config.requireBarsCoverage =
+      config.requireBarsCoverage != null ? Boolean(config.requireBarsCoverage) : true;
+    config.requireHtfDirection =
+      config.requireHtfDirection != null ? Boolean(config.requireHtfDirection) : true;
+    if (!Number.isFinite(config.barsMinM15)) {
+      config.barsMinM15 = 60;
+    }
+    if (!Number.isFinite(config.barsMinH1)) {
+      config.barsMinH1 = 20;
+    }
+    if (!Number.isFinite(config.barsMaxAgeM15Ms)) {
+      config.barsMaxAgeM15Ms = 30 * 60 * 1000;
+    }
+    if (!Number.isFinite(config.barsMaxAgeH1Ms)) {
+      config.barsMaxAgeH1Ms = 3 * 60 * 60 * 1000;
+    }
+
     // TradeManager reads these from tradingEngine.config.autoTrading.
     config.autoTrading = {
       // Keep quality high for execution while allowing more opportunities than the strictest mode.
@@ -307,7 +382,32 @@ function buildTradingEngineConfig(env, priceDataConfig) {
     };
   }
 
+  if (!Number.isFinite(config.newsBlackoutMinutes)) {
+    config.newsBlackoutMinutes = 30;
+  }
+  if (!Number.isFinite(config.newsBlackoutImpactThreshold)) {
+    config.newsBlackoutImpactThreshold = 40;
+  }
+
+  const dataQualityGuard = {
+    autoReenable: parseBoolSafe(env.DATA_QUALITY_AUTO_REENABLE, true),
+    autoReenableMinScore: parseFloatSafe(env.DATA_QUALITY_REENABLE_MIN_SCORE),
+    autoReenableMinHealthyCount: parseIntSafe(env.DATA_QUALITY_REENABLE_MIN_HEALTHY),
+    autoReenableWindowMs: parseIntSafe(env.DATA_QUALITY_REENABLE_WINDOW_MS)
+  };
+
+  if (!Number.isFinite(dataQualityGuard.autoReenableMinScore)) {
+    dataQualityGuard.autoReenableMinScore = 78;
+  }
+  if (!Number.isFinite(dataQualityGuard.autoReenableMinHealthyCount)) {
+    dataQualityGuard.autoReenableMinHealthyCount = 2;
+  }
+  if (!Number.isFinite(dataQualityGuard.autoReenableWindowMs)) {
+    dataQualityGuard.autoReenableWindowMs = 4 * 60 * 1000;
+  }
+
   config.priceData = priceDataConfig;
+  config.dataQualityGuard = dataQualityGuard;
 
   config.alerting = {
     drawdownThresholdPct: parseFloatSafe(env.ALERT_DRAWDOWN_THRESHOLD_PCT),
@@ -315,6 +415,17 @@ function buildTradingEngineConfig(env, priceDataConfig) {
     volatilityCooldownMs: parseIntSafe(env.ALERT_VOLATILITY_COOLDOWN_MS),
     exposureWarningFraction: parseFloatSafe(env.ALERT_EXPOSURE_WARNING_FRACTION)
   };
+
+  const persistence = {
+    retryBaseMs: parseIntSafe(env.PERSISTENCE_RETRY_BASE_MS),
+    retryMaxMs: parseIntSafe(env.PERSISTENCE_RETRY_MAX_MS),
+    maxConsecutiveFailures: parseIntSafe(env.PERSISTENCE_MAX_FAILURES),
+    disablePermanently: parseBoolSafe(env.PERSISTENCE_DISABLE_PERMANENT, false)
+  };
+
+  if (Object.values(persistence).some((value) => value != null && value !== false)) {
+    config.persistence = persistence;
+  }
 
   const currencyLimits = parseJsonSafe(env.RISK_CURRENCY_LIMITS);
   const correlationMatrix = parseJsonSafe(env.RISK_CORRELATION_MATRIX);
@@ -414,8 +525,32 @@ export function buildAppConfig(environment = process.env) {
     enabled: parseBoolSafe(env.ENABLE_API_AUTH, false) || parseBoolSafe(env.API_AUTH_ENABLED, false)
   };
 
+  const security = {
+    apiAuth: {
+      allowQueryKey: parseBoolSafe(env.API_AUTH_ALLOW_QUERY_KEY, false)
+    },
+    cors: {
+      allowedOrigins: parseListSafe(env.CORS_ALLOWED_ORIGINS),
+      allowCredentials: parseBoolSafe(env.CORS_ALLOW_CREDENTIALS, false)
+    },
+    allowPublicEaBridge: parseBoolSafe(env.ALLOW_PUBLIC_EA_BRIDGE, false)
+  };
+
   const priceData = buildPriceDataConfig(env);
   const tradingConfig = buildTradingEngineConfig(env, priceData);
+  tradingConfig.marketRules = {
+    brokerMeta: {
+      symbolAllowlist: parseListSafe(env.BROKER_SYMBOL_ALLOWLIST),
+      symbolMap: parseJsonSafe(env.BROKER_SYMBOL_MAP),
+      symbolSuffix: env.BROKER_SYMBOL_SUFFIX || ''
+    },
+    forexOpenUtc: env.MARKET_FOREX_OPEN_UTC || '21:00',
+    forexCloseUtc: env.MARKET_FOREX_CLOSE_UTC || '21:00',
+    rolloverStartUtc: env.MARKET_ROLLOVER_START_UTC || '21:55',
+    rolloverEndUtc: env.MARKET_ROLLOVER_END_UTC || '22:10',
+    blockRollover: parseBoolSafe(env.MARKET_BLOCK_ROLLOVER, true),
+    blockClosed: parseBoolSafe(env.MARKET_BLOCK_CLOSED, true)
+  };
 
   const alerting = {
     slackWebhookUrl: env.ALERT_SLACK_WEBHOOK || null,
@@ -428,7 +563,33 @@ export function buildAppConfig(environment = process.env) {
   const brokerRouting = {
     enabled: parseBoolSafe(env.ENABLE_BROKER_ROUTING, true),
     defaultBroker: env.BROKER_DEFAULT || 'mt5',
-    timeInForce: env.BROKER_TIME_IN_FORCE || 'GTC'
+    timeInForce: env.BROKER_TIME_IN_FORCE || 'GTC',
+    idempotencyTtlMs: parseIntSafe(env.BROKER_IDEMPOTENCY_TTL_MS),
+    retryAttempts: parseIntSafe(env.BROKER_RETRY_ATTEMPTS),
+    retryBaseMs: parseIntSafe(env.BROKER_RETRY_BASE_MS),
+    breakerThreshold: parseIntSafe(env.BROKER_BREAKER_THRESHOLD),
+    breakerCooldownMs: parseIntSafe(env.BROKER_BREAKER_COOLDOWN_MS)
+  };
+
+  const eaOnlyModeEnabled = parseBoolSafe(env.EA_ONLY_MODE, true);
+  let tradingScope = normalizeTradingScope(env.TRADING_SCOPE, 'signals');
+  if (eaOnlyModeEnabled && tradingScope === 'signals') {
+    tradingScope = 'execution';
+  }
+  const governanceTargets = {
+    uptimePct: parseFloatSafe(env.TARGET_UPTIME_PCT),
+    p95LatencyMs: parseIntSafe(env.TARGET_P95_LATENCY_MS),
+    maxErrorRatePct: parseFloatSafe(env.TARGET_MAX_ERROR_RATE_PCT),
+    maxDrawdownPct: parseFloatSafe(env.TARGET_MAX_DRAWDOWN_PCT),
+    maxSlippagePips: parseFloatSafe(env.TARGET_MAX_SLIPPAGE_PIPS)
+  };
+
+  const brokerMeta = {
+    serverTimezone: env.BROKER_SERVER_TIMEZONE || 'UTC',
+    symbolSuffix: env.BROKER_SYMBOL_SUFFIX || '',
+    symbolAllowlist: parseListSafe(env.BROKER_SYMBOL_ALLOWLIST),
+    metalsSymbols: parseListSafe(env.BROKER_METALS_SYMBOLS),
+    symbolMap: parseJsonSafe(env.BROKER_SYMBOL_MAP)
   };
 
   const tradingModifyApi = {
@@ -457,6 +618,16 @@ export function buildAppConfig(environment = process.env) {
     maxPairsPerTick: parseIntSafe(env.PREFETCH_MAX_PER_TICK)
   };
 
+  const jobQueue = {
+    enabled: env.ENABLE_JOB_QUEUE !== 'false',
+    concurrency: parseIntSafe(env.JOB_QUEUE_CONCURRENCY) || 2,
+    retryAttempts: parseIntSafe(env.JOB_QUEUE_RETRY_ATTEMPTS),
+    retryBaseMs: parseIntSafe(env.JOB_QUEUE_RETRY_BASE_MS),
+    retryMaxMs: parseIntSafe(env.JOB_QUEUE_RETRY_MAX_MS),
+    maxQueueSize: parseIntSafe(env.JOB_QUEUE_MAX_SIZE),
+    deadLetterMax: parseIntSafe(env.JOB_QUEUE_DEAD_LETTER_MAX)
+  };
+
   const autoTrading = {
     autostart: parseBoolSafe(env.AUTO_TRADING_AUTOSTART, false),
     monitoringIntervalMs: parseIntSafe(env.AUTO_TRADING_MONITORING_INTERVAL_MS),
@@ -469,6 +640,7 @@ export function buildAppConfig(environment = process.env) {
     performanceDigests,
     brokerReconciliation,
     pairPrefetch,
+    jobQueue,
     autoTrading
   };
 
@@ -484,10 +656,17 @@ export function buildAppConfig(environment = process.env) {
     env,
     server,
     apiAuth,
+    security,
     trading: tradingConfig,
     alerting,
     brokers,
     brokerRouting,
+    brokerMeta,
+    tradingScope: {
+      mode: tradingScope,
+      allowExecution: tradingScope === 'execution' || tradingScope === 'autonomous'
+    },
+    governanceTargets,
     tradingModifyApi,
     services,
     pairPrefetch,
