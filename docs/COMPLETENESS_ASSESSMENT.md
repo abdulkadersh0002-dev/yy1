@@ -19,21 +19,19 @@ The application is **80-85% complete** and production-ready with strong foundati
 - Trade management and monitoring
 - Performance tracking
 
-### 2. AI & Machine Learning ✅
+### 2. Execution & Scoring ✅
 
-- EA Bridge with intelligent learning
-- Adaptive scoring system
-- Risk adjustment based on performance
-- Dynamic stop-loss management
-- Feature store for ML
+- EA bridge execution pipeline
+- Execution safety gates and risk controls
+- Signal explainability and audit logs
+- Deterministic scoring (no model dependencies)
 
 ### 3. Data Management ✅
 
-- Smart request management (55 API credits/min optimization)
-- Multi-provider support (TwelveData, Finnhub, etc.)
-- Aggressive caching (70% API reduction)
-- 25+ free RSS feeds
-- Real-time data only (no synthetic)
+- EA bridge as the real-time data source
+- RSS feeds for headlines/context (no API keys)
+- Caching and backoff for stability
+- Optional synthetic/dev mode gated by flags
 
 ### 4. Signal Quality ✅
 
@@ -323,58 +321,12 @@ const apiLimiter = rateLimit({
 
 **Priority:** HIGH (Week 3)
 
-### 6. 🟡 MEDIUM: Advanced ML Models
+### 6. 🟡 MEDIUM: ML Models (Removed)
 
-**Current State:** Basic ensemble + adaptive scorer
-**Missing:**
+This project intentionally runs **EA-only + RSS-only** with **no ML/model dependencies**.
 
-```python
-# Need:
-- XGBoost/LightGBM models
-- LSTM for time series
-- Transformer models
-- Model versioning (MLflow)
-- A/B testing framework
-- Feature importance tracking
-- Model drift detection
-- Automated retraining pipeline
-```
-
-**Implementation Plan:**
-
-```javascript
-// Add ML model management
-class ModelRegistry {
-  async loadModel(name, version = 'latest') {
-    // Load from MLflow or S3
-  }
-
-  async predictBatch(model, features) {
-    // Batch prediction for efficiency
-  }
-
-  async evaluateModel(model, testData) {
-    // Calculate metrics
-  }
-}
-
-// Add A/B testing
-class ABTestManager {
-  async assignVariant(userId) {
-    // Assign user to model variant
-  }
-
-  async recordOutcome(userId, variant, outcome) {
-    // Track results per variant
-  }
-
-  async getWinner() {
-    // Statistical significance testing
-  }
-}
-```
-
-**Priority:** MEDIUM (Week 4-6)
+- Any ML/model roadmap items are out of scope for this mode.
+- Focus is on deterministic scoring, execution safety, and validation.
 
 ### 7. 🟡 MEDIUM: Backtesting Engine
 
@@ -579,7 +531,7 @@ jobs:
 | Category        | Current | Target  | Priority    |
 | --------------- | ------- | ------- | ----------- |
 | Core Trading    | 95%     | 95%     | ✅ Done     |
-| AI/ML           | 70%     | 90%     | 🟡 Medium   |
+| Execution/Score | 70%     | 90%     | 🟡 Medium   |
 | Data Management | 90%     | 95%     | 🟢 Low      |
 | Signal Quality  | 85%     | 90%     | 🟡 Medium   |
 | Infrastructure  | 75%     | 95%     | 🟠 High     |
@@ -625,12 +577,11 @@ jobs:
 
 #### Focus: Make it intelligent
 
-1. **Weeks 4-6: ML Enhancements**
-   - Implement XGBoost/LightGBM
-   - Add model versioning
-   - Build A/B testing framework
-   - Add backtesting engine
-   - Implement parameter optimization
+1. **Weeks 4-6: Validation & Backtesting Enhancements**
+  - Expand backtesting engine
+  - Improve parameter optimization
+  - Add stricter data-quality gating
+  - Add more scenario coverage
 
 2. **Weeks 7-8: Multi-Tenancy**
    - Add user management
@@ -732,7 +683,7 @@ These can be implemented quickly for immediate impact:
 **To Achieve "Ideal/Perfect" (90%+):**
 
 1. 🔴 **Phase 1 (Critical)**: Monitoring, error handling, security - **3 weeks**
-2. 🟡 **Phase 2 (Medium)**: Advanced ML, backtesting, multi-tenancy - **5 weeks**
+2. 🟡 **Phase 2 (Medium)**: Backtesting, multi-tenancy, execution tooling - **5 weeks**
 3. 🟢 **Phase 3 (Low)**: Enhanced UI/UX, DevOps - **4 weeks**
 
 **Total Time to "Perfect":** ~12 weeks

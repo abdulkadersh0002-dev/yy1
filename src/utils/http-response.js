@@ -24,6 +24,9 @@ export function badRequest(res, error, extra = {}) {
     error: typeof error === 'string' ? error : error?.message || 'Bad request',
     timestamp: extra.timestamp ?? Date.now()
   });
+  if (extra.details) {
+    payload.details = extra.details;
+  }
   return res.status(extra.statusCode ?? 400).json(payload);
 }
 

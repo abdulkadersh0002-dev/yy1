@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "data-refresh.schema.json",
+  "title": "Data Refresh Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["etlConfigPath", "apiBaseUrl", "freshnessThresholdMinutes"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "description": { "type": "string" },
+    "etlConfigPath": { "type": "string", "minLength": 1 },
+    "apiBaseUrl": { "type": "string", "minLength": 1 },
+    "freshnessThresholdMinutes": { "type": "number", "minimum": 1 },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

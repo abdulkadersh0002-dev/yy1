@@ -1199,6 +1199,25 @@ body::after {
   justify-content: flex-start;
   min-width: 18rem;
   max-width: 40vw;
+  gap: 0.5rem;
+}
+
+.market-ticker__search-select {
+  appearance: none;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  padding: 0.35rem 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  outline: none;
+  cursor: pointer;
+  max-width: 11rem;
+}
+
+.market-ticker__search-select:focus {
+  border-color: var(--neon-cyan);
 }
 
 .market-ticker__search-input {

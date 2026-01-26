@@ -3,6 +3,8 @@ import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
 
+import { applyPresetEnv, formatPresetList } from './presets.mjs';
+
 const BACKEND_PORT = Number(process.env.PORT || 4101);
 const DASHBOARD_PORT = Number(process.env.DASHBOARD_PORT || 4173);
 
@@ -10,6 +12,50 @@ const BACKEND_STATUS_URL = `http://127.0.0.1:${BACKEND_PORT}/api/healthz`;
 const DASHBOARD_URL = `http://127.0.0.1:${DASHBOARD_PORT}/`;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function parseArgs(argv) {
+  /** @type {{ preset?: string, listPresets?: boolean, help?: boolean }} */
+  const out = {};
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (!arg) {
+      continue;
+    }
+
+    if (arg === '--help' || arg === '-h') {
+      out.help = true;
+      continue;
+    }
+
+    if (arg === '--list-presets') {
+      out.listPresets = true;
+      continue;
+    }
+
+    if (arg === '--preset' || arg === '-p') {
+      out.preset = argv[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--preset=')) {
+      out.preset = arg.slice('--preset='.length);
+      continue;
+    }
+  }
+
+  return out;
+}
+
+function printHelp() {
+  // Keep help text compact; this is a dev utility.
+  console.log('[start-all] Usage: npm run start:all -- [--preset <name>] [--list-presets]');
+  console.log('[start-all] Examples:');
+  console.log('  npm run start:all');
+  console.log('  npm run start:all -- --preset synthetic');
+  console.log('  npm run start:all -- --list-presets');
+}
 
 function isReachable(url, timeoutMs = 1500) {
   return new Promise((resolve) => {
@@ -187,6 +233,27 @@ const shutdown = (signal) => {
 
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+// Apply preset env overrides (single source of truth) before any child spawns.
+const cli = parseArgs(process.argv.slice(2));
+if (cli.help) {
+  printHelp();
+  process.exit(0);
+}
+if (cli.listPresets) {
+  console.log(formatPresetList());
+  process.exit(0);
+}
+
+const { presetKey, preset, env: resolvedEnv } = applyPresetEnv(process.env, cli.preset);
+for (const [k, v] of Object.entries(resolvedEnv)) {
+  if (process.env[k] !== v) {
+    process.env[k] = v;
+  }
+}
+if (presetKey !== 'default') {
+  console.log(`[start-all] Preset: ${presetKey} (${preset.label})`);
+}
 
 const backendPortInUse = await isPortInUse(BACKEND_PORT);
 const backendAlreadyRunning = backendPortInUse && (await isReachable(BACKEND_STATUS_URL));

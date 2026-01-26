@@ -106,6 +106,25 @@ EnableAutoTrading = true
 RiskPercentage = 2.0     // % of equity to risk per trade
 MagicNumber = 87001
 Slippage = 10
+
+// Execution safety (MT4/MT5)
+EnableSignalDedupe = true
+SignalDedupeTtlSec = 120
+MaxEntrySlipPips = 3.0
+MaxPositionsPerSymbol = 1
+MaxTotalPositions = 5
+MaxTotalLots = 1.50
+EnableSessionFilter = true
+Session1Start = "07:00"
+Session1End = "11:30"
+Session2Start = "13:00"
+Session2End = "17:00"
+EnableNewsBlackout = true
+NewsBlackoutStart = "12:25"
+NewsBlackoutEnd = "12:45"
+EnableEquityGuard = true
+DailyMaxDrawdownCurrency = 80
+DailyMaxDrawdownPct = 1.5
 ```
 
 #### Chart Overlay (Signal Visualization)
@@ -182,7 +201,7 @@ Check the EA is connected:
 
 ### Trading
 
-**GET** `/api/broker/bridge/mt4/signal/get?symbol=EURUSD`
+**GET** `/api/broker/bridge/mt4/signal/get?symbol=EURUSD&accountMode=demo`
 Returns intelligent signal with learning-adjusted parameters.
 
 ### Market Data (EA-driven)
@@ -292,6 +311,8 @@ Tools → Options → Expert Advisors:
 3. Verify trading signals are being generated
 4. Check learning metrics - trading may be paused after losses
 5. Review MT4/MT5 Journal for error messages
+
+If you enabled session/news filters, confirm the **server time** window matches your intended market hours.
 
 ### Not seeing non-FX symbols
 

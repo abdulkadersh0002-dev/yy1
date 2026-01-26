@@ -82,6 +82,23 @@ input bool   EnableAutoTrading      = true;
 input int    SignalCheckIntervalSec = 15;
 input int    SymbolsToCheckPerSignalPoll = 10;  // number of symbols to evaluate per poll
 input int    MaxSymbolsToTrade          = 0;  // cap from active-symbols list (0 = use all)
+// Prevent repeated entries on the same server signal (common when polling fast)
+input bool   EnableSignalDedupe        = true;
+input int    SignalDedupeTtlSec        = 120;
+// Exposure caps
+input int    MaxPositionsPerSymbol     = 1;  // 0 = no cap
+input int    MaxTotalPositions         = 0;  // 0 = no cap
+input double MaxTotalLots              = 0.0; // 0 = no cap
+// Session filters (server time, HH:MM)
+input bool   EnableSessionFilter       = false;
+input string Session1Start             = "07:00";
+input string Session1End               = "11:30";
+input string Session2Start             = "13:00";
+input string Session2End               = "17:00";
+// News blackout (manual time window, server time)
+input bool   EnableNewsBlackout        = false;
+input string NewsBlackoutStart         = "12:25";
+input string NewsBlackoutEnd           = "12:45";
 input int    MagicNumber            = 87001;
 input double DefaultLots            = 0.01;
 input double MinLotSize             = 0.01;
@@ -101,10 +118,16 @@ input bool   EnforceMaxTradesPerDay     = false; // if true, stop new trades aft
 input int    MaxTradesPerDay            = 0;     // count of entry deals (MagicNumber); 0 = no limit
 input int    MaxSpreadPoints        = 80;
 input int    MaxSlippagePoints      = 20;
+input double MaxEntrySlipPips       = 3.0; // reject if price deviates from signal entry by more than N pips (0=off)
 input bool   DropInvalidStops       = true;
 input bool   VerboseTradeLogs       = true;
 input bool   TradeMajorsAndMetalsOnly = true; // safer defaults; avoids exotics/crypto
 input bool   RespectServerExecution = true; // requires server to return execution.shouldExecute=true
+
+// === Equity Curve Protection ===
+input bool   EnableEquityGuard          = false;
+input double DailyMaxDrawdownCurrency   = 0.0;  // trailing from daily equity high
+input double DailyMaxDrawdownPct        = 0.0;  // trailing from daily equity high
 
 // === Smart Market Filters (Optional) ===
 input bool          EnableVolatilityFilter   = true;      // filter symbols based on ATR/volatility
@@ -135,6 +158,15 @@ input bool          EnableAtrTrailing       = true;      // dynamic trailing dis
 input ENUM_TIMEFRAMES AtrTrailingTf         = PERIOD_M15;
 input double        AtrStartMultiplier      = 1.0;       // start trailing once profit >= ATR*pips*mult
 input double        AtrTrailMultiplier      = 2.0;       // trailing distance = max(TrailingDistancePips, ATR*pips*mult)
+input bool   CloseLosingTrades      = false;
+input double MaxLossPerTradePips    = 0.0;
+input double MaxLossPerTradeCurrency = 0.0;
+
+// === EA Smart Management (Server-Guided) ===
+input bool   EnableServerPositionSync = true;   // Send open positions for smart management
+input int    PositionSyncIntervalSec  = 5;
+input bool   EnableCommandPolling     = true;   // Poll server commands for manage actions
+input int    CommandPollIntervalSec   = 3;
 
 datetime g_lastHeartbeat = 0;
 bool     g_isConnected   = false;
@@ -169,6 +201,9 @@ bool     g_activeSymbolsEndpointSupported = true;
 
 datetime g_lastMarketBars = 0;
 
+datetime g_lastPositionSync = 0;
+datetime g_lastCommandPoll  = 0;
+
 int      g_lastHttpStatus = 0;
 int      g_lastWebError = 0;
 int      g_consecutiveFailures = 0;
@@ -184,6 +219,7 @@ datetime g_lastTradeModifyAt = 0;
 
 datetime g_dailyStart = 0;
 double   g_dailyStartEquity = 0.0;
+double   g_dailyEquityHigh = 0.0;
 bool     g_dailyHalt = false;
 string   g_dailyHaltReason = "";
 bool     g_dailyHaltLogged = false;
@@ -227,6 +263,59 @@ int      g_marketWatchPrepareCursor = 0;
 
 int      g_tradeCursor = 0;
 int      g_snapshotCursor = 0;
+
+// Signal idempotency / replay protection
+string   g_lastSignalSym[];
+string   g_lastSignalKey[];
+datetime g_lastSignalAt[];
+
+int FindLastSignalIndex(const string sym)
+{
+   int n = ArraySize(g_lastSignalSym);
+   for(int i = 0; i < n; i++)
+   {
+      if(g_lastSignalSym[i] == sym)
+         return i;
+   }
+   return -1;
+}
+
+bool WasSignalRecentlyProcessed(const string sym, const string key)
+{
+   if(!EnableSignalDedupe)
+      return false;
+   if(StringLen(sym) <= 0 || StringLen(key) <= 0)
+      return false;
+   int ttl = SignalDedupeTtlSec;
+   if(ttl <= 0)
+      ttl = 120;
+   int idx = FindLastSignalIndex(sym);
+   if(idx < 0)
+      return false;
+   if(g_lastSignalKey[idx] != key)
+      return false;
+   if(g_lastSignalAt[idx] == 0)
+      return false;
+   return (TimeCurrent() - g_lastSignalAt[idx]) < (datetime)ttl;
+}
+
+void MarkSignalProcessed(const string sym, const string key)
+{
+   if(StringLen(sym) <= 0 || StringLen(key) <= 0)
+      return;
+   int idx = FindLastSignalIndex(sym);
+   if(idx < 0)
+   {
+      int n = ArraySize(g_lastSignalSym);
+      ArrayResize(g_lastSignalSym, n + 1);
+      ArrayResize(g_lastSignalKey, n + 1);
+      ArrayResize(g_lastSignalAt, n + 1);
+      idx = n;
+   }
+   g_lastSignalSym[idx] = sym;
+   g_lastSignalKey[idx] = key;
+   g_lastSignalAt[idx] = TimeCurrent();
+}
 
 string TradeErrorText(const int err)
 {
@@ -869,18 +958,121 @@ string ToUpperStr(string value)
    return value;
 }
 
+bool JsonIsWhitespace(const int c)
+{
+   return (c == ' ' || c == 9 || c == 10 || c == 13);
+}
+
+int JsonSkipWhitespace(const string json, int pos)
+{
+   int n = StringLen(json);
+   while(pos < n && JsonIsWhitespace(StringGetCharacter(json, pos)))
+      pos++;
+   return pos;
+}
+
+int JsonFindKeyOutsideString(const string json, const string key, const int startPos)
+{
+   int n = StringLen(json);
+   int klen = StringLen(key);
+   if(klen <= 0)
+      return -1;
+   bool inStr = false;
+   bool esc = false;
+   for(int i = MathMax(0, startPos); i <= n - klen; i++)
+   {
+      int c = StringGetCharacter(json, i);
+      if(inStr)
+      {
+         if(esc)
+         {
+            esc = false;
+            continue;
+         }
+         if(c == '\\')
+         {
+            esc = true;
+            continue;
+         }
+         if(c == '"')
+         {
+            inStr = false;
+            continue;
+         }
+         continue;
+      }
+      else
+      {
+         if(c == '"')
+         {
+            inStr = true;
+            esc = false;
+            continue;
+         }
+      }
+
+      // Outside any string: try to match the key
+      if(StringSubstr(json, i, klen) == key)
+         return i;
+   }
+   return -1;
+}
+
+bool JsonReadStringValue(const string json, int pos, string &outValue, int &endPos)
+{
+   outValue = "";
+   endPos = pos;
+   int n = StringLen(json);
+   if(pos < 0 || pos >= n)
+      return false;
+   if(StringGetCharacter(json, pos) != '"')
+      return false;
+   pos++;
+
+   bool esc = false;
+   string out = "";
+   while(pos < n)
+   {
+      int c = StringGetCharacter(json, pos);
+      if(esc)
+      {
+         // Best-effort unescape
+         if(c == 'n') out += "\n";
+         else if(c == 'r') out += "\r";
+         else if(c == 't') out += "\t";
+         else out += CharToString((uchar)c);
+         esc = false;
+         pos++;
+         continue;
+      }
+      if(c == '\\')
+      {
+         esc = true;
+         pos++;
+         continue;
+      }
+      if(c == '"')
+      {
+         endPos = pos + 1;
+         outValue = out;
+         return true;
+      }
+      out += CharToString((uchar)c);
+      pos++;
+   }
+   return false;
+}
+
 // Extract a JSON boolean for a given key (e.g. "\"shouldExecute\"")
 bool JsonGetBool(const string json, const string key, bool &outValue)
 {
-   int pos = StringFind(json, key);
+   int pos = JsonFindKeyOutsideString(json, key, 0);
    if(pos < 0)
       return false;
    pos = StringFind(json, ":", pos);
    if(pos < 0)
       return false;
-   pos++;
-   while(pos < StringLen(json) && (StringGetCharacter(json, pos) == ' ' || StringGetCharacter(json, pos) == 10 || StringGetCharacter(json, pos) == 13 || StringGetCharacter(json, pos) == 9))
-      pos++;
+   pos = JsonSkipWhitespace(json, pos + 1);
    string tail = StringSubstr(json, pos, 8);
    tail = ToUpperStr(tail);
    if(StringFind(tail, "TRUE") == 0)
@@ -899,15 +1091,13 @@ bool JsonGetBool(const string json, const string key, bool &outValue)
 // Extract a JSON boolean for a given key, starting from a specific offset.
 bool JsonGetBoolFrom(const string json, const int startPos, const string key, bool &outValue)
 {
-   int pos = StringFind(json, key, startPos);
+   int pos = JsonFindKeyOutsideString(json, key, startPos);
    if(pos < 0)
       return false;
    pos = StringFind(json, ":", pos);
    if(pos < 0)
       return false;
-   pos++;
-   while(pos < StringLen(json) && (StringGetCharacter(json, pos) == ' ' || StringGetCharacter(json, pos) == 10 || StringGetCharacter(json, pos) == 13 || StringGetCharacter(json, pos) == 9))
-      pos++;
+   pos = JsonSkipWhitespace(json, pos + 1);
    string tail = StringSubstr(json, pos, 8);
    tail = ToUpperStr(tail);
    if(StringFind(tail, "TRUE") == 0)
@@ -925,62 +1115,44 @@ bool JsonGetBoolFrom(const string json, const int startPos, const string key, bo
 
 bool JsonGetString(const string json, const string key, string &outValue)
 {
-   int pos = StringFind(json, key);
+   int pos = JsonFindKeyOutsideString(json, key, 0);
    if(pos < 0)
       return false;
    pos = StringFind(json, ":", pos);
    if(pos < 0)
       return false;
-   pos++;
-   while(pos < StringLen(json) && (StringGetCharacter(json, pos) == ' ' || StringGetCharacter(json, pos) == 10 || StringGetCharacter(json, pos) == 13 || StringGetCharacter(json, pos) == 9))
-      pos++;
-   if(pos >= StringLen(json) || StringGetCharacter(json, pos) != '"')
-      return false;
-   pos++;
-   int end = StringFind(json, "\"", pos);
-   if(end < 0)
-      return false;
-   outValue = StringSubstr(json, pos, end - pos);
-   return true;
+   pos = JsonSkipWhitespace(json, pos + 1);
+   int endPos = pos;
+   return JsonReadStringValue(json, pos, outValue, endPos);
 }
 
 bool JsonGetStringFrom(const string json, const int startPos, const string key, string &outValue)
 {
-   int pos = StringFind(json, key, startPos);
+   int pos = JsonFindKeyOutsideString(json, key, startPos);
    if(pos < 0)
       return false;
    pos = StringFind(json, ":", pos);
    if(pos < 0)
       return false;
-   pos++;
-   while(pos < StringLen(json) && (StringGetCharacter(json, pos) == ' ' || StringGetCharacter(json, pos) == 10 || StringGetCharacter(json, pos) == 13 || StringGetCharacter(json, pos) == 9))
-      pos++;
-   if(pos >= StringLen(json) || StringGetCharacter(json, pos) != '"')
-      return false;
-   pos++;
-   int end = StringFind(json, "\"", pos);
-   if(end < 0)
-      return false;
-   outValue = StringSubstr(json, pos, end - pos);
-   return true;
+   pos = JsonSkipWhitespace(json, pos + 1);
+   int endPos = pos;
+   return JsonReadStringValue(json, pos, outValue, endPos);
 }
 
 bool JsonGetNumberFrom(const string json, const int startPos, const string key, double &outValue)
 {
-   int pos = StringFind(json, key, startPos);
+   int pos = JsonFindKeyOutsideString(json, key, startPos);
    if(pos < 0)
       return false;
    pos = StringFind(json, ":", pos);
    if(pos < 0)
       return false;
-   pos++;
-   while(pos < StringLen(json) && (StringGetCharacter(json, pos) == ' ' || StringGetCharacter(json, pos) == 10 || StringGetCharacter(json, pos) == 13 || StringGetCharacter(json, pos) == 9))
-      pos++;
+   pos = JsonSkipWhitespace(json, pos + 1);
    int end = pos;
    while(end < StringLen(json))
    {
       int c = StringGetCharacter(json, end);
-      if((c >= '0' && c <= '9') || c == '.' || c == '-' || c == '+')
+      if((c >= '0' && c <= '9') || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E')
       {
          end++;
          continue;
@@ -1009,6 +1181,34 @@ bool ExtractSignalStrengthConfidence(const string json, double &strengthOut, dou
       return false;
    if(okS) strengthOut = s;
    if(okC) confidenceOut = c;
+   return true;
+}
+
+bool ExtractSignalDedupeKey(const string json, const string direction, const double entry, const double sl, const double tp, const double lots, const double strength, const double confidence, string &outKey)
+{
+   outKey = "";
+   int sigPos = StringFind(json, "\"signal\"");
+   if(sigPos < 0)
+      sigPos = 0;
+
+   string id = "";
+   if(!JsonGetStringFrom(json, sigPos, "\"id\"", id))
+      JsonGetStringFrom(json, sigPos, "\"signalId\"", id);
+
+   string ts = "";
+   if(!JsonGetStringFrom(json, sigPos, "\"time\"", ts))
+      JsonGetStringFrom(json, sigPos, "\"timestamp\"", ts);
+
+   if(StringLen(id) > 0)
+   {
+      outKey = id;
+      if(StringLen(ts) > 0)
+         outKey = id + "|" + ts;
+      return true;
+   }
+
+   // Fallback key: stable summary of the executable parts.
+   outKey = StringFormat("%s|%0.5f|%0.5f|%0.5f|%0.2f|%0.0f|%0.0f", direction, entry, sl, tp, lots, strength, confidence);
    return true;
 }
 
@@ -1095,6 +1295,42 @@ bool ParseSignalForExecution(const string json,
       {
          if(JsonGetBool(json, "\"shouldExecute\"", tmp))
             shouldExecuteOut = tmp;
+      }
+
+      bool requireLayers = g_serverRequireLayers18;
+      bool requireEnter = g_serverRequiresEnterState;
+      if(execPos >= 0)
+      {
+         JsonGetBoolFrom(json, execPos, "\"requireLayers18\"", requireLayers);
+         JsonGetBoolFrom(json, execPos, "\"requiresEnterState\"", requireEnter);
+
+         if(requireLayers)
+         {
+            bool layersOk = false;
+            bool layersOkFound = false;
+            int layersPos = StringFind(json, "\"layersStatus\"", execPos);
+            if(layersPos >= 0)
+            {
+               if(JsonGetBoolFrom(json, layersPos, "\"ok\"", layersOk))
+                  layersOkFound = true;
+            }
+            if(layersOkFound && !layersOk)
+               shouldExecuteOut = false;
+         }
+
+         if(requireEnter)
+         {
+            string decision = "";
+            int gatesPos = StringFind(json, "\"gates\"", execPos);
+            if(gatesPos < 0)
+               gatesPos = execPos;
+            if(JsonGetStringFrom(json, gatesPos, "\"decisionState\"", decision) || JsonGetStringFrom(json, gatesPos, "\"layer18State\"", decision))
+            {
+               decision = ToUpperStr(decision);
+               if(decision != "ENTER")
+                  shouldExecuteOut = false;
+            }
+         }
       }
    }
 
@@ -1218,6 +1454,113 @@ datetime DayStartTime(const datetime t)
    return StructToTime(dt);
 }
 
+int TimeToMinutes(const datetime t)
+{
+   MqlDateTime dt;
+   TimeToStruct(t, dt);
+   return (dt.hour * 60) + dt.min;
+}
+
+int ParseTimeMinutes(const string hhmm)
+{
+   int sep = StringFind(hhmm, ":");
+   if(sep < 0)
+      return -1;
+   int h = (int)StringToInteger(StringSubstr(hhmm, 0, sep));
+   int m = (int)StringToInteger(StringSubstr(hhmm, sep + 1));
+   if(h < 0 || h > 23 || m < 0 || m > 59)
+      return -1;
+   return h * 60 + m;
+}
+
+bool IsTimeInWindow(const int nowMin, const int startMin, const int endMin)
+{
+   if(startMin < 0 || endMin < 0)
+      return true;
+   if(startMin == endMin)
+      return true; // treat as always-open
+   if(startMin < endMin)
+      return (nowMin >= startMin && nowMin <= endMin);
+   // crosses midnight
+   return (nowMin >= startMin || nowMin <= endMin);
+}
+
+bool IsWithinTradingSessions()
+{
+   if(!EnableSessionFilter)
+      return true;
+   int nowMin = TimeToMinutes(TimeCurrent());
+   int s1 = ParseTimeMinutes(Session1Start);
+   int e1 = ParseTimeMinutes(Session1End);
+   int s2 = ParseTimeMinutes(Session2Start);
+   int e2 = ParseTimeMinutes(Session2End);
+   bool in1 = IsTimeInWindow(nowMin, s1, e1);
+   bool in2 = IsTimeInWindow(nowMin, s2, e2);
+   return in1 || in2;
+}
+
+bool IsNewsBlackoutNow()
+{
+   if(!EnableNewsBlackout)
+      return false;
+   int nowMin = TimeToMinutes(TimeCurrent());
+   int s = ParseTimeMinutes(NewsBlackoutStart);
+   int e = ParseTimeMinutes(NewsBlackoutEnd);
+   return IsTimeInWindow(nowMin, s, e);
+}
+
+int CountOpenPositionsMagic()
+{
+   int total = PositionsTotal();
+   int count = 0;
+   for(int i = 0; i < total; i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      long magic = PositionGetInteger(POSITION_MAGIC);
+      if(magic == MagicNumber)
+         count++;
+   }
+   return count;
+}
+
+int CountPositionsForSymbol(const string sym)
+{
+   if(StringLen(sym) <= 0)
+      return 0;
+   int total = PositionsTotal();
+   int count = 0;
+   for(int i = 0; i < total; i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      string s = PositionGetString(POSITION_SYMBOL);
+      long magic = PositionGetInteger(POSITION_MAGIC);
+      if(magic == MagicNumber && s == sym)
+         count++;
+   }
+   return count;
+}
+
+double SumOpenLotsMagic()
+{
+   int total = PositionsTotal();
+   double sum = 0.0;
+   for(int i = 0; i < total; i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      long magic = PositionGetInteger(POSITION_MAGIC);
+      if(magic != MagicNumber)
+         continue;
+      sum += PositionGetDouble(POSITION_VOLUME);
+   }
+   return sum;
+}
+
 void RefreshDailyStateIfNeeded()
 {
    datetime now = TimeCurrent();
@@ -1226,10 +1569,15 @@ void RefreshDailyStateIfNeeded()
    {
       g_dailyStart = start;
       g_dailyStartEquity = AccountInfoDouble(ACCOUNT_EQUITY);
+      g_dailyEquityHigh = g_dailyStartEquity;
       g_dailyHalt = false;
       g_dailyHaltReason = "";
       g_dailyHaltLogged = false;
    }
+   // Track new equity high (for trailing drawdown guard)
+   double eq = AccountInfoDouble(ACCOUNT_EQUITY);
+   if(eq > g_dailyEquityHigh)
+      g_dailyEquityHigh = eq;
 }
 
 double GetTodayRealizedPnl()
@@ -1314,6 +1662,22 @@ bool IsDailyTradingAllowed()
          g_dailyHaltLogged = true;
       }
       return false;
+   }
+
+   // Equity curve guard (trailing drawdown from daily high)
+   if(EnableEquityGuard)
+   {
+      double eq = AccountInfoDouble(ACCOUNT_EQUITY);
+      double dd = g_dailyEquityHigh - eq;
+      double ddLimit = DailyMaxDrawdownCurrency;
+      if(DailyMaxDrawdownPct > 0.0 && g_dailyEquityHigh > 0.0)
+         ddLimit = MathMax(ddLimit, g_dailyEquityHigh * (DailyMaxDrawdownPct / 100.0));
+      if(ddLimit > 0.0 && dd >= ddLimit)
+      {
+         g_dailyHalt = true;
+         g_dailyHaltReason = StringFormat("equity drawdown hit (dd=%.2f limit=%.2f)", dd, ddLimit);
+         return false;
+      }
    }
 
    double pnl = GetTodayRealizedPnl();
@@ -1425,6 +1789,9 @@ bool PostMarketBars()
 
       if(StringLen(sym) <= 0)
          sym = _Symbol;
+
+      if(!IsTradeSymbolEligible(sym))
+         continue;
 
       // M1 is sent as an intra-candle "moving" bar for UI (also includes history to seed quickly).
       if(PostMarketBarsForSymbol(sym, PERIOD_M1, "M1"))
@@ -1819,6 +2186,8 @@ bool PostSymbolUniverse()
       StringTrimLeft(sym);
       StringTrimRight(sym);
       if(StringLen(sym) <= 0)
+         continue;
+      if(!IsTradeSymbolEligible(sym))
          continue;
       if(added > 0)
          payload += ",";
@@ -2231,6 +2600,21 @@ bool PostMarketQuotes()
       string tmp = FeedSymbolsCsv;
       StringReplace(tmp, " ", "");
       symbolCount = StringSplit(tmp, ',', symbols);
+      if(symbolCount > 0)
+      {
+         int kept = 0;
+         for(int i = 0; i < symbolCount; i++)
+         {
+            if(StringLen(symbols[i]) <= 0)
+               continue;
+            if(!IsTradeSymbolEligible(symbols[i]))
+               continue;
+            symbols[kept] = symbols[i];
+            kept++;
+         }
+         symbolCount = kept;
+         ArrayResize(symbols, symbolCount);
+      }
    }
 
    // Always include chart symbol
@@ -2238,8 +2622,11 @@ bool PostMarketQuotes()
    if(symbolCount <= 0)
    {
       ArrayResize(symbols, 1);
-      symbols[0] = chartSymbol;
-      symbolCount = 1;
+      if(StringLen(chartSymbol) > 0 && IsTradeSymbolEligible(chartSymbol))
+      {
+         symbols[0] = chartSymbol;
+         symbolCount = 1;
+      }
    }
    else
    {
@@ -2252,7 +2639,7 @@ bool PostMarketQuotes()
             break;
          }
       }
-      if(!found)
+      if(!found && StringLen(chartSymbol) > 0 && IsTradeSymbolEligible(chartSymbol))
       {
          int newSize = symbolCount + 1;
          ArrayResize(symbols, newSize);
@@ -2277,6 +2664,8 @@ bool PostMarketQuotes()
          string resolved = ResolveBrokerSymbol(raw);
          if(StringLen(resolved) <= 0)
             continue;
+         if(!IsTradeSymbolEligible(resolved))
+            continue;
 
          bool exists = false;
          int n = ArraySize(activeList);
@@ -2297,7 +2686,7 @@ bool PostMarketQuotes()
 
       // Always include chart symbol
       string chartSym = Symbol();
-      if(StringLen(chartSym) > 0)
+      if(StringLen(chartSym) > 0 && IsTradeSymbolEligible(chartSym))
       {
          bool exists = false;
          for(int j = 0; j < ArraySize(activeList); j++)
@@ -2330,6 +2719,8 @@ bool PostMarketQuotes()
       {
          string name = SymbolName(i, true);
          if(StringLen(name) <= 0)
+            continue;
+         if(!IsTradeSymbolEligible(name))
             continue;
          bool exists = false;
          for(int j = 0; j < symbolCount; j++)
@@ -2369,6 +2760,8 @@ bool PostMarketQuotes()
       {
          string sym = g_prioritySymbols[i];
          if(StringLen(sym) <= 0)
+            continue;
+         if(!IsTradeSymbolEligible(sym))
             continue;
          if(!SymbolSelect(sym, true))
             continue;
@@ -2640,7 +3033,7 @@ void ManagePositionsBreakeven()
       req.action = TRADE_ACTION_SLTP;
       req.symbol = sym;
       req.magic = MagicNumber;
-      req.position = (ulong)PositionGetInteger(POSITION_TICKET);
+      req.position = ticket;
       req.sl = newSl;
       req.tp = tp;
 
@@ -2748,7 +3141,7 @@ void ManagePositionsTrailingStop()
       req.action = TRADE_ACTION_SLTP;
       req.symbol = sym;
       req.magic = MagicNumber;
-      req.position = (ulong)PositionGetInteger(POSITION_TICKET);
+      req.position = ticket;
       req.sl = newSl;
       req.tp = tp;
 
@@ -2765,8 +3158,64 @@ void ManagePositionsTrailingStop()
    }
 }
 
-bool ClosePositionOppositeSignal(const string sym, const long posType, const string signalDir)
+void ManagePositionsLossCut()
 {
+   if(!CloseLosingTrades)
+      return;
+
+   int total = PositionsTotal();
+   for(int i = 0; i < total; i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+
+      string sym = PositionGetString(POSITION_SYMBOL);
+      long magic = PositionGetInteger(POSITION_MAGIC);
+      if(magic != MagicNumber)
+         continue;
+
+      long type = PositionGetInteger(POSITION_TYPE);
+      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      double profit = PositionGetDouble(POSITION_PROFIT);
+      double volume = PositionGetDouble(POSITION_VOLUME);
+
+      double bid = 0.0, ask = 0.0;
+      if(!SymbolInfoDouble(sym, SYMBOL_BID, bid) || !SymbolInfoDouble(sym, SYMBOL_ASK, ask))
+         continue;
+
+      double pip = PipSize(sym);
+      double current = (type == POSITION_TYPE_BUY) ? bid : ask;
+      double lossPips = 0.0;
+      if(pip > 0.0)
+      {
+         lossPips = (type == POSITION_TYPE_BUY) ? (openPrice - current) / pip : (current - openPrice) / pip;
+      }
+
+      if(MaxLossPerTradePips > 0.0 && lossPips >= MaxLossPerTradePips)
+      {
+         ClosePositionOppositeSignalByTicket(ticket, type == POSITION_TYPE_BUY ? "SELL" : "BUY");
+         continue;
+      }
+
+      if(MaxLossPerTradeCurrency > 0.0 && profit <= -MaxLossPerTradeCurrency)
+      {
+         ClosePositionOppositeSignalByTicket(ticket, type == POSITION_TYPE_BUY ? "SELL" : "BUY");
+         continue;
+      }
+   }
+}
+
+bool ClosePositionOppositeSignalByTicket(const ulong ticket, const string signalDir)
+{
+   if(ticket == 0)
+      return false;
+
+   if(!PositionSelectByTicket(ticket))
+      return false;
+
+   string sym = PositionGetString(POSITION_SYMBOL);
+   long posType = PositionGetInteger(POSITION_TYPE);
    if(StringLen(sym) <= 0)
       return false;
 
@@ -2796,7 +3245,7 @@ bool ClosePositionOppositeSignal(const string sym, const long posType, const str
    req.volume = volume;
    req.deviation = MaxSlippagePoints;
    req.type_time = ORDER_TIME_GTC;
-   req.position = (ulong)PositionGetInteger(POSITION_TICKET);
+   req.position = ticket;
 
    long fillMode = 0;
    if(SymbolInfoInteger(sym, SYMBOL_FILLING_MODE, fillMode))
@@ -2893,7 +3342,7 @@ void CheckSmartCloseOppositeSignals()
       if(strength < minS || confidence < minC)
          continue;
 
-      ClosePositionOppositeSignal(sym, type, direction);
+      ClosePositionOppositeSignalByTicket(ticket, direction);
    }
 
    g_lastSmartCloseCheck = TimeCurrent();
@@ -2907,6 +3356,18 @@ void CheckAndExecuteSignals()
    // Smart discipline: stop initiating new trades after daily limits/targets.
    // (Position management continues independently.)
    if(!IsDailyTradingAllowed())
+      return;
+
+   if(!IsWithinTradingSessions())
+      return;
+
+   if(IsNewsBlackoutNow())
+      return;
+
+   if(MaxTotalPositions > 0 && CountOpenPositionsMagic() >= MaxTotalPositions)
+      return;
+
+   if(MaxTotalLots > 0.0 && SumOpenLotsMagic() >= MaxTotalLots)
       return;
 
    // Trade across dashboard-driven active symbols (or fallback to chart symbol).
@@ -3007,6 +3468,7 @@ void CheckAndExecuteSignals()
    bool found = false;
    string bestSym = "";
    string bestDirection = "";
+   string bestSignalKey = "";
    double bestEntry = 0.0, bestSl = 0.0, bestTp = 0.0, bestLots = DefaultLots;
    double bestStrength = -1.0;
    double bestConfidence = -1.0;
@@ -3031,6 +3493,9 @@ void CheckAndExecuteSignals()
       SymbolSelect(sym, true);
 
       if(HasOpenPositionForSymbol(sym))
+         continue;
+
+      if(MaxPositionsPerSymbol > 0 && CountPositionsForSymbol(sym) >= MaxPositionsPerSymbol)
          continue;
 
       if(MaxSpreadPoints > 0 && CurrentSpreadPoints(sym) > MaxSpreadPoints)
@@ -3110,6 +3575,15 @@ void CheckAndExecuteSignals()
       double confidence = 0.0;
       ExtractSignalStrengthConfidence(response, strength, confidence);
 
+      string sigKey = "";
+      ExtractSignalDedupeKey(response, direction, entry, sl, tp, lots, strength, confidence, sigKey);
+      if(WasSignalRecentlyProcessed(sym, sigKey))
+      {
+         if(VerboseTradeLogs)
+            PrintFormat("Skipping duplicate signal for %s (key=%s)", sym, sigKey);
+         continue;
+      }
+
       if(SmartStrongMode && EnforceSmartStrongThresholds)
       {
          double minS = SmartStrongMinStrengthTrade;
@@ -3136,6 +3610,7 @@ void CheckAndExecuteSignals()
          found = true;
          bestSym = sym;
          bestDirection = direction;
+         bestSignalKey = sigKey;
          bestEntry = entry;
          bestSl = sl;
          bestTp = tp;
@@ -3251,6 +3726,17 @@ void CheckAndExecuteSignals()
    if(bestLots > MaxLotSize)
       bestLots = MaxLotSize;
 
+   if(MaxTotalLots > 0.0)
+   {
+      double existingLots = SumOpenLotsMagic();
+      if(existingLots + bestLots > MaxTotalLots)
+      {
+         if(VerboseTradeLogs)
+            PrintFormat("Exposure cap hit (lots %.2f + %.2f > %.2f). Skipping trade.", existingLots, bestLots, MaxTotalLots);
+         return;
+      }
+   }
+
    // Normalize lots to broker's volume constraints (min/max/step)
    double vMin = 0.0, vMax = 0.0, vStep = 0.0;
    SymbolInfoDouble(bestSym, SYMBOL_VOLUME_MIN, vMin);
@@ -3301,6 +3787,22 @@ void CheckAndExecuteSignals()
    else
    {
       return;
+   }
+
+   // Entry slippage guard vs server entry price
+   if(MaxEntrySlipPips > 0.0 && bestEntry > 0.0)
+   {
+      double pip = PipSize(bestSym);
+      if(pip > 0.0)
+      {
+         double slipPips = MathAbs(req.price - bestEntry) / pip;
+         if(slipPips > MaxEntrySlipPips)
+         {
+            if(VerboseTradeLogs)
+               PrintFormat("Skipping %s due to entry slippage (%.2f pips > %.2f)", bestSym, slipPips, MaxEntrySlipPips);
+            return;
+         }
+      }
    }
 
    // Normalize price levels to symbol digits.
@@ -3483,6 +3985,9 @@ void CheckAndExecuteSignals()
 
    if(!sent)
       return;
+
+   if(StringLen(bestSignalKey) > 0)
+      MarkSignalProcessed(bestSym, bestSignalKey);
 }
 
 void ClearSignalOverlayObjects()
@@ -3634,6 +4139,308 @@ void UpdateSignalOverlay()
    g_lastOverlayKey = key;
 
    DrawSignalOverlay(sym, direction, entry, sl, tp, strength, confidence);
+}
+
+//+------------------------------------------------------------------+
+//| Server-guided trade management                                  |
+//+------------------------------------------------------------------+
+string ExtractJsonString(const string src, const string key, int startPos)
+{
+   string needle = StringFormat("\"%s\"", key);
+   int p = JsonFindKeyOutsideString(src, needle, startPos);
+   if(p < 0)
+      return "";
+   int colon = StringFind(src, ":", p + StringLen(needle));
+   if(colon < 0)
+      return "";
+   int s = JsonSkipWhitespace(src, colon + 1);
+   string out = "";
+   int endPos = s;
+   if(!JsonReadStringValue(src, s, out, endPos))
+      return "";
+   return out;
+}
+
+double ExtractJsonNumber(const string src, const string key, int startPos)
+{
+   string needle = StringFormat("\"%s\"", key);
+   int p = JsonFindKeyOutsideString(src, needle, startPos);
+   if(p < 0)
+      return 0.0;
+   int colon = StringFind(src, ":", p + StringLen(needle));
+   if(colon < 0)
+      return 0.0;
+   int s = JsonSkipWhitespace(src, colon + 1);
+   int e = s;
+   while(e < StringLen(src))
+   {
+      int c = StringGetCharacter(src, e);
+      if((c >= '0' && c <= '9') || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E')
+      {
+         e++;
+         continue;
+      }
+      break;
+   }
+   if(e <= s)
+      return 0.0;
+   return StrToDouble(StringSubstr(src, s, e - s));
+}
+
+void ExecuteManagementCommand(const string type, const string symbol, const double price, const double percent, const double distancePips)
+{
+   int total = PositionsTotal();
+   for(int i = total - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+
+      string sym = PositionGetString(POSITION_SYMBOL);
+      if(StringLen(symbol) > 0 && sym != symbol)
+         continue;
+
+      long magic = PositionGetInteger(POSITION_MAGIC);
+      if(magic != MagicNumber)
+         continue;
+
+      long typePos = PositionGetInteger(POSITION_TYPE);
+      bool isBuy = (typePos == POSITION_TYPE_BUY);
+      bool isSell = (typePos == POSITION_TYPE_SELL);
+      if(!isBuy && !isSell) continue;
+
+      double volume = PositionGetDouble(POSITION_VOLUME);
+      if(!(volume > 0.0)) continue;
+
+      MqlTick tick;
+      if(!SymbolInfoTick(sym, tick)) continue;
+
+      if(type == "partial_close")
+      {
+         double pct = MathMax(0.0, MathMin(1.0, percent));
+         if(pct <= 0.0) return;
+         double closeVolume = volume * pct;
+         closeVolume = MathMax(MinLotSize, MathMin(volume, closeVolume));
+
+         MqlTradeRequest req;
+         MqlTradeResult res;
+         ZeroMemory(req);
+         ZeroMemory(res);
+
+         req.action = TRADE_ACTION_DEAL;
+         req.symbol = sym;
+         req.magic = MagicNumber;
+         req.position = ticket;
+         req.volume = closeVolume;
+         req.deviation = MaxSlippagePoints;
+         req.type_time = ORDER_TIME_GTC;
+
+         long fillMode = 0;
+         if(SymbolInfoInteger(sym, SYMBOL_FILLING_MODE, fillMode))
+            req.type_filling = (ENUM_ORDER_TYPE_FILLING)fillMode;
+         else
+            req.type_filling = ORDER_FILLING_FOK;
+         if(!IsMarketFillMode(req.type_filling))
+            req.type_filling = ORDER_FILLING_FOK;
+
+         if(isBuy)
+         {
+            req.type = ORDER_TYPE_SELL;
+            req.price = tick.bid;
+         }
+         else
+         {
+            req.type = ORDER_TYPE_BUY;
+            req.price = tick.ask;
+         }
+
+         int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+         if(digits < 0) digits = 5;
+         req.price = NormalizeDouble(req.price, digits);
+
+         if(OrderSend(req, res))
+            PrintFormat("Partial close executed %s vol=%.2f", sym, closeVolume);
+         else
+            PrintFormat("Partial close failed %s err=%d ret=%d", sym, GetLastError(), (int)res.retcode);
+         return;
+      }
+
+      if(type == "modify_sl")
+      {
+         if(price <= 0.0) return;
+         double bid = tick.bid;
+         double ask = tick.ask;
+         double desiredSl = price;
+         double newSl = ClampStopLevelForPosition(sym, typePos, desiredSl, bid, ask);
+
+         MqlTradeRequest req;
+         MqlTradeResult res;
+         ZeroMemory(req);
+         ZeroMemory(res);
+         req.action = TRADE_ACTION_SLTP;
+         req.symbol = sym;
+         req.magic = MagicNumber;
+         req.position = ticket;
+         req.sl = newSl;
+         req.tp = PositionGetDouble(POSITION_TP);
+
+         if(OrderSend(req, res))
+            PrintFormat("SL modified %s newSL=%.5f", sym, newSl);
+         else
+            PrintFormat("SL modify failed %s err=%d ret=%d", sym, GetLastError(), (int)res.retcode);
+         return;
+      }
+
+      if(type == "trail")
+      {
+         if(distancePips <= 0.0) return;
+         double pip = PipSize(sym);
+         if(!(pip > 0.0)) return;
+
+         double bid = tick.bid;
+         double ask = tick.ask;
+         double desiredSl = isBuy ? bid - (distancePips * pip) : ask + (distancePips * pip);
+         double newSl = ClampStopLevelForPosition(sym, typePos, desiredSl, bid, ask);
+
+         double currentSl = PositionGetDouble(POSITION_SL);
+         if(isBuy && newSl <= currentSl) return;
+         if(isSell && currentSl > 0.0 && newSl >= currentSl) return;
+
+         MqlTradeRequest req;
+         MqlTradeResult res;
+         ZeroMemory(req);
+         ZeroMemory(res);
+         req.action = TRADE_ACTION_SLTP;
+         req.symbol = sym;
+         req.magic = MagicNumber;
+         req.position = ticket;
+         req.sl = newSl;
+         req.tp = PositionGetDouble(POSITION_TP);
+
+         if(OrderSend(req, res))
+            PrintFormat("Trail SL updated %s newSL=%.5f", sym, newSl);
+         else
+            PrintFormat("Trail SL failed %s err=%d ret=%d", sym, GetLastError(), (int)res.retcode);
+         return;
+      }
+
+      if(type == "close_position")
+      {
+         MqlTradeRequest req;
+         MqlTradeResult res;
+         ZeroMemory(req);
+         ZeroMemory(res);
+
+         req.action = TRADE_ACTION_DEAL;
+         req.symbol = sym;
+         req.magic = MagicNumber;
+         req.position = ticket;
+         req.volume = volume;
+         req.deviation = MaxSlippagePoints;
+         req.type_time = ORDER_TIME_GTC;
+
+         long fillMode2 = 0;
+         if(SymbolInfoInteger(sym, SYMBOL_FILLING_MODE, fillMode2))
+            req.type_filling = (ENUM_ORDER_TYPE_FILLING)fillMode2;
+         else
+            req.type_filling = ORDER_FILLING_FOK;
+         if(!IsMarketFillMode(req.type_filling))
+            req.type_filling = ORDER_FILLING_FOK;
+
+         if(isBuy)
+         {
+            req.type = ORDER_TYPE_SELL;
+            req.price = tick.bid;
+         }
+         else
+         {
+            req.type = ORDER_TYPE_BUY;
+            req.price = tick.ask;
+         }
+
+         int digits2 = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+         if(digits2 < 0) digits2 = 5;
+         req.price = NormalizeDouble(req.price, digits2);
+
+         if(OrderSend(req, res))
+            PrintFormat("Position closed %s", sym);
+         else
+            PrintFormat("Close failed %s err=%d ret=%d", sym, GetLastError(), (int)res.retcode);
+         return;
+      }
+   }
+}
+
+void ParseAndExecuteCommands(const string response)
+{
+   int pos = 0;
+   while(true)
+   {
+      int typePos = StringFind(response, "\"type\":\"", pos);
+      if(typePos < 0) break;
+      string type = ExtractJsonString(response, "type", typePos);
+      string symbol = ExtractJsonString(response, "symbol", typePos);
+      double price = ExtractJsonNumber(response, "price", typePos);
+      double percent = ExtractJsonNumber(response, "percent", typePos);
+      double distancePips = ExtractJsonNumber(response, "distancePips", typePos);
+      if(StringLen(type) > 0)
+         ExecuteManagementCommand(type, symbol, price, percent, distancePips);
+      pos = typePos + 10;
+   }
+}
+
+bool PostPositionManagement(const bool enqueue)
+{
+   string payload = "{\"positions\":[";
+   int count = 0;
+   int total = PositionsTotal();
+   for(int i = total - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      string sym = PositionGetString(POSITION_SYMBOL);
+      long magic = PositionGetInteger(POSITION_MAGIC);
+      if(magic != MagicNumber) continue;
+
+      long typePos = PositionGetInteger(POSITION_TYPE);
+      double entry = PositionGetDouble(POSITION_PRICE_OPEN);
+      double sl = PositionGetDouble(POSITION_SL);
+      double tp = PositionGetDouble(POSITION_TP);
+      double volume = PositionGetDouble(POSITION_VOLUME);
+
+      MqlTick tick;
+      if(!SymbolInfoTick(sym, tick)) continue;
+      double current = (typePos == POSITION_TYPE_BUY) ? tick.bid : tick.ask;
+      string dir = (typePos == POSITION_TYPE_BUY) ? "BUY" : "SELL";
+
+      if(count > 0) payload += ",";
+      payload += StringFormat(
+         "{\"symbol\":\"%s\",\"direction\":\"%s\",\"entryPrice\":%.5f,\"currentPrice\":%.5f,\"stopLoss\":%.5f,\"takeProfit\":%.5f,\"ticket\":%I64d,\"lots\":%.2f,\"managementState\":{\"partialsTaken\":[]}}",
+         sym, dir, entry, current, sl, tp, ticket, volume
+      );
+      count++;
+   }
+   payload += StringFormat("] ,\"enqueue\":%s}", enqueue ? "true" : "false");
+
+   string response = "";
+   if(BridgeRequest("POST", "/agent/manage", payload, response, true))
+   {
+      if(StringLen(response) > 0)
+         ParseAndExecuteCommands(response);
+      return true;
+   }
+   return false;
+}
+
+bool PollManagementCommands()
+{
+   string response = "";
+   if(BridgeRequest("GET", "/agent/commands?limit=20", "", response, true))
+   {
+      if(StringLen(response) > 0)
+         ParseAndExecuteCommands(response);
+      return true;
+   }
+   return false;
 }
 
 string BuildSessionPayload(bool includeForceFlag)
@@ -3875,7 +4682,21 @@ void OnTimer()
    // Position management
    ManagePositionsBreakeven();
    ManagePositionsTrailingStop();
+   ManagePositionsLossCut();
    CheckSmartCloseOppositeSignals();
+
+   // Server-guided position management + command polling
+   if(EnableServerPositionSync && (g_lastPositionSync == 0 || (TimeCurrent() - g_lastPositionSync) >= PositionSyncIntervalSec))
+   {
+      if(PostPositionManagement(true))
+         g_lastPositionSync = TimeCurrent();
+   }
+
+   if(EnableCommandPolling && (g_lastCommandPoll == 0 || (TimeCurrent() - g_lastCommandPoll) >= CommandPollIntervalSec))
+   {
+      if(PollManagementCommands())
+         g_lastCommandPoll = TimeCurrent();
+   }
 }
 
 string TransactionTypeToString(const ENUM_TRADE_TRANSACTION_TYPE type)

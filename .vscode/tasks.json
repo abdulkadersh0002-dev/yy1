@@ -2,9 +2,28 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "🧰 Check Node.js + npm",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$ErrorActionPreference='Stop'; $node=(Get-Command node -ErrorAction SilentlyContinue); $npm=(Get-Command npm -ErrorAction SilentlyContinue); if(-not $node){Write-Error 'Node.js is not on PATH. Install Node.js 20+ (LTS) and restart VS Code.'; exit 1}; if(-not $npm){Write-Error 'npm is not on PATH. Reinstall Node.js and ensure npm is included.'; exit 1}; node -v; npm -v"
+      ],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
       "label": "📦 Install Dependencies",
       "type": "shell",
       "command": "npm ci",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -12,9 +31,11 @@
       }
     },
     {
-      "label": "🚀 Start Development Server",
+      "label": "🚀 Start Server + Dashboard",
       "type": "shell",
-      "command": "npm start",
+      "command": "npm run start:all",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": {
         "kind": "build",
         "isDefault": true
@@ -26,24 +47,23 @@
       "isBackground": true
     },
     {
-      "label": "🚀 Start Server + Dashboard",
+      "label": "🛰️ Watch Auto-Trading Events (ws)",
       "type": "shell",
-      "command": "npm run start:all",
-      "group": "build",
+      "command": "node",
+      "args": ["scripts/diagnostics/watch-auto-trading.mjs", "http://127.0.0.1:4101"],
+      "isBackground": true,
       "presentation": {
         "reveal": "always",
         "panel": "dedicated"
       },
-      "isBackground": true
+      "group": "test"
     },
     {
       "label": "🚀 Start Server + Dashboard (NO DB/NO KEYS - synthetic dev)",
       "type": "shell",
-      "command": "cmd",
-      "args": [
-        "/c",
-        "set ALLOW_SYNTHETIC_DATA=true&& set REQUIRE_REALTIME_DATA=false&& set NEWS_RSS_ONLY=true&& npm run start:all"
-      ],
+      "command": "npm run start:all -- --preset synthetic",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -54,8 +74,9 @@
     {
       "label": "🚀 Start Server + Dashboard (ALL symbols)",
       "type": "shell",
-      "command": "cmd",
-      "args": ["/c", "set ALLOW_ALL_SYMBOLS=true&& npm run start:all"],
+      "command": "npm run start:all -- --preset all_symbols",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -66,11 +87,9 @@
     {
       "label": "🚀 Start Server + Dashboard (ALL symbols + Full Scan)",
       "type": "shell",
-      "command": "cmd",
-      "args": [
-        "/c",
-        "set ALLOW_ALL_SYMBOLS=true&& set EA_FULL_SCAN=true&& set EA_BACKGROUND_SIGNALS=true&& set EA_RESPECT_DASHBOARD_ACTIVE_SYMBOLS=false&& set EA_DASHBOARD_ALLOW_CANDIDATES=true&& set EA_SCAN_SYMBOLS_MAX=2000&& set VITE_ACTIVE_SYMBOLS_SYNC_MAX=2000&& set WS_MAX_RECENT_CANDIDATE_SIGNALS=500&& set VITE_MAX_CANDIDATE_ITEMS=500&& set VITE_CANDIDATE_TABLE_ROWS=200&& npm run start:all"
-      ],
+      "command": "npm run start:all -- --preset all_symbols_full_scan",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -81,19 +100,9 @@
     {
       "label": "🚀 Start Server + Dashboard (ALL symbols + AUTO trading)",
       "type": "shell",
-      "command": "cmd",
-      "args": [
-        "/c",
-        {
-          "label": "🛰️ Watch Auto-Trading Events (ws)",
-          "type": "shell",
-          "command": "node",
-          "args": ["scripts/diagnostics/watch-auto-trading.mjs", "http://127.0.0.1:4101"],
-          "isBackground": true,
-          "group": "test"
-        },
-        "set ALLOW_ALL_SYMBOLS=true&& set AUTO_TRADING_AUTOSTART=true&& npm run start:all"
-      ],
+      "command": "npm run start:all -- --preset all_symbols_auto_trading",
+      "dependsOn": ["🧰 Check Node.js + npm", "🛰️ Watch Auto-Trading Events (ws)"],
+      "dependsOrder": "parallel",
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -104,11 +113,9 @@
     {
       "label": "🚀 Start Server + Dashboard (SMART STRONG MT5 auto)",
       "type": "shell",
-      "command": "cmd",
-      "args": [
-        "/c",
-        "set ALLOW_ALL_SYMBOLS=false&& set AUTO_TRADING_ASSET_CLASSES=forex,metals&& set AUTO_TRADING_AUTOSTART=true&& set AUTO_TRADING_PRESET=smart_strong&& set AUTO_TRADING_FORCE_BROKER=mt5&& npm run start:all"
-      ],
+      "command": "npm run start:all -- --preset smart_strong_mt5_auto",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -119,11 +126,9 @@
     {
       "label": "🚀 Start Server + Dashboard (SMART STRONG MT5 auto + more entries)",
       "type": "shell",
-      "command": "cmd",
-      "args": [
-        "/c",
-        "set ALLOW_ALL_SYMBOLS=false&& set AUTO_TRADING_ASSET_CLASSES=forex,metals&& set AUTO_TRADING_AUTOSTART=true&& set AUTO_TRADING_PRESET=smart_strong&& set AUTO_TRADING_FORCE_BROKER=mt5&& set AUTO_TRADING_REALTIME_REQUIRE_LAYERS18=false&& set AUTO_TRADING_REALTIME_MIN_CONFIDENCE=70&& set AUTO_TRADING_REALTIME_MIN_STRENGTH=55&& set EA_SIGNAL_MIN_CONFIDENCE=70&& set EA_SIGNAL_MIN_STRENGTH=55&& set AUTO_TRADING_ENFORCE_HTF_ALIGNMENT=false&& set AUTO_TRADING_SMART_STRONG_ENTER_SCORE=40&& set EA_STRICT_SMART_CHECKLIST=false&& set SIGNAL_CONFLUENCE_ADVISORY_SMART_FAILS=true&& set SIGNAL_CONFLUENCE_MIN_SCORE=45&& set SIGNAL_HARD_MIN_CONFIDENCE=40&& npm run start:all"
-      ],
+      "command": "npm run start:all -- --preset smart_strong_mt5_more_entries",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -134,11 +139,9 @@
     {
       "label": "🚀 Start Server + Dashboard (FX+Metals STRONG AUTO v2)",
       "type": "shell",
-      "command": "cmd",
-      "args": [
-        "/c",
-        "set ALLOW_ALL_SYMBOLS=false&& set AUTO_TRADING_ASSET_CLASSES=forex,metals&& set AUTO_TRADING_AUTOSTART=true&& set AUTO_TRADING_PRESET=smart_strong&& set AUTO_TRADING_FORCE_BROKER=mt5&& set AUTO_TRADING_REALTIME_REQUIRE_LAYERS18=false&& set AUTO_TRADING_REALTIME_MIN_CONFIDENCE=70&& set AUTO_TRADING_REALTIME_MIN_STRENGTH=55&& set EA_SIGNAL_MIN_CONFIDENCE=70&& set EA_SIGNAL_MIN_STRENGTH=55&& set AUTO_TRADING_ENFORCE_HTF_ALIGNMENT=false&& set AUTO_TRADING_SMART_STRONG_ENTER_SCORE=40&& npm run start:all"
-      ],
+      "command": "npm run start:all -- --preset fx_metals_strong_auto_v2",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -149,11 +152,9 @@
     {
       "label": "🚀 Start Server + Dashboard (FX+Metals ACTIVE AUTO - more trades)",
       "type": "shell",
-      "command": "cmd",
-      "args": [
-        "/c",
-        "set ALLOW_ALL_SYMBOLS=false&& set AUTO_TRADING_ASSET_CLASSES=forex,metals&& set AUTO_TRADING_AUTOSTART=true&& set AUTO_TRADING_PRESET=smart_strong&& set AUTO_TRADING_FORCE_BROKER=mt5&& set AUTO_TRADING_REALTIME_REQUIRE_LAYERS18=false&& set AUTO_TRADING_REALTIME_MIN_CONFIDENCE=60&& set AUTO_TRADING_REALTIME_MIN_STRENGTH=45&& set EA_SIGNAL_MIN_CONFIDENCE=60&& set EA_SIGNAL_MIN_STRENGTH=45&& set AUTO_TRADING_ENFORCE_HTF_ALIGNMENT=false&& set AUTO_TRADING_SMART_STRONG_ENTER_SCORE=30&& set EA_STRICT_SMART_CHECKLIST=false&& set SIGNAL_CONFLUENCE_ADVISORY_SMART_FAILS=true&& set SIGNAL_CONFLUENCE_MIN_SCORE=40&& set SIGNAL_HARD_MIN_CONFIDENCE=40&& npm run start:all"
-      ],
+      "command": "npm run start:all -- --preset fx_metals_active_auto_more_trades",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -164,11 +165,9 @@
     {
       "label": "🚀 Start Server + Dashboard (FX+Metals SMART AUTO - strong trades)",
       "type": "shell",
-      "command": "cmd",
-      "args": [
-        "/c",
-        "set ALLOW_ALL_SYMBOLS=false&& set AUTO_TRADING_ASSET_CLASSES=forex,metals&& set AUTO_TRADING_AUTOSTART=true&& set AUTO_TRADING_PRESET=smart_strong&& set AUTO_TRADING_PROFILE=aggressive&& set AUTO_TRADING_AGGRESSIVE_ENTER_SCORE=15&& set AUTO_TRADING_FORCE_BROKER=mt5&& set AUTO_TRADING_REALTIME_REQUIRE_LAYERS18=false&& set AUTO_TRADING_REALTIME_MIN_CONFIDENCE=48&& set AUTO_TRADING_REALTIME_MIN_STRENGTH=45&& set EA_SIGNAL_MIN_CONFIDENCE=48&& set EA_SIGNAL_MIN_STRENGTH=45&& set AUTO_TRADING_ENFORCE_HTF_ALIGNMENT=false&& set AUTO_TRADING_SMART_STRONG_ENTER_SCORE=32&& set EA_STRICT_SMART_CHECKLIST=false&& set SIGNAL_CONFLUENCE_ADVISORY_SMART_FAILS=true&& set SIGNAL_CONFLUENCE_MIN_SCORE=42&& set SIGNAL_HARD_MIN_CONFIDENCE=40&& npm run start:all"
-      ],
+      "command": "npm run start:all -- --preset fx_metals_smart_auto_strong_trades",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -180,6 +179,8 @@
       "label": "🧪 Run Tests",
       "type": "shell",
       "command": "npm test",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "test",
       "presentation": {
         "reveal": "always",
@@ -201,6 +202,8 @@
       "label": "🔍 Run Linter",
       "type": "shell",
       "command": "npm run lint",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "test",
       "presentation": {
         "reveal": "always",
@@ -212,6 +215,8 @@
       "label": "🔧 Fix Linting Issues",
       "type": "shell",
       "command": "npm run lint:fix",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -222,6 +227,8 @@
       "label": "✨ Format Code",
       "type": "shell",
       "command": "npm run format:write",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "build",
       "presentation": {
         "reveal": "silent",
@@ -232,6 +239,8 @@
       "label": "🔒 Security Audit",
       "type": "shell",
       "command": "npm audit",
+      "dependsOn": ["🧰 Check Node.js + npm"],
+      "dependsOrder": "sequence",
       "group": "test",
       "presentation": {
         "reveal": "always",

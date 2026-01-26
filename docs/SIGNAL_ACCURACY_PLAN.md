@@ -4,7 +4,7 @@
 
 ### Executive Summary
 
-Current system uses multi-factor analysis (economic, news, technical) with adaptive scoring. To achieve 80-100% signal accuracy requires systematic improvements across data quality, model sophistication, risk management, and validation.
+Current system runs in **EA-only + RSS-only** mode (no external API keys, no ML models). Improving signal accuracy focuses on execution safety, data quality, risk controls, and validation.
 
 ---
 
@@ -16,7 +16,7 @@ Current system uses multi-factor analysis (economic, news, technical) with adapt
    - Economic analyzer (GDP, inflation, central bank data)
    - News sentiment analysis with NLP
    - Technical indicators (RSI, MACD, BB, etc.)
-   - Adaptive ensemble scorer with ML
+   - Deterministic scoring (no model dependencies)
 
 2. **Risk Management**
    - Kelly Criterion position sizing
@@ -26,15 +26,15 @@ Current system uses multi-factor analysis (economic, news, technical) with adapt
    - VaR (Value at Risk) calculation
 
 3. **Data Quality**
-   - Multiple data providers (TwelveData, Polygon, Finnhub)
+   - EA bridge as the real-time market source (MT4/MT5)
+   - RSS headlines for context (no API keys)
    - Data quality assessment
    - Confidence scoring
    - Provider availability tracking
 
-4. **Learning System**
-   - Adaptive scorer learns from trades
-   - Feature store for ML
+4. **Learning & Feedback**
    - Trade history tracking
+   - Performance monitoring and safety-driven iteration
 
 ### ⚠️ Critical Gaps for 80-100% Accuracy
 
@@ -71,22 +71,9 @@ Current system uses multi-factor analysis (economic, news, technical) with adapt
 - A/B testing framework
 - Performance by market regime
 
-#### 3. **Advanced ML Models** (Impact: HIGH)
+#### 3. **ML Models** (Not used)
 
-**Current:**
-
-- Basic ensemble model
-- Limited feature engineering
-- No deep learning
-
-**Required:**
-
-```javascript
-// 1. LSTM/Transformer for time series
-// 2. Gradient Boosting (XGBoost/LightGBM)
-// 3. Multi-task learning (direction + magnitude)
-// 4. Ensemble of specialized models
-```
+This project intentionally runs **without ML models** in EA-only mode.
 
 #### 4. **Market Regime Detection** (Impact: HIGH)
 
@@ -264,19 +251,13 @@ Current system uses multi-factor analysis (economic, news, technical) with adapt
    // Only trade signals with quality > 80
    ```
 
-### Phase 2: Advanced Models (Weeks 3-4) - Target: 70% → 80%
+### Phase 2: Advanced Validation (Weeks 3-4) - Target: 70% → 80%
 
-#### Priority: ML Enhancement
+#### Priority: (Removed) ML Enhancement
 
-1. **Implement Gradient Boosting Models**
+ML models are not used in EA-only mode. Replace "model improvements" with stricter validation, better data-quality gating, and more conservative execution rules.
 
-   ```javascript
-   // Use XGBoost/LightGBM for:
-   // 1. Direction prediction
-   // 2. Magnitude estimation
-   // 3. Win probability
-   // 4. Optimal stop-loss/take-profit
-   ```
+1. **(Removed) Gradient Boosting Models**
 
 2. **Feature Engineering**
 
@@ -312,15 +293,7 @@ Current system uses multi-factor analysis (economic, news, technical) with adapt
    ];
    ```
 
-3. **Ensemble Model**
-
-   ```javascript
-   finalPrediction =
-     xgboost.predict() * 0.35 +
-     lightgbm.predict() * 0.35 +
-     neuralNet.predict() * 0.2 +
-     currentEnsemble.predict() * 0.1;
-   ```
+3. **(Removed) Ensemble Model**
 
 ### Phase 3: Market Intelligence (Weeks 5-6) - Target: 80% → 85%
 
@@ -434,14 +407,9 @@ Current system uses multi-factor analysis (economic, news, technical) with adapt
    };
    ```
 
-3. **Model Retraining**
+3. **Retuning & Review**
 
-   ```javascript
-   // Retrain ML models:
-   // - Weekly with new data
-   // - When performance degrades
-   // - When market regime shifts
-   ```
+   Review thresholds/filters based on outcomes (no model retraining).
 
 ---
 
@@ -485,7 +453,7 @@ Current system uses multi-factor analysis (economic, news, technical) with adapt
 // If win rate drops below 75%:
 1. Stop live trading
 2. Analyze failures
-3. Retrain models
+3. Review filters/thresholds
 4. Update filters
 5. Resume after validation
 ```
@@ -509,7 +477,7 @@ Current system uses multi-factor analysis (economic, news, technical) with adapt
 
 **Achieving 90% win rate requires:**
 
-1. ✅ Excellent models (ML + filters)
+1. ✅ Excellent execution rules + filters
 2. ✅ Strict signal selection
 3. ✅ Optimal entry/exit timing
 4. ✅ Favorable market conditions only

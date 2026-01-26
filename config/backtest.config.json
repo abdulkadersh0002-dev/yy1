@@ -1,4 +1,5 @@
 {
+  "$schema": "./schemas/backtest.schema.json",
   "outputDir": "reports/backtesting",
   "transactionCosts": {
     "spreadPips": 0.8,

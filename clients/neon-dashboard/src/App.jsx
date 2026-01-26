@@ -19,231 +19,36 @@ import CandidateSignalTable from './components/CandidateSignalTable.jsx';
 import { fetchJson, getApiConfig, postJson } from './utils/api.js';
 import { useModuleHealth } from './context/ModuleHealthContext.jsx';
 import { formatDateTime, formatNumber, formatRelativeTime } from './utils/format.js';
+import {
+  ACTIVE_SYMBOLS_SYNC_MAX,
+  EA_ONLY_UI_MODE,
+  MAX_ACTIVE_TRADES,
+  MAX_CANDIDATE_ITEMS,
+  MAX_EVENT_ITEMS,
+  MAX_HISTORY_TRADES,
+  MAX_SIGNAL_ITEMS,
+  MAX_TICKER_RENDER,
+  MAX_TICKER_SEARCH_RESULTS,
+  SESSION_BLUEPRINT,
+  TICKER_ADVANCE_STEP,
+  TICKER_CATEGORIES,
+  TICKER_WINDOW_SIZE,
+  classifyTickerSymbol,
+  extractFxCurrencies,
+  formatDuration,
+  isCryptoSymbol,
+  isFxSymbol,
+  isMetalSymbol,
+  normalizeTickerSymbol,
+  toNumber,
+  toTimestamp
+} from './app/app-constants.js';
 
-const SESSION_BLUEPRINT = [
-  {
-    id: 'sydney',
-    label: 'Sydney Session',
-    city: 'Sydney',
-    timeZone: 'Australia/Sydney',
-    windowLabel: '22:00 - 07:00 UTC',
-    openMinutes: 22 * 60,
-    closeMinutes: 7 * 60,
-    theme: 'aqua'
-  },
-  {
-    id: 'tokyo',
-    label: 'Tokyo Session',
-    city: 'Tokyo',
-    timeZone: 'Asia/Tokyo',
-    windowLabel: '00:00 - 09:00 UTC',
-    openMinutes: 0,
-    closeMinutes: 9 * 60,
-    theme: 'violet'
-  },
-  {
-    id: 'london',
-    label: 'London Session',
-    city: 'London',
-    timeZone: 'Europe/London',
-    windowLabel: '08:00 - 17:00 UTC',
-    openMinutes: 8 * 60,
-    closeMinutes: 17 * 60,
-    theme: 'magenta'
-  },
-  {
-    id: 'new-york',
-    label: 'New York Session',
-    city: 'New York',
-    timeZone: 'America/New_York',
-    windowLabel: '13:00 - 22:00 UTC',
-    openMinutes: 13 * 60,
-    closeMinutes: 22 * 60,
-    theme: 'amber'
-  }
-];
-
-const formatDuration = (totalMinutes) => {
-  const minutes = Math.max(0, Math.round(totalMinutes));
-  const hoursPart = Math.floor(minutes / 60);
-  const minutesPart = minutes % 60;
-
-  if (hoursPart === 0) {
-    return `${minutesPart}m`;
-  }
-
-  if (minutesPart === 0) {
-    return `${hoursPart}h`;
-  }
-
-  return `${hoursPart}h ${minutesPart}m`;
-};
-
-const MAX_SIGNAL_ITEMS = 28;
-const MAX_EVENT_ITEMS = 28;
-const MAX_TICKER_RENDER = 120;
-const MAX_CANDIDATE_ITEMS = (() => {
-  const raw = Number(import.meta?.env?.VITE_MAX_CANDIDATE_ITEMS);
-  if (!Number.isFinite(raw)) {
-    return 200;
-  }
-  return Math.max(25, Math.trunc(raw));
-})();
-const MAX_ACTIVE_TRADES = 12;
-const MAX_HISTORY_TRADES = 40;
-const TICKER_WINDOW_SIZE = 220;
-const TICKER_ADVANCE_STEP = 110;
-const MAX_TICKER_SEARCH_RESULTS = 60;
-
-const ACTIVE_SYMBOLS_SYNC_MAX = (() => {
-  const raw = Number(import.meta?.env?.VITE_ACTIVE_SYMBOLS_SYNC_MAX);
-  if (!Number.isFinite(raw)) {
-    return 80;
-  }
-  return Math.max(1, Math.trunc(raw));
-})();
-
-// EA-only workspace mode:
-// - Quotes come from EA bridge
-// - Signals come from EA analysis only
-// - Auto trading starts automatically when EA is connected
-const EA_ONLY_UI_MODE = true;
-
-const toTimestamp = (value) => {
-  if (!value) {
-    return null;
-  }
-
-  const minValidMs = Date.UTC(2010, 0, 1);
-  const maxFutureMs = Date.now() + 1000 * 60 * 60 * 24 * 365 * 3;
-
-  if (value instanceof Date) {
-    const ts = value.getTime();
-    if (!Number.isFinite(ts) || ts < minValidMs || ts > maxFutureMs) {
-      return null;
-    }
-    return ts;
-  }
-
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    const maybeSeconds = value > 0 && value < 1e11;
-    const ts = maybeSeconds ? value * 1000 : value;
-    if (!Number.isFinite(ts) || ts < minValidMs || ts > maxFutureMs) {
-      return null;
-    }
-    return ts;
-  }
-
-  if (typeof value === 'string') {
-    const parsed = Date.parse(value);
-    if (Number.isFinite(parsed)) {
-      if (parsed < minValidMs || parsed > maxFutureMs) {
-        return null;
-      }
-      return parsed;
-    }
-  }
-
-  return null;
-};
-
-const toNumber = (value) => {
-  if (value == null) {
-    return null;
-  }
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
-};
-
-const normalizeTickerSymbol = (value) => {
-  const raw = String(value ?? '').trim();
-  if (!raw) {
-    return '';
-  }
-  let normalized = raw;
-  if (normalized.startsWith('[') && normalized.endsWith(']')) {
-    normalized = normalized.slice(1, -1);
-  }
-  if (normalized.startsWith('#')) {
-    normalized = normalized.slice(1);
-  }
-  return normalized.toUpperCase();
-};
-
-const extractFxCurrencies = (symbolUpper) => {
-  if (!symbolUpper || typeof symbolUpper !== 'string') {
-    return null;
-  }
-  if (/^[A-Z]{6}$/.test(symbolUpper)) {
-    return [symbolUpper.slice(0, 3), symbolUpper.slice(3, 6)];
-  }
-  return null;
-};
-
-const TICKER_CATEGORIES = [
-  { id: 'ALL', label: 'FX + Metals' },
-  { id: 'FX', label: 'FX' },
-  { id: 'METALS', label: 'Metals' }
-];
-
-const isFxSymbol = (symbolUpper) => {
-  if (!symbolUpper) {
-    return false;
-  }
-  if (!/^[A-Z]{6}$/.test(symbolUpper)) {
-    return false;
-  }
-  return Boolean(extractFxCurrencies(symbolUpper));
-};
-
-const isMetalSymbol = (symbolUpper) => {
-  if (!symbolUpper) {
-    return false;
-  }
-  return (
-    symbolUpper.startsWith('XAU') ||
-    symbolUpper.startsWith('XAG') ||
-    symbolUpper.startsWith('XPT') ||
-    symbolUpper.startsWith('XPD')
-  );
-};
-
-const isCryptoSymbol = (symbolUpper) => {
-  if (!symbolUpper) {
-    return false;
-  }
-  // Common broker conventions: BTCUSD, ETHUSD, BTCUSDT, etc.
-  return (
-    symbolUpper.startsWith('BTC') ||
-    symbolUpper.startsWith('ETH') ||
-    symbolUpper.startsWith('XRP') ||
-    symbolUpper.startsWith('SOL') ||
-    symbolUpper.startsWith('ADA') ||
-    symbolUpper.startsWith('DOGE') ||
-    symbolUpper.startsWith('LTC') ||
-    symbolUpper.endsWith('USDT')
-  );
-};
-
-const classifyTickerSymbol = (symbolUpper) => {
-  if (!symbolUpper) {
-    return 'UNKNOWN';
-  }
-  if (isFxSymbol(symbolUpper)) {
-    return 'FX';
-  }
-  if (isMetalSymbol(symbolUpper)) {
-    return 'METALS';
-  }
-  if (isCryptoSymbol(symbolUpper)) {
-    return 'CRYPTO';
-  }
-  // Fallback bucket for index CFDs / equities / everything else.
-  return 'STOCKS';
-};
+const SHOW_AUTOTRADING_UI = false;
+const DASHBOARD_AUTOTRADING_AUTOSTART = false;
 
 const matchesTickerCategory = (symbolUpper, categoryId) => {
-  const allowed = isFxSymbol(symbolUpper) || isMetalSymbol(symbolUpper);
+  const allowed = isFxSymbol(symbolUpper) || isMetalSymbol(symbolUpper) || isCryptoSymbol(symbolUpper);
   if (!allowed) {
     return false;
   }
@@ -2016,6 +1821,9 @@ function App() {
 
   const autoTradingAutostartRef = useRef({ broker: null, startedAt: 0 });
   useEffect(() => {
+    if (!DASHBOARD_AUTOTRADING_AUTOSTART) {
+      return;
+    }
     if (!EA_ONLY_UI_MODE) {
       return;
     }
@@ -2084,7 +1892,7 @@ function App() {
 
   useEffect(() => {
     refreshEaBridgeStats();
-    const timer = setInterval(refreshEaBridgeStats, 15000);
+    const timer = setInterval(refreshEaBridgeStats, 30000);
     return () => clearInterval(timer);
   }, [refreshEaBridgeStats]);
 
@@ -2098,7 +1906,7 @@ function App() {
     // Quotes need to be near-live; news does not. Poll quotes frequently and refresh news less often.
     refreshMarketFeed({ includeNews: true });
 
-    const quotesPollIntervalMs = wsMarketConnected ? 30000 : 5000;
+    const quotesPollIntervalMs = wsMarketConnected ? 120000 : 8000;
     const quotesTimer = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) {
         return;
@@ -2111,7 +1919,7 @@ function App() {
         return;
       }
       refreshMarketFeed({ includeNews: true });
-    }, 60000);
+    }, 300000);
 
     return () => {
       clearInterval(quotesTimer);
@@ -2340,6 +2148,13 @@ function App() {
     return results;
   }, [tickerFilteredQuotes, tickerSearchNormalized]);
 
+  const tickerMatchesCount = useMemo(() => {
+    if (!tickerSearchNormalized) {
+      return 0;
+    }
+    return Array.isArray(tickerSearchMatches) ? tickerSearchMatches.length : 0;
+  }, [tickerSearchMatches, tickerSearchNormalized]);
+
   const tickerSearchFocused = useMemo(() => {
     if (!tickerSearchNormalized) {
       return null;
@@ -2403,6 +2218,173 @@ function App() {
     }
     return list.slice(0, Math.min(list.length, MAX_TICKER_RENDER));
   }, [tickerLoopQuotes, tickerQuotes, tickerSearchNormalized]);
+
+  const tickerRenderModels = useMemo(() => {
+    const list = Array.isArray(tickerRenderQuotes) ? tickerRenderQuotes : [];
+    if (list.length === 0) {
+      return [];
+    }
+
+    return list.map((quote, index) => {
+      const symbolValue = quote?.symbol || quote?.pair;
+      const symbolText = String(symbolValue ?? '').trim();
+      const symbolUpper = symbolText.toUpperCase();
+
+      const looksLikeFxPair = /^[A-Z]{6}$/.test(symbolUpper);
+      const digits = Number.isFinite(Number(quote?.digits))
+        ? Math.max(0, Math.min(8, Math.trunc(Number(quote.digits))))
+        : null;
+      const displayDigits = digits != null ? digits : looksLikeFxPair ? 5 : 3;
+
+      const bid = Number.isFinite(Number(quote?.bid)) ? Number(quote.bid) : null;
+      const ask = Number.isFinite(Number(quote?.ask)) ? Number(quote.ask) : null;
+      const last = Number.isFinite(Number(quote?.last)) ? Number(quote.last) : null;
+
+      const mid =
+        bid != null && ask != null
+          ? (bid + ask) / 2
+          : bid != null
+            ? bid
+            : ask != null
+              ? ask
+              : last;
+
+      const broker = String(quote?.broker || effectivePlatformId || '').toLowerCase();
+      const symbolNormalized = normalizeTickerSymbol(symbolValue);
+      const deltaKey = `${broker}:${symbolNormalized}`;
+      const prevMid = lastMidBySymbolRef.current.get(deltaKey);
+      const delta =
+        mid != null && prevMid != null && Number.isFinite(prevMid) ? mid - prevMid : null;
+
+      const pointRaw = Number(quote?.point);
+      const point =
+        Number.isFinite(pointRaw) && pointRaw > 0
+          ? pointRaw
+          : Number.isFinite(displayDigits)
+            ? Math.pow(10, -displayDigits)
+            : null;
+
+      const deltaPointsInt =
+        delta != null && point != null && Number.isFinite(delta) ? Math.round(delta / point) : null;
+      const deltaValue = deltaPointsInt != null && deltaPointsInt !== 0 ? deltaPointsInt : null;
+      const deltaPointsAbs = deltaValue != null ? Math.abs(deltaValue) : null;
+
+      const arrowClass =
+        deltaValue != null && deltaValue > 0
+          ? 'market-ticker__arrow--up'
+          : deltaValue != null && deltaValue < 0
+            ? 'market-ticker__arrow--down'
+            : '';
+
+      const deltaClass =
+        deltaValue != null && deltaValue > 0
+          ? 'market-ticker__delta--up'
+          : deltaValue != null && deltaValue < 0
+            ? 'market-ticker__delta--down'
+            : '';
+
+      const priceClass =
+        deltaValue != null && deltaValue > 0
+          ? 'market-ticker__price--up'
+          : deltaValue != null && deltaValue < 0
+            ? 'market-ticker__price--down'
+            : '';
+
+      const details =
+        bid != null && ask != null
+          ? `${formatNumber(bid, displayDigits)} / ${formatNumber(ask, displayDigits)}`
+          : bid != null
+            ? `Bid ${formatNumber(bid, displayDigits)}`
+            : ask != null
+              ? `Ask ${formatNumber(ask, displayDigits)}`
+              : '';
+
+      const loopTag = tickerSearchNormalized
+        ? 's'
+        : index < tickerQuotes.length
+          ? 'a'
+          : 'b';
+
+      const selected = String(symbolUpper || symbolText || symbolValue || '').trim();
+
+      return {
+        key: `${quote?.broker || effectivePlatformId}:${symbolUpper || symbolValue}:${loopTag}:${index}`,
+        selected,
+        symbolLabel: symbolUpper || symbolText || symbolValue,
+        midLabel: mid != null ? formatNumber(mid, displayDigits) : '—',
+        detailsLabel: details || '—',
+        detailsEmpty: !details,
+        deltaLabel: deltaPointsAbs != null ? `${deltaPointsAbs}p` : '',
+        deltaEmpty: deltaValue == null,
+        arrow: deltaValue != null ? (deltaValue > 0 ? '▲' : deltaValue < 0 ? '▼' : '•') : '•',
+        arrowClass,
+        priceClass,
+        deltaClass
+      };
+    });
+  }, [effectivePlatformId, tickerQuotes.length, tickerRenderQuotes, tickerSearchNormalized]);
+
+  const onTickerItemClick = useCallback(
+    (event) => {
+      const rawSelected = event?.currentTarget?.getAttribute?.('data-symbol');
+      const selected = String(rawSelected || '').trim();
+      if (!selected) {
+        return;
+      }
+      setTickerSearch(selected);
+      if (EA_ONLY_UI_MODE) {
+        openPairAnalysisForSymbolAndRequestSnapshot(selected);
+      } else {
+        openAnalyzerForSymbolAndRequestSnapshot(selected);
+      }
+    },
+    [openAnalyzerForSymbolAndRequestSnapshot, openPairAnalysisForSymbolAndRequestSnapshot]
+  );
+
+  const tickerListRows = useMemo(() => {
+    if (!tickerSearchNormalized) {
+      return [];
+    }
+
+    const list = Array.isArray(tickerSearchMatches) ? tickerSearchMatches.slice(0, 60) : [];
+    const now = Date.now();
+
+    return list
+      .map((quote) => {
+        const symbolValue = quote?.symbol || quote?.pair;
+        const symbol = String(symbolValue ?? '').trim().toUpperCase();
+        if (!symbol) {
+          return null;
+        }
+
+        const looksLikeFxPair = /^[A-Z]{6}$/.test(symbol);
+        const digits = Number.isFinite(Number(quote?.digits))
+          ? Math.max(0, Math.min(8, Math.trunc(Number(quote.digits))))
+          : null;
+        const displayDigits = digits != null ? digits : looksLikeFxPair ? 5 : 3;
+
+        const bid = Number.isFinite(Number(quote?.bid)) ? Number(quote.bid) : null;
+        const ask = Number.isFinite(Number(quote?.ask)) ? Number(quote.ask) : null;
+        const spreadPoints = Number.isFinite(Number(quote?.spreadPoints))
+          ? Number(quote.spreadPoints)
+          : null;
+
+        const ts = toTimestamp(quote?.timestamp);
+        const ageSec = ts != null ? Math.max(0, Math.round((now - ts) / 1000)) : null;
+
+        return {
+          key: symbol,
+          selected: symbol,
+          symbol,
+          bidLabel: bid != null ? formatNumber(bid, displayDigits) : '—',
+          askLabel: ask != null ? formatNumber(ask, displayDigits) : '—',
+          spreadLabel: spreadPoints != null ? `${formatNumber(spreadPoints, 0)}p` : '—',
+          ageLabel: ageSec != null ? `${ageSec}s` : '—',
+          assetClass: classifyTickerSymbol(symbol)
+        };
+      })
+      .filter(Boolean);
+  }, [tickerSearchMatches, tickerSearchNormalized]);
 
   useEffect(() => {
     if (!bridgeIsConnected) {
@@ -2915,23 +2897,25 @@ function App() {
                     eaBridgeConnected={bridgeIsConnected}
                     eaQuotes={marketFeed?.quotes || []}
                   />
-                  <button
-                    type="button"
-                    className="engine-console__bridge-refresh engine-console__bridge-refresh--compact"
-                    onClick={toggleAutoTrading}
-                    disabled={!bridgeIsConnected || autoTradingAction.loading}
-                    title={
-                      bridgeIsConnected
-                        ? 'Start/stop automated trading'
-                        : 'Connect MT4/MT5 via MetaTrader Bridge first'
-                    }
-                  >
-                    {autoTradingAction.loading
-                      ? 'Working…'
-                      : autoTradingEnabled
-                        ? `Auto Trading (${selectedPlatform}): On`
-                        : `Auto Trading (${selectedPlatform}): Off`}
-                  </button>
+                  {SHOW_AUTOTRADING_UI && (
+                    <button
+                      type="button"
+                      className="engine-console__bridge-refresh engine-console__bridge-refresh--compact"
+                      onClick={toggleAutoTrading}
+                      disabled={!bridgeIsConnected || autoTradingAction.loading}
+                      title={
+                        bridgeIsConnected
+                          ? 'Start/stop automated trading'
+                          : 'Connect MT4/MT5 via MetaTrader Bridge first'
+                      }
+                    >
+                      {autoTradingAction.loading
+                        ? 'Working…'
+                        : autoTradingEnabled
+                          ? `Auto Trading (${selectedPlatform}): On`
+                          : `Auto Trading (${selectedPlatform}): Off`}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="engine-console__bridge-refresh"
@@ -2942,7 +2926,7 @@ function App() {
                 </div>
               </header>
 
-              {autoTradingAction.error && (
+              {SHOW_AUTOTRADING_UI && autoTradingAction.error && (
                 <div className="engine-console__warning">{autoTradingAction.error}</div>
               )}
               {eaBridgeStatsError && (
@@ -5260,7 +5244,7 @@ function App() {
 
           {marketFeed.error && <div className="engine-console__warning">{marketFeed.error}</div>}
 
-          {autoTradingPanelOpen && (
+          {SHOW_AUTOTRADING_UI && autoTradingPanelOpen && (
             <div className="dashboard__autotrading-panel">
               <header className="section-header">
                 <div>
@@ -5353,9 +5337,24 @@ function App() {
 
           {bridgeIsConnected && !pairAnalysisOpen && (
             <div
-              className={`market-ticker market-ticker--strip ${analysisIsOpen ? 'market-ticker--paused' : ''}`}
+              className={`market-ticker ${tickerSearchNormalized ? 'market-ticker--list' : 'market-ticker--strip'} ${analysisIsOpen ? 'market-ticker--paused' : ''}`}
             >
               <div className="market-ticker__search">
+                <select
+                  className="market-ticker__search-select"
+                  value={tickerCategory}
+                  onChange={(e) => setTickerCategory(e.target.value)}
+                  aria-label="Ticker category"
+                  title="Filter symbols"
+                >
+                  {Array.isArray(TICKER_CATEGORIES)
+                    ? TICKER_CATEGORIES.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))
+                    : null}
+                </select>
                 <input
                   id="ticker-search"
                   name="tickerSearch"
@@ -5388,6 +5387,15 @@ function App() {
                   aria-label="Search ticker symbol"
                 />
               </div>
+
+              {tickerSearchNormalized ? (
+                <span className="market-ticker__meta">
+                  {tickerMatchesCount > 0
+                    ? `${tickerMatchesCount} match${tickerMatchesCount === 1 ? '' : 'es'} · ${tickerCategory}`
+                    : `No matches · ${tickerCategory}`}
+                </span>
+              ) : null}
+
               <div
                 className="market-ticker__viewport"
                 title="EA quotes feed"
@@ -5397,141 +5405,81 @@ function App() {
                   className={`market-ticker__track ${tickerSearchNormalized ? 'market-ticker__track--static' : ''}`}
                   ref={tickerTrackRef}
                 >
-                  {tickerRenderQuotes.length ? (
-                    tickerRenderQuotes.map((quote, index) => {
-                      const bid = Number.isFinite(Number(quote?.bid)) ? Number(quote.bid) : null;
-                      const ask = Number.isFinite(Number(quote?.ask)) ? Number(quote.ask) : null;
-                      const last = Number.isFinite(Number(quote?.last)) ? Number(quote.last) : null;
-                      const mid =
-                        bid != null && ask != null
-                          ? (bid + ask) / 2
-                          : bid != null
-                            ? bid
-                            : ask != null
-                              ? ask
-                              : last;
-
-                      const symbolValue = quote?.symbol || quote?.pair;
-                      const symbolText = String(symbolValue ?? '').trim();
-                      const symbolUpper = symbolText.toUpperCase();
-
-                      const looksLikeFxPair = /^[A-Z]{6}$/.test(symbolUpper);
-                      const digits = Number.isFinite(Number(quote?.digits))
-                        ? Math.max(0, Math.min(8, Math.trunc(Number(quote.digits))))
-                        : null;
-                      const displayDigits = digits != null ? digits : looksLikeFxPair ? 5 : 3;
-
-                      const broker = String(
-                        quote?.broker || effectivePlatformId || ''
-                      ).toLowerCase();
-                      const symbolNormalized = normalizeTickerSymbol(symbolValue);
-                      const deltaKey = `${broker}:${symbolNormalized}`;
-                      const prevMid = lastMidBySymbolRef.current.get(deltaKey);
-                      const delta =
-                        mid != null && prevMid != null && Number.isFinite(prevMid)
-                          ? mid - prevMid
-                          : null;
-
-                      const pointRaw = Number(quote?.point);
-                      const point =
-                        Number.isFinite(pointRaw) && pointRaw > 0
-                          ? pointRaw
-                          : Number.isFinite(displayDigits)
-                            ? Math.pow(10, -displayDigits)
-                            : null;
-
-                      const deltaPointsInt =
-                        delta != null && point != null && Number.isFinite(delta)
-                          ? Math.round(delta / point)
-                          : null;
-                      const deltaValue =
-                        deltaPointsInt != null && deltaPointsInt !== 0 ? deltaPointsInt : null;
-                      const deltaPointsAbs = deltaValue != null ? Math.abs(deltaValue) : null;
-
-                      const arrowClass =
-                        deltaValue != null && deltaValue > 0
-                          ? 'market-ticker__arrow--up'
-                          : deltaValue != null && deltaValue < 0
-                            ? 'market-ticker__arrow--down'
-                            : '';
-                      const deltaClass =
-                        deltaValue != null && deltaValue > 0
-                          ? 'market-ticker__delta--up'
-                          : deltaValue != null && deltaValue < 0
-                            ? 'market-ticker__delta--down'
-                            : '';
-
-                      const priceClass =
-                        deltaValue != null && deltaValue > 0
-                          ? 'market-ticker__price--up'
-                          : deltaValue != null && deltaValue < 0
-                            ? 'market-ticker__price--down'
-                            : '';
-
-                      const details =
-                        bid != null && ask != null
-                          ? `${formatNumber(bid, displayDigits)} / ${formatNumber(ask, displayDigits)}`
-                          : bid != null
-                            ? `Bid ${formatNumber(bid, displayDigits)}`
-                            : ask != null
-                              ? `Ask ${formatNumber(ask, displayDigits)}`
-                              : '';
-
-                      const loopTag = tickerSearchNormalized
-                        ? 's'
-                        : index < tickerQuotes.length
-                          ? 'a'
-                          : 'b';
-
-                      return (
-                        <button
-                          key={`${quote?.broker || effectivePlatformId}:${symbolUpper || symbolValue}:${loopTag}:${index}`}
-                          type="button"
-                          className="market-ticker__item"
-                          title="Click to select"
-                          onClick={() => {
-                            const selected = String(
-                              symbolUpper || symbolText || symbolValue || ''
-                            ).trim();
-                            if (selected) {
-                              setTickerSearch(selected);
-                              openAnalyzerForSymbolAndRequestSnapshot(selected);
-                            }
-                          }}
+                  {tickerSearchNormalized ? (
+                    tickerListRows.length ? (
+                      <>
+                        <div className="market-ticker__row market-ticker__row--head">
+                          <div className="market-ticker__col market-ticker__col--symbol">Symbol</div>
+                          <div className="market-ticker__col market-ticker__col--price">Bid</div>
+                          <div className="market-ticker__col market-ticker__col--price">Ask</div>
+                          <div className="market-ticker__col market-ticker__col--meta">Spread</div>
+                          <div className="market-ticker__col market-ticker__col--meta">Age</div>
+                        </div>
+                        {tickerListRows.map((row) => (
+                          <div
+                            key={row.key}
+                            role="button"
+                            tabIndex={0}
+                            className="market-ticker__row"
+                            data-symbol={row.selected}
+                            onClick={onTickerItemClick}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                onTickerItemClick(e);
+                              }
+                            }}
+                            title={`${row.assetClass} · Click to analyze`}
+                          >
+                            <div className="market-ticker__col market-ticker__col--symbol">{row.symbol}</div>
+                            <div className="market-ticker__col market-ticker__col--price">{row.bidLabel}</div>
+                            <div className="market-ticker__col market-ticker__col--price">{row.askLabel}</div>
+                            <div className="market-ticker__col market-ticker__col--meta">{row.spreadLabel}</div>
+                            <div className="market-ticker__col market-ticker__col--meta">{row.ageLabel}</div>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <span className="market-ticker__meta">No matches.</span>
+                    )
+                  ) : tickerRenderModels.length ? (
+                    tickerRenderModels.map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        className="market-ticker__item"
+                        title="Click to select"
+                        data-symbol={item.selected}
+                        onClick={onTickerItemClick}
+                      >
+                        <span className={`market-ticker__arrow ${item.arrowClass}`} aria-hidden="true">
+                          {item.arrow}
+                        </span>
+                        <span className="market-ticker__symbol">{item.symbolLabel}</span>
+                        <span className={`market-ticker__price ${item.priceClass}`}>{item.midLabel}</span>
+                        <span
+                          className={`market-ticker__delta ${item.deltaClass} ${item.deltaEmpty ? 'market-ticker__delta--empty' : ''}`}
                         >
-                          <span className={`market-ticker__arrow ${arrowClass}`} aria-hidden="true">
-                            {deltaValue != null
-                              ? deltaValue > 0
-                                ? '▲'
-                                : deltaValue < 0
-                                  ? '▼'
-                                  : '•'
-                              : '•'}
-                          </span>
-                          <span className="market-ticker__symbol">
-                            {symbolUpper || symbolText || symbolValue}
-                          </span>
-                          <span className={`market-ticker__price ${priceClass}`}>
-                            {mid != null ? formatNumber(mid, displayDigits) : '—'}
-                          </span>
-                          <span
-                            className={`market-ticker__delta ${deltaClass} ${deltaValue == null ? 'market-ticker__delta--empty' : ''}`}
-                          >
-                            {deltaPointsAbs != null ? `${deltaPointsAbs}p` : ''}
-                          </span>
-                          <span
-                            className={`market-ticker__details ${details ? '' : 'market-ticker__details--empty'}`}
-                          >
-                            {details || '—'}
-                          </span>
-                        </button>
-                      );
-                    })
+                          {item.deltaLabel}
+                        </span>
+                        <span
+                          className={`market-ticker__details ${item.detailsEmpty ? 'market-ticker__details--empty' : ''}`}
+                        >
+                          {item.detailsLabel}
+                        </span>
+                      </button>
+                    ))
                   ) : (
                     <span className="market-ticker__meta">Waiting for EA price feed…</span>
                   )}
                 </div>
               </div>
+
+              {tickerSearchNormalized && tickerNewsItems.length ? (
+                <span className="market-ticker__meta">
+                  News: {String(tickerNewsItems[0]?.headline || tickerNewsItems[0]?.title || '').slice(0, 110)}
+                </span>
+              ) : null}
             </div>
           )}
 
@@ -5615,7 +5563,11 @@ function App() {
                       onSelect={(signal, id) => {
                         setEntryReadySelectedId(id || null);
                         if (signal?.pair) {
-                          openAnalyzerForSymbolAndRequestSnapshot(signal.pair);
+                          if (EA_ONLY_UI_MODE) {
+                            openPairAnalysisForSymbolAndRequestSnapshot(signal.pair);
+                          } else {
+                            openAnalyzerForSymbolAndRequestSnapshot(signal.pair);
+                          }
                         }
                       }}
                     />
@@ -5629,7 +5581,11 @@ function App() {
                         onSelect={(signal, id) => {
                           setCandidateSelectedId(id || null);
                           if (signal?.pair) {
-                            openAnalyzerForSymbolAndRequestSnapshot(signal.pair);
+                            if (EA_ONLY_UI_MODE) {
+                              openPairAnalysisForSymbolAndRequestSnapshot(signal.pair);
+                            } else {
+                              openAnalyzerForSymbolAndRequestSnapshot(signal.pair);
+                            }
                           }
                         }}
                       />

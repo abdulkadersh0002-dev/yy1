@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import EaBridgeService from '../../../src/services/brokers/ea-bridge-service.js';
+import EaBridgeService from '../../../src/infrastructure/services/brokers/ea-bridge-service.js';
 
 describe('EaBridgeService symbol aliasing', () => {
   it('resolves snapshot requests to broker-available symbol (quotes-driven)', () => {

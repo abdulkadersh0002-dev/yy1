@@ -1,5 +1,13 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import {
+  parseBoolSafe,
+  parseIntSafe,
+  parseFloatSafe,
+  parseListSafe,
+  parseJsonSafe,
+  normalizeTradingScope
+} from './env-utils.js';
 
 const envSchema = z
   .object({
@@ -18,93 +26,14 @@ const envSchema = z
   })
   .passthrough();
 
-const truthyValues = new Set(['1', 'true', 'yes', 'on']);
-const falsyValues = new Set(['0', 'false', 'no', 'off']);
-
-export function parseBoolSafe(value, defaultValue = false) {
-  if (value === undefined || value === null) {
-    return defaultValue;
-  }
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  if (typeof value === 'number') {
-    if (Number.isNaN(value)) {
-      return defaultValue;
-    }
-    return value !== 0;
-  }
-  const normalized = String(value).trim().toLowerCase();
-  if (truthyValues.has(normalized)) {
-    return true;
-  }
-  if (falsyValues.has(normalized)) {
-    return false;
-  }
-  return defaultValue;
-}
-
-export function parseIntSafe(value, defaultValue = undefined) {
-  if (value === undefined || value === null || value === '') {
-    return defaultValue;
-  }
-  const numeric = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
-  return Number.isFinite(numeric) ? numeric : defaultValue;
-}
-
-export function parseFloatSafe(value, defaultValue = undefined) {
-  if (value === undefined || value === null || value === '') {
-    return defaultValue;
-  }
-  const numeric = typeof value === 'number' ? value : Number.parseFloat(String(value));
-  return Number.isFinite(numeric) ? numeric : defaultValue;
-}
-
-export function parseListSafe(value, separator = ',') {
-  if (!value) {
-    return [];
-  }
-  if (Array.isArray(value)) {
-    return value;
-  }
-  return String(value)
-    .split(separator)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
-export function parseJsonSafe(value, defaultValue = undefined) {
-  if (!value) {
-    return defaultValue;
-  }
-  try {
-    if (typeof value === 'object') {
-      return value;
-    }
-    return JSON.parse(String(value));
-  } catch (_error) {
-    return defaultValue;
-  }
-}
-
-export function normalizeTradingScope(value, fallback = 'signals') {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase();
-  if (!normalized) {
-    return fallback;
-  }
-  if (normalized === 'signals' || normalized === 'signal') {
-    return 'signals';
-  }
-  if (normalized === 'execution' || normalized === 'execute') {
-    return 'execution';
-  }
-  if (normalized === 'autonomous' || normalized === 'auto' || normalized === 'full') {
-    return 'autonomous';
-  }
-  return fallback;
-}
+export {
+  parseBoolSafe,
+  parseIntSafe,
+  parseFloatSafe,
+  parseListSafe,
+  parseJsonSafe,
+  normalizeTradingScope
+};
 
 function buildPriceDataConfig(env) {
   const disabledProviders = parseListSafe(env.PRICE_PROVIDERS_DISABLED);
@@ -276,17 +205,10 @@ function buildTradingEngineConfig(env, priceDataConfig) {
     requireHtfDirection: parseBoolSafe(env.AUTO_TRADING_REQUIRE_HTF_DIRECTION, false),
     newsBlackoutMinutes: parseIntSafe(env.AUTO_TRADING_NEWS_BLACKOUT_MINUTES),
     newsBlackoutImpactThreshold: parseFloatSafe(env.AUTO_TRADING_NEWS_BLACKOUT_IMPACT),
-    apiKeys: {
-      openai: env.OPENAI_API_KEY,
-      twelveData: env.TWELVE_DATA_API_KEY,
-      alphaVantage: env.ALPHA_VANTAGE_API_KEY,
-      finnhub: env.FINNHUB_API_KEY,
-      polygon: env.POLYGON_API_KEY,
-      newsApi: env.NEWSAPI_KEY,
-      fred: env.FRED_API_KEY,
-      exchangeRate: env.EXCHANGERATE_API_KEY,
-      fixer: env.FIXER_API_KEY
-    },
+    // EA-only mode intentionally runs with no external API keys.
+    apiKeys: {},
+    // Disable ML/ensemble model scoring when running EA-only.
+    disableModels: parseBoolSafe(env.EA_ONLY_MODE, true),
     // Smart auto-trading guards (opt-in via validateSignal defaults; enabled here for the real app).
     enforceTradingWindows: parseBoolSafe(env.AUTO_TRADING_ENFORCE_TRADING_WINDOWS, false),
     tradingWindowsLondon: parseJsonSafe(env.AUTO_TRADING_TRADING_WINDOWS_LONDON),
@@ -649,7 +571,8 @@ export function buildAppConfig(environment = process.env) {
     port: parseIntSafe(env.DB_PORT) || 5432,
     name: env.DB_NAME,
     user: env.DB_USER,
-    password: env.DB_PASSWORD
+    password: env.DB_PASSWORD,
+    ssl: parseBoolSafe(env.DB_SSL, false)
   };
 
   return {

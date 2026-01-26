@@ -3,7 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import HistoricalWarehouseRunner from '../../src/etl/historical-warehouse-runner.js';
+import HistoricalWarehouseRunner from '../../src/infrastructure/etl/historical-warehouse-runner.js';
 
 function parseArgs(argv) {
   const map = {};

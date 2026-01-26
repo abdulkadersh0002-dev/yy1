@@ -62,6 +62,32 @@ test('REST API health endpoints', async (t) => {
     });
   });
 
+  await t.test('GET /api/health/runtime returns runtime summary', async () => {
+    const response = await fetch(server.url('/api/health/runtime'));
+    assert.equal(response.status, 200);
+    const { payload } = await expectJson(response);
+
+    assert.equal(payload.success, true);
+    assert.ok(payload.runtime);
+    assert.equal(typeof payload.runtime.environment, 'string');
+    assert.equal(typeof payload.runtime.server?.port, 'number');
+    assert.equal(typeof payload.runtime.tradingScope?.mode, 'string');
+  });
+
+  await t.test('GET /metrics returns Prometheus payload', async () => {
+    const response = await fetch(server.url('/metrics'));
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.ok(text.length > 0, 'metrics payload empty');
+  });
+
+  await t.test('GET /api/metrics returns Prometheus payload (legacy)', async () => {
+    const response = await fetch(server.url('/api/metrics'));
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.ok(text.length > 0, 'metrics payload empty');
+  });
+
   await t.test('POST /api/signal/generate produces synthetic signal', async () => {
     const response = await fetch(server.url('/api/signal/generate'), {
       method: 'POST',

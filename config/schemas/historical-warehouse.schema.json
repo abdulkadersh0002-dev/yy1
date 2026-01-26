@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "historical-warehouse.schema.json",
+  "title": "Historical Warehouse Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dryRun", "prices", "macro", "news"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "_notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "dryRun": { "type": "boolean" },
+    "prices": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dataset" }
+    },
+    "macro": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dataset" }
+    },
+    "news": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dataset" }
+    },
+    "normalizeFeatureStore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "batchSize": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "dataset": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "label": { "type": "string" },
+        "path": { "type": "string" },
+        "format": { "type": "string", "enum": ["csv", "json", "ndjson"] },
+        "timezone": { "type": "string" },
+        "pair": { "type": "string" },
+        "timeframe": { "type": "string" },
+        "source": { "type": "string" },
+        "columns": { "type": "object" },
+        "metadata": { "type": "object" }
+      }
+    }
+  }
+}

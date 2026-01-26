@@ -1,4 +1,4 @@
-import { buildLayeredAnalysis } from '../../src/analyzers/layered-analysis.js';
+import { buildLayeredAnalysis } from '../../src/core/analyzers/layered-analysis.js';
 
 const res = await fetch('http://127.0.0.1:4101/api/signal/generate', {
   method: 'POST',

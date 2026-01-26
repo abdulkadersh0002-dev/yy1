@@ -14,10 +14,10 @@ const ajv = new Ajv({
 });
 
 const schemaPaths = {
-  priceBar: 'docs/data-contracts/price-bar.schema.json',
-  economicIndicator: 'docs/data-contracts/economic-indicator.schema.json',
-  newsAnalysis: 'docs/data-contracts/news-analysis.schema.json',
-  upcomingEvent: 'docs/data-contracts/upcoming-event.schema.json'
+  priceBar: 'config/data-contracts/price-bar.schema.json',
+  economicIndicator: 'config/data-contracts/economic-indicator.schema.json',
+  newsAnalysis: 'config/data-contracts/news-analysis.schema.json',
+  upcomingEvent: 'config/data-contracts/upcoming-event.schema.json'
 };
 
 const cachedSchemas = new Map();

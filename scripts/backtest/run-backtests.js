@@ -6,10 +6,10 @@ import { createReadStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'csv-parse';
 
-import VectorizedBacktester from '../../src/backtesting/vectorized-backtester.js';
-import { TransactionCostModel } from '../../src/backtesting/transaction-cost-model.js';
-import runMonteCarloSimulations from '../../src/backtesting/monte-carlo-simulator.js';
-import runWalkForwardValidation from '../../src/backtesting/walk-forward-validator.js';
+import VectorizedBacktester from '../../src/core/backtesting/vectorized-backtester.js';
+import { TransactionCostModel } from '../../src/core/backtesting/transaction-cost-model.js';
+import runMonteCarloSimulations from '../../src/core/backtesting/monte-carlo-simulator.js';
+import runWalkForwardValidation from '../../src/core/backtesting/walk-forward-validator.js';
 
 async function ensureReportDirectory(dirPath) {
   try {

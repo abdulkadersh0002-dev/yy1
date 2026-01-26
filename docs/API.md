@@ -26,6 +26,7 @@ The following routes do not require authentication:
 - `GET /api/health/*` - Health check endpoints
 - `GET /api/healthz` - Kubernetes health probe
 - `GET /metrics` - Prometheus metrics
+- `GET /api/metrics` - Prometheus metrics (legacy)
 - `GET /api/client/*` - Client application routes
 
 ## Endpoints
@@ -101,18 +102,12 @@ Get data provider availability and health status.
 {
   "success": true,
   "timestamp": 1699123456789,
-  "providers": [
-    {
-      "provider": "twelveData",
-      "available": true,
-      "metrics": { "avgLatencyMs": 150, "success": 100, "failed": 0 }
-    }
-  ],
+  "providers": [],
   "timeframes": [{ "timeframe": "M15", "viable": true }],
   "aggregateQuality": 85.5,
   "classification": {
     "state": "healthy",
-    "reason": "all_providers_available",
+    "reason": "ea_only_mode",
     "severity": "info"
   }
 }
@@ -140,9 +135,39 @@ Get heartbeat monitor status.
 
 ---
 
+#### GET /api/health/runtime
+
+Get a runtime configuration summary (environment, toggles, and effective modes).
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "runtime": {
+    "environment": "development",
+    "server": { "port": 4101, "enableWebSockets": true, "websocketPath": "/ws/trading" },
+    "apiAuthEnabled": false,
+    "tradingScope": { "mode": "signals", "allowExecution": false },
+    "eaOnlyMode": true,
+    "autoTrading": { "autostart": false },
+    "brokerRouting": { "enabled": true, "defaultBroker": "mt5" },
+    "brokers": { "mt5": true, "mt4": false, "oanda": false, "ibkr": false },
+    "services": { "riskReports": true, "performanceDigests": true, "brokerReconciliation": true, "pairPrefetch": true, "jobQueue": true },
+    "persistence": { "enabled": false, "ssl": false },
+    "endpoints": { "health": "/api/healthz", "metrics": "/metrics", "websocket": "/ws/trading" }
+  },
+  "timestamp": 1699123456789
+}
+```
+
+---
+
 #### GET /metrics
 
 Prometheus metrics endpoint.
+
+Also available at `GET /api/metrics` for compatibility.
 
 **Response:** Plain text Prometheus metrics format
 
@@ -263,19 +288,32 @@ Execute a trade based on generated signal.
 
 ---
 
-### EA Bridge (MT5) Market Data
+### EA Bridge (MT4/MT5)
 
-These endpoints expose the EA-streamed quotes and candles used by the realtime runner and the dashboard auto-updates.
+These endpoints expose the EA-streamed quotes/bars used by the realtime runner and the dashboard.
 
-#### GET /api/broker/bridge/mt5/market/quotes
+#### GET /api/broker/bridge/:broker/market/quotes
 
 **Query Parameters:**
 
-| Parameter  | Type   | Description                       |
-| ---------- | ------ | --------------------------------- |
-| `maxAgeMs` | number | Cache tolerance; `0` forces fresh |
+| Parameter  | Type   | Description                                      |
+| ---------- | ------ | ------------------------------------------------ |
+| `maxAgeMs` | number | Cache tolerance; `0` forces fresh               |
+| `symbols`  | string | Optional comma-separated symbols (e.g. `EURUSD`) |
 
-#### GET /api/broker/bridge/mt5/market/candles
+**Response (example):**
+
+```json
+{
+  "success": true,
+  "broker": "mt5",
+  "quotes": [{ "symbol": "EURUSD", "bid": 1.085, "ask": 1.0851, "receivedAt": 1730000000000 }],
+  "count": 1,
+  "timestamp": 1730000000000
+}
+```
+
+#### GET /api/broker/bridge/:broker/market/candles
 
 **Query Parameters:**
 
@@ -286,33 +324,49 @@ These endpoints expose the EA-streamed quotes and candles used by the realtime r
 | `limit`     | number | Max bars returned                 |
 | `maxAgeMs`  | number | Cache tolerance; `0` forces fresh |
 
-**Request Body:**
-
-```json
-{
-  "pair": "EURUSD"
-}
-```
-
-**Response:**
+**Response (example):**
 
 ```json
 {
   "success": true,
-  "trade": {
-    "id": "trade-123",
-    "pair": "EURUSD",
-    "direction": "BUY",
-    "entryPrice": 1.1050,
-    "size": 0.1,
-    "stopLoss": 1.1020,
-    "takeProfit": 1.1110,
-    "openTime": "2024-01-01T00:00:00.000Z"
-  },
-  "signal": { "..." },
-  "timestamp": 1699123456789
+  "broker": "mt5",
+  "symbol": "EURUSD",
+  "timeframe": "M15",
+  "candles": [{ "time": 1730000000000, "open": 1.08, "high": 1.081, "low": 1.079, "close": 1.0805 }],
+  "count": 1,
+  "timestamp": 1730000000000
 }
 ```
+
+#### GET /api/broker/bridge/:broker/signal/get
+
+Returns the current **execution-oriented** signal payload for the EA.
+
+**Query Parameters:**
+
+| Parameter     | Type   | Description |
+| ------------ | ------ | ----------- |
+| `symbol`     | string | Required symbol (e.g. `EURUSD`) |
+| `accountMode`| string | Optional (e.g. `demo` or `real`) |
+
+**Response (shape):**
+
+```json
+{
+  "success": true,
+  "message": "OK",
+  "signal": { "pair": "EURUSD", "direction": "BUY", "isValid": { "isValid": true } },
+  "shouldExecute": true,
+  "execution": { "shouldExecute": true },
+  "snapshotPending": false,
+  "broker": "mt5",
+  "timestamp": 1730000000000
+}
+```
+
+#### GET /api/broker/bridge/:broker/agent/config
+
+Returns server policy (min confidence/strength, news/liquidity guards, runtime flags) to keep the EA aligned.
 
 ---
 

@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { analyzeCandleSeries } from '../../../src/analyzers/candle-analysis-lite.js';
+import { analyzeCandleSeries } from '../../../src/core/analyzers/candle-analysis-lite.js';
 
 const makeCandle = ({ t, o, h, l, c, v }) => ({
   time: t,

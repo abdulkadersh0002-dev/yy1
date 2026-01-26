@@ -5,9 +5,9 @@
 ### ✅ Strengths (نقاط القوة)
 
 1. **Modular Architecture** - Clean separation between routes, services, analyzers, and engine
-2. **Multi-Provider Support** - TwelveData, Polygon, Finnhub, Alpha Vantage for price data
+2. **EA-First Data** - MT4/MT5 EA bridge as the real-time market source + RSS headlines
 3. **Multi-Broker Integration** - MT5, OANDA, IBKR broker connectors
-4. **Machine Learning** - Gradient boosting, Bayesian optimizer, adaptive thresholds
+4. **Execution Safety** - Strong gating, risk limits, and auditability
 5. **Risk Management** - Risk engine, position sizing, correlation analysis
 6. **Real-time Capabilities** - WebSocket support, heartbeat monitoring
 7. **Security** - Helmet.js, rate limiting, API authentication, audit logging
@@ -52,9 +52,8 @@
 
 - [ ] Add unit tests for:
   - `src/services/brokers/*` (broker connectors)
-  - `src/services/ml/*` (machine learning modules)
   - `src/services/alerting/*` (alert services)
-  - `src/data/providers/*` (price data providers)
+  - EA bridge ingestion and caching paths
 - [ ] Add integration tests for:
   - Trade execution flow
   - Signal generation pipeline
@@ -122,7 +121,7 @@
 
 ### Phase 10: Advanced Features (الميزات المتقدمة)
 
-- [ ] Implement machine learning model retraining pipeline
+- [ ] (Removed) Machine learning model retraining pipeline
 - [ ] Add backtesting framework improvements
 - [ ] Implement portfolio optimization
 - [ ] Add multi-asset class support
@@ -163,7 +162,7 @@
 │         └────────────────┼────────────────┘                      │
 │                          │                                       │
 │              ┌───────────┴───────────┐                          │
-│              │ Adaptive Scorer / ML   │                          │
+│              │ Deterministic Scoring  │                          │
 │              └───────────────────────┘                          │
 └─────────────────────────────────────────────────────────────────┘
           │
@@ -175,11 +174,9 @@
 │  └──────┬──────┘  └─────────────┘  └──────┬──────┘              │
 │         │                                  │                     │
 │  ┌──────┴──────┐                   ┌──────┴──────┐              │
-│  │Providers    │                   │TimescaleDB  │              │
-│  │(TwelveData, │                   │             │              │
-│  │ Polygon,    │                   └─────────────┘              │
-│  │ Finnhub)    │                                                │
-│  └─────────────┘                                                │
+│  │EA Bridge     │                   │TimescaleDB  │              │
+│  │Cache/Quotes  │                   │             │              │
+│  └─────────────┘                   └─────────────┘              │
 └─────────────────────────────────────────────────────────────────┘
           │
 ┌─────────┴───────────────────────────────────────────────────────┐
@@ -205,7 +202,7 @@
 | Performance   | 100/100 | In-memory caching with LRU eviction              |
 | Monitoring    | 100/100 | Prometheus metrics, Pino logging, Circuit status |
 | Code Quality  | 100/100 | Zero lint errors, zero warnings                  |
-| Data Sources  | 100/100 | 14 RSS feeds + TwelveData configured             |
+| Data Sources  | 100/100 | EA bridge (MT4/MT5) + RSS feeds (no API keys)    |
 
 ---
 
@@ -215,7 +212,7 @@
 
 1. ✅ Fix all lint warnings - **DONE**
 2. ✅ Add RSS aggregator tests - **DONE (16 tests)**
-3. ✅ Add TwelveData provider tests - **DONE (18 tests)**
+3. ✅ Add RSS aggregator tests - **DONE**
 4. ✅ Add Cache Service with LRU eviction - **DONE (26 tests)**
 5. ✅ Add Broker Router integration tests - **DONE (21 tests)**
 
@@ -229,7 +226,7 @@
 
 1. Add Kubernetes deployment
 2. Implement distributed tracing
-3. Add machine learning retraining pipeline
+3. (Removed) Machine learning retraining pipeline
 
 ---
 

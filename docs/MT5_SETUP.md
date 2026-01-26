@@ -56,6 +56,8 @@ Compile it in MetaEditor, then attach it to a chart.
 - `TradeMajorsAndMetalsOnly`: `true`
 - `DefaultLots`: keep small (the EA will auto-reduce if margin is insufficient)
 - `MaxFreeMarginUsagePct`: e.g. `0.50`
+- `EnableSignalDedupe`: `true` (prevents repeated re-entry on the same signal)
+- `SignalDedupeTtlSec`: `120`
 
 ### Smart market handling (recommended)
 
@@ -91,6 +93,30 @@ These settings help the EA behave consistently and avoid overtrading. They **do 
     - or `DailyMaxLossPct`: e.g. `1.0`
 - `MaxTradesPerDay`: e.g. `6`
 
+### World-class safety gates (recommended)
+
+- **Entry slippage guard** (rejects stale/fast spikes):
+  - `MaxEntrySlipPips`: e.g. `3.0`
+
+- **Exposure caps** (avoid over-stacking):
+  - `MaxPositionsPerSymbol`: `1`
+  - `MaxTotalPositions`: e.g. `5`
+  - `MaxTotalLots`: e.g. `1.50`
+
+- **Session filter** (server time, hard gate):
+  - `EnableSessionFilter`: `true`
+  - `Session1Start`: `07:00`, `Session1End`: `11:30`
+  - `Session2Start`: `13:00`, `Session2End`: `17:00`
+
+- **News blackout** (manual time window, server time):
+  - `EnableNewsBlackout`: `true`
+  - `NewsBlackoutStart`: `12:25`, `NewsBlackoutEnd`: `12:45`
+
+- **Equity guard (daily trailing drawdown)**:
+  - `EnableEquityGuard`: `true`
+  - `DailyMaxDrawdownCurrency`: e.g. `80`
+  - or `DailyMaxDrawdownPct`: e.g. `1.5`
+
 ## 6) Quick verification
 
 From the repo root:
@@ -119,6 +145,8 @@ The EA now applies a per-symbol cooldown when repeated 4756 failures happen to a
 
 ## MT4?
 
-This EA is an MT5 (`.mq5`) Expert Advisor.
+This document covers the MT5 (`.mq5`) Expert Advisor.
 
-If you need an MT4 (`.mq4`) version, it must be implemented separately (MT4 APIs are different).
+An MT4 (`.mq4`) EA is also included in this repo:
+
+- See [docs/MT4_SETUP.md](docs/MT4_SETUP.md)

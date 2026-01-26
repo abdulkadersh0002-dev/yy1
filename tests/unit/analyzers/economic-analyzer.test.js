@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import EconomicAnalyzer from '../../../src/analyzers/economic-analyzer.js';
+import EconomicAnalyzer from '../../../src/core/analyzers/economic-analyzer.js';
 
 test('calculateEconomicScore applies weights and clamps output', () => {
   const analyzer = new EconomicAnalyzer({});

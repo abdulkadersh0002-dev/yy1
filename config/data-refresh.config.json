@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "./schemas/data-refresh.schema.json",
   "description": "Runtime data refresh workflow configuration",
   "etlConfigPath": "./historical-warehouse.config.json",
   "apiBaseUrl": "http://localhost:4101",

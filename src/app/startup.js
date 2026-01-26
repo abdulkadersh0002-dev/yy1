@@ -1,6 +1,6 @@
 import { createServer } from 'http';
-import { createHttpApp } from './http.js';
-import { createWebSocketLayer } from './websocket.js';
+import { createHttpApp } from '../interfaces/http/app.js';
+import { createWebSocketLayer } from '../interfaces/ws/websocket.js';
 
 export function startServer({
   serverConfig,
@@ -17,6 +17,7 @@ export function startServer({
   services,
   metricsRegistry,
   providerAvailabilityState,
+  runtimeSummary,
   onClose,
   factories
 }) {
@@ -44,7 +45,8 @@ export function startServer({
     services,
     broadcast: websocketLayer.broadcast,
     metricsRegistry,
-    providerAvailabilityState
+    providerAvailabilityState,
+    runtimeSummary
   });
 
   const server = createServerImpl(app);

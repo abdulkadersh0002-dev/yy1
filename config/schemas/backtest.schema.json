@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "backtest.schema.json",
+  "title": "Backtest Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["outputDir", "transactionCosts", "backtesterOptions", "datasets"],
+  "properties": {
+    "outputDir": { "type": "string", "minLength": 1 },
+    "transactionCosts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spreadPips", "slippagePips", "commissionPerLot", "lotSize"],
+      "properties": {
+        "spreadPips": { "type": "number", "minimum": 0 },
+        "slippagePips": { "type": "number", "minimum": 0 },
+        "commissionPerLot": { "type": "number", "minimum": 0 },
+        "lotSize": { "type": "number", "minimum": 1 }
+      }
+    },
+    "backtesterOptions": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "entryOffset": { "type": "number" },
+        "defaultHoldBars": { "type": "integer", "minimum": 1 },
+        "defaultTakeProfitPips": { "type": "number" },
+        "defaultStopLossPips": { "type": "number" },
+        "units": { "type": "number", "minimum": 1 }
+      }
+    },
+    "monteCarlo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "iterations": { "type": "integer", "minimum": 1 },
+        "sampleSize": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "walkForward": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "windowSize": { "type": "integer", "minimum": 1 },
+        "stepSize": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "datasets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "pair", "timeframe", "priceFile", "signalFile"],
+        "properties": {
+          "label": { "type": "string", "minLength": 1 },
+          "pair": { "type": "string", "minLength": 3 },
+          "timeframe": { "type": "string", "minLength": 1 },
+          "priceFile": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "format"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "format": { "type": "string", "enum": ["json", "csv", "ndjson"] }
+            }
+          },
+          "signalFile": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "format"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "format": { "type": "string", "enum": ["json", "csv", "ndjson"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

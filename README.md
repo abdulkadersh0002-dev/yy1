@@ -1,8 +1,8 @@
 # Intelligent Auto-Trading System
 
-[![CI](https://github.com/abdulkadersh0002-dev/my-app1/actions/workflows/ci.yml/badge.svg)](https://github.com/abdulkadersh0002-dev/my-app1/actions/workflows/ci.yml)
+[![CI](https://github.com/abdulkadersh0002-dev/g/actions/workflows/ci.yml/badge.svg)](https://github.com/abdulkadersh0002-dev/g/actions/workflows/ci.yml)
 
-An advanced AI-powered automated trading system with economic, news, and technical analysis capabilities. Designed for production-grade reliability, scalability, and security.
+An EA-driven automated trading system with economic, news, and technical analysis capabilities. Designed for production-grade reliability, scalability, and security.
 
 ## 📋 Table of Contents
 
@@ -15,19 +15,17 @@ An advanced AI-powered automated trading system with economic, news, and technic
 - [Testing](#-testing)
 - [Architecture](#-architecture)
 - [Contributing](#-contributing)
+npm run up
 - [License](#-license)
 
 ## ✨ Features
 
 - **Multi-timeframe Technical Analysis** - Supports M1 to W1 timeframes
 - **Economic Calendar Integration** - Real-time economic event tracking
-- **News Sentiment Analysis** - AI-powered news sentiment scoring
+- **News Sentiment Analysis** - Deterministic scoring (EA + RSS)
 - **Multi-broker Support** - OANDA, MT5, and IBKR integration
 - **Risk Management** - Advanced position sizing and risk controls
 - **Real-time WebSocket Updates** - Live trade and signal broadcasting
-- **Prometheus Metrics** - Full observability with Grafana dashboards
-- **Health Monitoring** - Comprehensive health checks and alerting
-
 ## 🚀 Quick Start
 
 ```bash
@@ -39,12 +37,17 @@ cd my-app1
 npm ci
 
 # Copy environment configuration
-cp .env.example .env
 
 # Edit .env with your configuration
 
 # Start backend + dashboard (recommended dev workflow)
-npm run start:all
+npm run dev
+
+# Start backend + dashboard with a preset (recommended)
+npm run start:all -- --preset synthetic
+
+# List available presets
+npm run start:all -- --list-presets
 ```
 
 What you get:
@@ -56,6 +59,22 @@ What you get:
 For the EA-driven realtime workflow (signals stream automatically; no manual “Analyze Pair”), see `docs/REALTIME_EA_MODE.md`.
 
 For MetaTrader 5 setup (EA + WebRequest allowlist + verification), see `docs/MT5_SETUP.md`.
+
+## 🏫 No Admin / No Node.js on This PC?
+
+If you are on a restricted/school/work PC and you cannot install Node.js locally, you still have two good options:
+
+- **GitHub Actions (recommended for validation):** push your changes and let the CI run `npm ci`, `lint`, and `tests` on GitHub. The workflow is in `.github/workflows/ci.yml`.
+- **GitHub Codespaces (recommended for running):** open the repo in a Codespace (browser) where Node.js is already available, then run `npm ci` + `npm run dev` there.
+
+If Node.js is already installed but not on PATH, you can run it by full path (example: `C:\\Program Files\\nodejs\\node.exe -v`).
+
+### ✅ First Successful Run Checklist
+
+- Backend is up: `GET http://127.0.0.1:4101/api/healthz`
+- Runtime summary: `GET http://127.0.0.1:4101/api/health/runtime`
+- Metrics exposed: `GET http://127.0.0.1:4101/metrics`
+- Dashboard loads: `http://127.0.0.1:4173`
 
 ## 📦 Installation
 
@@ -131,7 +150,9 @@ See `.env.example` for the complete list of configuration options.
 | `/api/health/modules`   | GET    | Module health summary         |
 | `/api/health/providers` | GET    | Data provider availability    |
 | `/api/health/heartbeat` | GET    | Heartbeat status              |
+| `/api/health/runtime`   | GET    | Runtime configuration summary |
 | `/metrics`              | GET    | Prometheus metrics            |
+| `/api/metrics`          | GET    | Prometheus metrics (legacy)   |
 
 ### Trading Endpoints
 
@@ -173,6 +194,15 @@ See `.env.example` for the complete list of configuration options.
 | `/api/broker/manual-order` | POST   | Place manual order       |
 | `/api/broker/manual-close` | POST   | Close position manually  |
 
+### EA Bridge Endpoints (MT4/MT5)
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/broker/bridge/:broker/agent/config` | GET | Server execution policy for the EA |
+| `/api/broker/bridge/:broker/signal/get` | GET | EA signal payload for a symbol (`?symbol=EURUSD&accountMode=demo`) |
+| `/api/broker/bridge/:broker/market/quotes` | GET | Latest EA-streamed quotes |
+| `/api/broker/bridge/:broker/market/candles` | GET | Candles derived from EA bars/quotes |
+
 ### Feature Endpoints
 
 | Endpoint                   | Method | Description              |
@@ -187,14 +217,17 @@ See `.env.example` for the complete list of configuration options.
 ### Development Mode
 
 ```bash
-# Start with hot reload
+# Start backend + dashboard together (recommended)
 npm run dev
 
-# Run dashboard dev server
+# Backend only with hot reload
+npm run dev:backend
+
+# Dashboard only (dev)
 npm run dashboard:dev
 
-# Start both together
-npm run start:all
+# Advanced: start both together with presets
+npm run start:all -- --preset synthetic
 ```
 
 ### Code Quality

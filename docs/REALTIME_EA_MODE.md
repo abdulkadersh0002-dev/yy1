@@ -37,6 +37,7 @@ The server broadcasts real-time events on `/ws/trading`.
   - cooldown / de-duplication
   - risk checks and limits
   - news blackout (default 30 min before/after events)
+  - EA-side hard gates (if enabled): session window, manual news blackout, entry slippage guard, exposure caps, equity drawdown guard
 
 ## Allow all symbols (beyond FX/metals/crypto)
 
@@ -47,4 +48,5 @@ By default, EA bridge symbol filtering may restrict to common assets (FX/metals/
 ## Recommended Windows workflow (VS Code)
 
 - Use the VS Code tasks in `.vscode/tasks.json` to start services and run health checks.
-- `npm run start:all` is tolerant of already-running services on ports 4101/4173 (it will report “already running” when reachable).
+- `npm run dev` is the recommended way to start backend + dashboard together.
+- `npm run dev` (and the underlying `npm run start:all`) is tolerant of already-running services on ports 4101/4173 (it will report “already running” when reachable).

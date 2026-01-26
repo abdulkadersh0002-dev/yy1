@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import BrokerRouter from '../../../src/services/brokers/broker-router.js';
+import BrokerRouter from '../../../src/infrastructure/services/brokers/broker-router.js';
 
 const createRouterWithConnector = (connector) => {
   const router = new BrokerRouter({

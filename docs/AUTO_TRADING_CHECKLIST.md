@@ -9,6 +9,14 @@ This document describes the **smart auto-trading** behavior implemented by the b
 - Risk engine must approve the trade (`riskManagement.canTrade === true`).
 - Active trades must be below `maxConcurrentTrades`.
 
+EA-side hard gates (if enabled) also apply in MT4/MT5:
+
+- Session window filter
+- Manual news blackout window
+- Entry slippage guard
+- Exposure caps (per-symbol / total lots / total positions)
+- Equity drawdown guard
+
 ## 1.1) Signal Universe (what gets scanned)
 
 - Auto-trading is **not limited to the 7 preset pairs**.

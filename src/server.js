@@ -3,30 +3,32 @@
  * REST API for automated trading system with real-time monitoring
  */
 
-import TradingEngine from './engine/trading-engine.js';
-import TradeManager from './engine/trade-manager.js';
-import HeartbeatMonitor from './services/heartbeat-monitor.js';
+import TradingEngine from './core/engine/trading-engine.js';
+import TradeManager from './core/engine/trade-manager.js';
+import HeartbeatMonitor from './infrastructure/services/heartbeat-monitor.js';
 import { enforceRealTimeProviderReadiness } from './utils/realtime-provider-check.js';
-import logger from './services/logging/logger.js';
-import AlertBus from './services/alerting/alert-bus.js';
-import RiskReportService from './services/alerting/risk-report-service.js';
-import PerformanceDigestService from './services/alerting/performance-digest-service.js';
-import BrokerRouter from './services/brokers/broker-router.js';
-import BrokerReconciliationService from './services/brokers/reconciliation-service.js';
-import EaBridgeService from './services/brokers/ea-bridge-service.js';
-import SecretManager from './services/security/secret-manager.js';
-import AuditLogger from './services/logging/audit-logger.js';
-import { metrics as metricsRegistry } from './services/metrics.js';
-import PairPrefetchScheduler from './services/pair-prefetch-scheduler.js';
-import JobQueue from './services/jobs/job-queue.js';
+import logger from './infrastructure/services/logging/logger.js';
+import AlertBus from './infrastructure/services/alerting/alert-bus.js';
+import RiskReportService from './infrastructure/services/alerting/risk-report-service.js';
+import PerformanceDigestService from './infrastructure/services/alerting/performance-digest-service.js';
+import BrokerRouter from './infrastructure/services/brokers/broker-router.js';
+import BrokerReconciliationService from './infrastructure/services/brokers/reconciliation-service.js';
+import EaBridgeService from './infrastructure/services/brokers/ea-bridge-service.js';
+import SecretManager from './infrastructure/services/security/secret-manager.js';
+import AuditLogger from './infrastructure/services/logging/audit-logger.js';
+import { metrics as metricsRegistry } from './infrastructure/services/metrics.js';
+import PairPrefetchScheduler from './infrastructure/services/pair-prefetch-scheduler.js';
+import JobQueue from './infrastructure/services/jobs/job-queue.js';
 import { pairCatalog } from './config/pair-catalog.js';
 import { appConfig } from './app/config.js';
 import { startServer } from './app/startup.js';
-import { buildProviderAvailabilitySnapshot } from './services/health-summary.js';
-import { startRssToEaBridgeIngestor } from './services/bridge/rss-to-ea-bridge.js';
-import EconomicCalendarService from './services/economic-calendar-service.js';
-import { createMarketRules } from './engine/market-rules.js';
+import { buildProviderAvailabilitySnapshot } from './infrastructure/services/health-summary.js';
+import { startRssToEaBridgeIngestor } from './infrastructure/services/bridge/rss-to-ea-bridge.js';
+import EconomicCalendarService from './infrastructure/services/economic-calendar-service.js';
+import { createMarketRules } from './core/engine/market-rules.js';
 import { eaOnlyMode } from './config/runtime-flags.js';
+import { AdvancedSignalFilter } from './core/engine/advanced-signal-filter.js';
+import LiveBacktestValidator from './core/backtesting/live-backtest-validator.js';
 
 // Default to EA-only in the real server unless explicitly overridden.
 // Tests that construct the app directly won't hit this file.
@@ -122,6 +124,56 @@ const jobQueue =
 if (jobQueue) {
   jobQueue.start();
 }
+
+const persistenceEnabled = Boolean(
+  databaseConfig?.host && databaseConfig?.name && databaseConfig?.user && databaseConfig?.password
+);
+
+const runtimeSummary = {
+  environment: serverConfig.nodeEnv,
+  server: {
+    port: serverConfig.port,
+    enableWebSockets: serverConfig.enableWebSockets,
+    websocketPath: serverConfig.websocketPath
+  },
+  apiAuthEnabled: appConfig.apiAuth?.enabled === true,
+  tradingScope: {
+    mode: appConfig.tradingScope?.mode,
+    allowExecution: appConfig.tradingScope?.allowExecution === true
+  },
+  eaOnlyMode: eaOnlyMode(rawEnv),
+  autoTrading: {
+    autostart: autoTradingConfig?.autostart === true
+  },
+  brokerRouting: {
+    enabled: brokerRoutingConfig?.enabled === true,
+    defaultBroker: brokerRoutingConfig?.defaultBroker
+  },
+  brokers: {
+    oanda: brokerConfig?.oanda?.enabled === true,
+    mt4: brokerConfig?.mt4?.enabled === true,
+    mt5: brokerConfig?.mt5?.enabled === true,
+    ibkr: brokerConfig?.ibkr?.enabled === true
+  },
+  services: {
+    riskReports: serviceToggles?.riskReports?.enabled !== false,
+    performanceDigests: serviceToggles?.performanceDigests?.enabled !== false,
+    brokerReconciliation: brokerRoutingConfig?.enabled === true,
+    pairPrefetch: pairPrefetchSettings?.enabled !== false,
+    jobQueue: Boolean(jobQueue)
+  },
+  persistence: {
+    enabled: persistenceEnabled,
+    ssl: databaseConfig?.ssl === true
+  },
+  endpoints: {
+    health: '/api/healthz',
+    metrics: '/metrics',
+    websocket: serverConfig.websocketPath
+  }
+};
+
+logger.info({ runtime: runtimeSummary }, 'Startup configuration summary');
 
 // Initialize alert bus
 const alertBus = new AlertBus({
@@ -252,8 +304,77 @@ if (!databaseConfig.host || !databaseConfig.user || !databaseConfig.password) {
   );
 }
 
+const resolveBoolean = (value) => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) {
+    return false;
+  }
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+};
+
+const advancedFilterEnabled = resolveBoolean(process.env.ADVANCED_SIGNAL_FILTER_ENABLED);
+
+const buildAdvancedFilterOptions = () => {
+  const toNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
+  const options = {};
+  const minWinRate = toNumber(process.env.SIGNAL_FILTER_MIN_WIN_RATE);
+  if (minWinRate != null) {
+    options.minWinRate = minWinRate;
+  }
+  const minRiskReward = toNumber(process.env.SIGNAL_FILTER_MIN_RR);
+  if (minRiskReward != null) {
+    options.minRiskReward = minRiskReward;
+  }
+  const minConfidence = toNumber(process.env.SIGNAL_FILTER_MIN_CONFIDENCE);
+  if (minConfidence != null) {
+    options.minConfidence = minConfidence;
+  }
+  const minStrength = toNumber(process.env.SIGNAL_FILTER_MIN_STRENGTH);
+  if (minStrength != null) {
+    options.minStrength = minStrength;
+  }
+  const minDataQualityScore = toNumber(process.env.SIGNAL_FILTER_MIN_DATA_QUALITY_SCORE);
+  if (minDataQualityScore != null) {
+    options.minDataQualityScore = minDataQualityScore;
+  }
+  const maxSpreadPipsFx = toNumber(process.env.SIGNAL_FILTER_MAX_SPREAD_PIPS_FX);
+  if (maxSpreadPipsFx != null) {
+    options.maxSpreadPipsFx = maxSpreadPipsFx;
+  }
+  const maxSpreadPipsMetals = toNumber(process.env.SIGNAL_FILTER_MAX_SPREAD_PIPS_METALS);
+  if (maxSpreadPipsMetals != null) {
+    options.maxSpreadPipsMetals = maxSpreadPipsMetals;
+  }
+  const maxSpreadPipsCrypto = toNumber(process.env.SIGNAL_FILTER_MAX_SPREAD_PIPS_CRYPTO);
+  if (maxSpreadPipsCrypto != null) {
+    options.maxSpreadPipsCrypto = maxSpreadPipsCrypto;
+  }
+  const maxSpreadRelative = toNumber(process.env.SIGNAL_FILTER_MAX_SPREAD_RELATIVE);
+  if (maxSpreadRelative != null) {
+    options.maxSpreadRelative = maxSpreadRelative;
+  }
+  const maxNewsImpact = toNumber(process.env.SIGNAL_FILTER_MAX_NEWS_IMPACT);
+  if (maxNewsImpact != null) {
+    options.maxNewsImpact = maxNewsImpact;
+  }
+  return options;
+};
+
 // Initialize trading engine
 const tradingEngine = new TradingEngine(config);
+if (advancedFilterEnabled) {
+  tradingEngine.advancedSignalFilter = new AdvancedSignalFilter(buildAdvancedFilterOptions());
+  logger.info('Advanced signal filter enabled');
+}
+
+const liveBacktestEnabled = resolveBoolean(process.env.LIVE_BACKTEST_ENABLED);
+if (liveBacktestEnabled) {
+  tradingEngine.liveBacktestValidator = new LiveBacktestValidator({
+    priceDataFetcher: tradingEngine.priceDataFetcher,
+    logger
+  });
+  logger.info('Live backtest validator enabled');
+}
 if (config.brokerRouting?.enabled) {
   tradingEngine.setBrokerRouter(brokerRouter);
 }
@@ -272,7 +393,7 @@ logger.info('EA Bridge Service initialized for intelligent MT4/MT5 integration')
 // External economic calendar (ForexFactory export) used as a fallback in EA-only mode
 // until MT4/MT5 pushes structured calendar events through the bridge.
 const economicCalendarService = new EconomicCalendarService({
-  finnhub: process.env.FINNHUB_API_KEY
+  // No external API keys in EA-only + RSS-only mode.
 });
 
 // Optional: feed the EA-only news pipeline from the built-in RSS aggregator.
@@ -884,6 +1005,7 @@ const {
   services: serviceToggles,
   metricsRegistry,
   providerAvailabilityState,
+  runtimeSummary,
   onClose: () => {
     pairPrefetchScheduler.stop();
     riskReportService?.stop?.();

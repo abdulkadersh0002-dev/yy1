@@ -5,7 +5,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import axios from 'axios';
-import RssFeedAggregator from '../../../src/services/rss-feed-aggregator.js';
+import RssFeedAggregator from '../../../src/infrastructure/services/rss-feed-aggregator.js';
 
 // Mock the RSS aggregator for testing without network
 const createMockAggregator = () => {
@@ -259,33 +259,14 @@ describe('RSS Feed Aggregator', () => {
     });
   });
 
-  describe('External Provider Fallbacks', () => {
-    it('should safely handle Polygon 401 responses', async () => {
-      const aggregator = new RssFeedAggregator({ feeds: [], apiKeys: { polygon: 'live-key' } });
+  describe('External Provider Calls (Disabled)', () => {
+    it('should not call Polygon/Finnhub even if apiKeys passed', async () => {
+      const aggregator = new RssFeedAggregator({ feeds: [], apiKeys: { polygon: 'live-key', finnhub: 'live-key' } });
       const originalAxiosGet = axios.get;
 
       axios.get = async (url, config) => {
-        if (url.includes('polygon.io')) {
-          throw new Error('Request failed with status code 401');
-        }
-        return originalAxiosGet.call(axios, url, config);
-      };
-
-      try {
-        const items = await aggregator.fetchAll({ maxItems: 5 });
-        assert.deepStrictEqual(items, []);
-      } finally {
-        axios.get = originalAxiosGet;
-      }
-    });
-
-    it('should safely handle Finnhub 401 responses', async () => {
-      const aggregator = new RssFeedAggregator({ feeds: [], apiKeys: { finnhub: 'live-key' } });
-      const originalAxiosGet = axios.get;
-
-      axios.get = async (url, config) => {
-        if (url.includes('finnhub.io')) {
-          throw new Error('Request failed with status code 401');
+        if (url.includes('polygon.io') || url.includes('finnhub.io')) {
+          throw new Error(`External provider call should not occur: ${url}`);
         }
         return originalAxiosGet.call(axios, url, config);
       };

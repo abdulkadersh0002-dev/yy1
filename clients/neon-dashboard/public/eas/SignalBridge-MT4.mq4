@@ -50,8 +50,49 @@ extern int    ReconnectBackoffSec    = 5;
 
 // === Auto-Trading Settings ===
 extern bool   EnableAutoTrading = false;
+extern int    SymbolsToCheckPerSignalPoll = 8;
+// Prevent repeated entries on the same server signal (common when polling fast)
+extern bool   EnableSignalDedupe = true;
+extern int    SignalDedupeTtlSec = 120;
 extern int    MagicNumber       = 87001;
 extern int    Slippage          = 10;
+extern int    MaxSpreadPoints   = 80;
+extern double MaxFreeMarginUsagePct = 0.50;
+extern int    MaxNoMoneyRetries = 6;
+extern int    SymbolFailureCooldownSec = 600;
+extern bool   DropInvalidStops = true;
+
+// === Daily Guards (Smart Discipline) ===
+extern bool   EnableDailyGuards          = true;
+extern double DailyProfitTargetCurrency  = 0.0;
+extern double DailyProfitTargetPct       = 0.0;
+extern double DailyMaxLossCurrency       = 0.0;
+extern double DailyMaxLossPct            = 0.0;
+extern bool   EnforceMaxTradesPerDay     = false;
+extern int    MaxTradesPerDay            = 0;
+
+// === SMART STRONG Mode (recommended) ===
+extern bool   SmartStrongMode               = true;
+extern bool   EnforceSmartStrongThresholds  = true;
+extern double SmartStrongMinStrengthTrade   = 60.0;
+extern double SmartStrongMinConfidenceTrade = 75.0;
+extern int    ServerPolicyRefreshSec        = 300;
+extern int    SmartMaxTickAgeSec            = 6;
+extern double SmartMinAtrPips               = 4.0;
+extern double SmartMaxAtrPips               = 120.0;
+extern double SmartMaxSpreadToAtrPct        = 18.0;
+
+// Smart close: exit open trades when a strong opposite signal appears
+extern bool   SmartStrongCloseOnOpposite    = true;
+extern double SmartCloseMinStrength         = 60.0;
+extern double SmartCloseMinConfidence       = 75.0;
+extern int    SmartCloseCheckIntervalSec    = 30;
+
+// === EA Smart Management (Server-Guided) ===
+extern bool   EnableServerPositionSync = true;   // Send open positions for smart management
+extern int    PositionSyncIntervalSec  = 5;
+extern bool   EnableCommandPolling     = true;   // Poll server commands for manage actions
+extern int    CommandPollIntervalSec   = 3;
 
 // === Chart Overlay (Signal Visualization) ===
 extern bool   EnableSignalOverlay        = true;
@@ -61,6 +102,25 @@ extern bool   OverlayRespectServerExecution = false;
 // === Intelligent Features ===
 extern bool   UseDynamicStopLoss = true;    // Adjust SL based on volatility
 extern bool   EnableLearning     = true;     // Learn from trade results
+extern bool   TradeMajorsAndMetalsOnly = true;
+extern bool   CloseLosingTrades = false;
+extern double MaxLossPerTradePips = 0.0;
+extern double MaxLossPerTradeCurrency = 0.0;
+
+// === Trade Management ===
+extern bool   EnableBreakeven        = true;
+extern double BreakevenTriggerPips   = 8.0;
+extern int    BreakevenBufferPoints  = 10;
+extern bool   EnableTrailingStop     = true;
+extern double TrailingStartPips      = 15.0;
+extern double TrailingDistancePips   = 10.0;
+extern int    TrailingStepPoints     = 20;
+extern int    TradeModifyCooldownSec = 10;
+extern bool   EnableAtrTrailing      = true;
+extern int    AtrTrailingTf          = PERIOD_M15;
+extern double AtrStartMultiplier     = 1.0;
+extern double AtrTrailMultiplier     = 2.0;
+extern double RiskPercentage     = 1.0;
 extern double MaxLotSize         = 1.0;
 extern double MinLotSize         = 0.01;
 
@@ -87,6 +147,26 @@ bool     g_activeSymbolsEndpointSupported = true;
 
 datetime g_lastMarketBars = 0;
 
+bool     g_serverPolicyLoaded = false;
+datetime g_lastServerPolicyFetch = 0;
+double   g_serverMinStrength = 0.0;
+double   g_serverMinConfidence = 0.0;
+bool     g_serverRequireLayers18 = false;
+bool     g_serverRequiresEnterState = true;
+
+datetime g_lastSmartCloseCheck = 0;
+
+datetime g_lastPositionSync = 0;
+datetime g_lastCommandPoll  = 0;
+
+datetime g_lastTradeModifyAt = 0;
+
+datetime g_dailyStart = 0;
+double   g_dailyStartEquity = 0.0;
+bool     g_dailyHalt = false;
+string   g_dailyHaltReason = "";
+bool     g_dailyHaltLogged = false;
+
 // Closed-bar send state (per symbol+timeframe). Used to post M15/H1/H4/D1 only on bar close.
 string   g_closedBarKey[];
 datetime g_closedBarLastTime[];
@@ -100,6 +180,64 @@ bool     g_marketWatchPrepared = false;
 int      g_marketFeedCursor = 0;
 
 int      g_marketWatchPrepareCursor = 0;
+
+int      g_tradeCursor = 0;
+
+string   g_tradeCooldownSymbol = "";
+datetime g_tradeCooldownUntil  = 0;
+
+// Signal idempotency / replay protection
+string   g_lastSignalSym[];
+string   g_lastSignalKey[];
+datetime g_lastSignalAt[];
+
+int FindLastSignalIndex(const string sym)
+{
+   int n = ArraySize(g_lastSignalSym);
+   for(int i = 0; i < n; i++)
+   {
+      if(g_lastSignalSym[i] == sym)
+         return i;
+   }
+   return -1;
+}
+
+bool WasSignalRecentlyProcessed(const string sym, const string key)
+{
+   if(!EnableSignalDedupe)
+      return false;
+   if(StringLen(sym) <= 0 || StringLen(key) <= 0)
+      return false;
+   int ttl = SignalDedupeTtlSec;
+   if(ttl <= 0)
+      ttl = 120;
+   int idx = FindLastSignalIndex(sym);
+   if(idx < 0)
+      return false;
+   if(g_lastSignalKey[idx] != key)
+      return false;
+   if(g_lastSignalAt[idx] == 0)
+      return false;
+   return (TimeCurrent() - g_lastSignalAt[idx]) < ttl;
+}
+
+void MarkSignalProcessed(const string sym, const string key)
+{
+   if(StringLen(sym) <= 0 || StringLen(key) <= 0)
+      return;
+   int idx = FindLastSignalIndex(sym);
+   if(idx < 0)
+   {
+      int n = ArraySize(g_lastSignalSym);
+      ArrayResize(g_lastSignalSym, n + 1);
+      ArrayResize(g_lastSignalKey, n + 1);
+      ArrayResize(g_lastSignalAt, n + 1);
+      idx = n;
+   }
+   g_lastSignalSym[idx] = sym;
+   g_lastSignalKey[idx] = key;
+   g_lastSignalAt[idx] = TimeCurrent();
+}
 
 string   g_prioritySymbols[];
 datetime g_priorityExpires[];
@@ -148,6 +286,87 @@ string CanonicalSymbol(string value)
          out = StringConcatenate(out, StringSubstr(value, i, 1));
    }
    return(out);
+}
+
+bool IsMajorCurrency(const string code)
+{
+   string c = code;
+   StringToUpper(c);
+   return(c == "USD" || c == "EUR" || c == "GBP" || c == "JPY" || c == "CHF" || c == "CAD" || c == "AUD" || c == "NZD");
+}
+
+bool IsMetalSymbol(const string sym)
+{
+   string c = CanonicalSymbol(sym);
+   if(StringLen(c) < 6)
+      return(false);
+   string base = StringSubstr(c, 0, 3);
+   StringToUpper(base);
+   return(base == "XAU" || base == "XAG" || base == "XPT" || base == "XPD");
+}
+
+bool IsMajorsForexPair(const string sym)
+{
+   string c = CanonicalSymbol(sym);
+   if(StringLen(c) < 6)
+      return(false);
+   string base = StringSubstr(c, 0, 3);
+   string quote = StringSubstr(c, 3, 3);
+   StringToUpper(base);
+   StringToUpper(quote);
+   return(IsMajorCurrency(base) && IsMajorCurrency(quote));
+}
+
+bool IsTradeSymbolEligible(const string sym)
+{
+   if(!TradeMajorsAndMetalsOnly)
+      return(true);
+   if(IsMetalSymbol(sym))
+      return(true);
+   return(IsMajorsForexPair(sym));
+}
+
+void ClampStopsForOrder(const string sym, const int cmd, const double price, double &sl, double &tp)
+{
+   double point = MarketInfo(sym, MODE_POINT);
+   if(!(point > 0.0))
+      point = 0.00001;
+   int stopsLevel = (int)MarketInfo(sym, MODE_STOPLEVEL);
+   int freezeLevel = (int)MarketInfo(sym, MODE_FREEZELEVEL);
+   double minDist = (double)MathMax(stopsLevel, freezeLevel) * point;
+   bool isBuy = (cmd == OP_BUY);
+
+   if(sl > 0.0)
+   {
+      if((isBuy && sl >= price) || (!isBuy && sl <= price))
+      {
+         if(DropInvalidStops) sl = 0.0;
+      }
+      if(sl > 0.0 && minDist > 0.0)
+      {
+         double dist = isBuy ? (price - sl) : (sl - price);
+         if(dist < minDist)
+         {
+            if(DropInvalidStops) sl = 0.0;
+         }
+      }
+   }
+
+   if(tp > 0.0)
+   {
+      if((isBuy && tp <= price) || (!isBuy && tp >= price))
+      {
+         if(DropInvalidStops) tp = 0.0;
+      }
+      if(tp > 0.0 && minDist > 0.0)
+      {
+         double dist = isBuy ? (tp - price) : (price - tp);
+         if(dist < minDist)
+         {
+            if(DropInvalidStops) tp = 0.0;
+         }
+      }
+   }
 }
 
 int ScoreSymbolCandidate(const string requestedCanonical, const string candidate)
@@ -381,6 +600,115 @@ string AccountMode()
    return AccountServer() == "" ? "demo" : (StringFind(AccountServer(), "demo", 0) >= 0 ? "demo" : "real");
 }
 
+datetime DayStartTime(datetime t)
+{
+   string d = TimeToString(t, TIME_DATE);
+   return StringToTime(d);
+}
+
+double ComputeDailyProfit()
+{
+   datetime dayStart = DayStartTime(TimeCurrent());
+   double total = 0.0;
+   int totalHistory = OrdersHistoryTotal();
+   for(int i = totalHistory - 1; i >= 0; i--)
+   {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
+         continue;
+      if(OrderMagicNumber() != MagicNumber)
+         continue;
+      if(OrderType() != OP_BUY && OrderType() != OP_SELL)
+         continue;
+      if(OrderCloseTime() < dayStart)
+         continue;
+      total += OrderProfit() + OrderSwap() + OrderCommission();
+   }
+   return total;
+}
+
+int CountDailyTrades()
+{
+   datetime dayStart = DayStartTime(TimeCurrent());
+   int count = 0;
+   int totalHistory = OrdersHistoryTotal();
+   for(int i = totalHistory - 1; i >= 0; i--)
+   {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
+         continue;
+      if(OrderMagicNumber() != MagicNumber)
+         continue;
+      if(OrderType() != OP_BUY && OrderType() != OP_SELL)
+         continue;
+      if(OrderCloseTime() < dayStart)
+         continue;
+      count++;
+   }
+   return count;
+}
+
+void UpdateDailyState()
+{
+   datetime now = TimeCurrent();
+   if(g_dailyStart == 0 || DayStartTime(now) != g_dailyStart)
+   {
+      g_dailyStart = DayStartTime(now);
+      g_dailyStartEquity = AccountEquity();
+      g_dailyHalt = false;
+      g_dailyHaltReason = "";
+      g_dailyHaltLogged = false;
+   }
+}
+
+bool IsDailyTradingAllowed()
+{
+   if(!EnableDailyGuards)
+      return true;
+
+   UpdateDailyState();
+
+   double pnl = ComputeDailyProfit();
+   double equity = g_dailyStartEquity > 0.0 ? g_dailyStartEquity : AccountEquity();
+
+   if(DailyProfitTargetCurrency > 0.0 && pnl >= DailyProfitTargetCurrency)
+   {
+      g_dailyHalt = true;
+      g_dailyHaltReason = "Daily profit target reached";
+   }
+   if(!g_dailyHalt && DailyProfitTargetPct > 0.0 && equity > 0.0 && pnl >= (equity * (DailyProfitTargetPct / 100.0)))
+   {
+      g_dailyHalt = true;
+      g_dailyHaltReason = "Daily profit target (%) reached";
+   }
+   if(!g_dailyHalt && DailyMaxLossCurrency > 0.0 && pnl <= -DailyMaxLossCurrency)
+   {
+      g_dailyHalt = true;
+      g_dailyHaltReason = "Daily max loss reached";
+   }
+   if(!g_dailyHalt && DailyMaxLossPct > 0.0 && equity > 0.0 && pnl <= -(equity * (DailyMaxLossPct / 100.0)))
+   {
+      g_dailyHalt = true;
+      g_dailyHaltReason = "Daily max loss (%) reached";
+   }
+
+   if(!g_dailyHalt && EnforceMaxTradesPerDay && MaxTradesPerDay > 0)
+   {
+      int trades = CountDailyTrades();
+      if(trades >= MaxTradesPerDay)
+      {
+         g_dailyHalt = true;
+         g_dailyHaltReason = "Max trades per day reached";
+      }
+   }
+
+   if(g_dailyHalt && !g_dailyHaltLogged)
+   {
+      Print("Daily guard active: ", g_dailyHaltReason);
+      g_dailyHaltLogged = true;
+   }
+
+   return !g_dailyHalt;
+}
+
 string WebRequestHint(int lastErr, string url)
 {
    if(lastErr == 4014)
@@ -390,6 +718,380 @@ string WebRequestHint(int lastErr, string url)
    if(StringFind(url, "127.0.0.1", 0) >= 0 || StringFind(url, "localhost", 0) >= 0)
       return "Local bridge not reachable. Verify backend is started and firewall is not blocking local loopback.";
    return "";
+}
+
+bool JsonIsWhitespace(const int c)
+{
+   return (c == ' ' || c == 9 || c == 10 || c == 13);
+}
+
+int JsonSkipWhitespace(const string json, int pos)
+{
+   int n = StringLen(json);
+   while(pos < n && JsonIsWhitespace(StringGetCharacter(json, pos)))
+      pos++;
+   return pos;
+}
+
+int JsonFindKeyOutsideString(const string json, const string key, const int startPos)
+{
+   int n = StringLen(json);
+   int klen = StringLen(key);
+   if(klen <= 0)
+      return -1;
+
+   bool inStr = false;
+   bool esc = false;
+   for(int i = MathMax(0, startPos); i <= n - klen; i++)
+   {
+      int c = StringGetCharacter(json, i);
+      if(inStr)
+      {
+         if(esc)
+         {
+            esc = false;
+            continue;
+         }
+         if(c == '\\')
+         {
+            esc = true;
+            continue;
+         }
+         if(c == '"')
+         {
+            inStr = false;
+            continue;
+         }
+         continue;
+      }
+      else
+      {
+         if(c == '"')
+         {
+            inStr = true;
+            esc = false;
+            continue;
+         }
+      }
+
+      if(StringSubstr(json, i, klen) == key)
+         return i;
+   }
+   return -1;
+}
+
+bool JsonReadStringValue(const string json, int pos, string &outValue, int &endPos)
+{
+   outValue = "";
+   endPos = pos;
+   int n = StringLen(json);
+   if(pos < 0 || pos >= n)
+      return false;
+   if(StringGetCharacter(json, pos) != '"')
+      return false;
+   pos++;
+
+   bool esc = false;
+   string out = "";
+   while(pos < n)
+   {
+      int c = StringGetCharacter(json, pos);
+      if(esc)
+      {
+         if(c == 'n') out = StringConcatenate(out, "\n");
+         else if(c == 'r') out = StringConcatenate(out, "\r");
+         else if(c == 't') out = StringConcatenate(out, "\t");
+         else out = StringConcatenate(out, StringSubstr(json, pos, 1));
+         esc = false;
+         pos++;
+         continue;
+      }
+      if(c == '\\')
+      {
+         esc = true;
+         pos++;
+         continue;
+      }
+      if(c == '"')
+      {
+         endPos = pos + 1;
+         outValue = out;
+         return true;
+      }
+      out = StringConcatenate(out, StringSubstr(json, pos, 1));
+      pos++;
+   }
+   return false;
+}
+
+bool JsonGetBool(const string json, const string key, bool &outValue)
+{
+   int pos = JsonFindKeyOutsideString(json, key, 0);
+   if(pos < 0)
+      return false;
+   pos = StringFind(json, ":", pos);
+   if(pos < 0)
+      return false;
+   pos = JsonSkipWhitespace(json, pos + 1);
+   string tail = StringSubstr(json, pos, 8);
+   StringToUpper(tail);
+   if(StringFind(tail, "TRUE") == 0)
+   {
+      outValue = true;
+      return true;
+   }
+   if(StringFind(tail, "FALSE") == 0)
+   {
+      outValue = false;
+      return true;
+   }
+   return false;
+}
+
+bool JsonGetBoolFromPos(const string json, const int startPos, const string key, bool &outValue)
+{
+   int pos = JsonFindKeyOutsideString(json, key, startPos);
+   if(pos < 0)
+      return false;
+   pos = StringFind(json, ":", pos);
+   if(pos < 0)
+      return false;
+   pos = JsonSkipWhitespace(json, pos + 1);
+   string tail = StringSubstr(json, pos, 8);
+   StringToUpper(tail);
+   if(StringFind(tail, "TRUE") == 0)
+   {
+      outValue = true;
+      return true;
+   }
+   if(StringFind(tail, "FALSE") == 0)
+   {
+      outValue = false;
+      return true;
+   }
+   return false;
+}
+
+bool JsonGetStringFromPos(const string json, const int startPos, const string key, string &outValue)
+{
+   int pos = JsonFindKeyOutsideString(json, key, startPos);
+   if(pos < 0)
+      return false;
+   pos = StringFind(json, ":", pos);
+   if(pos < 0)
+      return false;
+   pos = JsonSkipWhitespace(json, pos + 1);
+   int endPos = pos;
+   return JsonReadStringValue(json, pos, outValue, endPos);
+}
+
+bool JsonGetString(const string json, const string key, string &outValue)
+{
+   return JsonGetStringFromPos(json, 0, key, outValue);
+}
+
+bool JsonGetNumberFrom2(const string json, const int startPos, const string key, double &outValue)
+{
+   int pos = JsonFindKeyOutsideString(json, key, startPos);
+   if(pos < 0)
+      return false;
+   pos = StringFind(json, ":", pos);
+   if(pos < 0)
+      return false;
+   pos = JsonSkipWhitespace(json, pos + 1);
+   int end = pos;
+   while(end < StringLen(json))
+   {
+      int c = StringGetCharacter(json, end);
+      if((c >= '0' && c <= '9') || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E')
+      {
+         end++;
+         continue;
+      }
+      break;
+   }
+   if(end <= pos)
+      return false;
+   outValue = StrToDouble(StringSubstr(json, pos, end - pos));
+   return true;
+}
+
+bool JsonGetNumber(const string json, const string key, double &outValue)
+{
+   return JsonGetNumberFrom2(json, 0, key, outValue);
+}
+
+// Backwards-compatible helpers used by older code paths
+bool JsonGetNumberFrom(const string src, const string key, double &value)
+{
+   return JsonGetNumberFrom2(src, 0, key, value);
+}
+
+bool JsonGetBoolFrom(const string src, const string key, bool &value)
+{
+   return JsonGetBoolFromPos(src, 0, key, value);
+}
+
+bool ParseSignalForExecution(const string json,
+                             string &directionOut,
+                             double &entryOut,
+                             double &slOut,
+                             double &tpOut,
+                             double &lotsOut,
+                             bool &shouldExecuteOut)
+{
+   shouldExecuteOut = true;
+   if(SmartStrongMode)
+   {
+      bool tmp = true;
+      int execPos = JsonFindKeyOutsideString(json, "\"execution\"", 0);
+      if(execPos >= 0)
+      {
+         if(JsonGetBoolFromPos(json, execPos, "\"shouldExecute\"", tmp))
+            shouldExecuteOut = tmp;
+         else if(JsonGetBool(json, "\"shouldExecute\"", tmp))
+            shouldExecuteOut = tmp;
+
+         bool requireLayers = g_serverRequireLayers18;
+         bool requireEnter = g_serverRequiresEnterState;
+         JsonGetBoolFromPos(json, execPos, "\"requireLayers18\"", requireLayers);
+         JsonGetBoolFromPos(json, execPos, "\"requiresEnterState\"", requireEnter);
+
+         if(requireLayers)
+         {
+            bool layersOk = true;
+            int layersPos = JsonFindKeyOutsideString(json, "\"layersStatus\"", execPos);
+            if(layersPos >= 0)
+            {
+               bool okVal = true;
+               if(JsonGetBoolFromPos(json, layersPos, "\"ok\"", okVal) && !okVal)
+                  shouldExecuteOut = false;
+            }
+         }
+
+         if(requireEnter)
+         {
+            string decision = "";
+            int gatesPos = JsonFindKeyOutsideString(json, "\"gates\"", execPos);
+            if(gatesPos < 0)
+               gatesPos = execPos;
+            if(JsonGetStringFromPos(json, gatesPos, "\"decisionState\"", decision) || JsonGetStringFromPos(json, gatesPos, "\"layer18State\"", decision))
+            {
+               StringToUpper(decision);
+               if(decision != "ENTER")
+                  shouldExecuteOut = false;
+            }
+         }
+      }
+      else
+      {
+         if(JsonGetBool(json, "\"shouldExecute\"", tmp))
+            shouldExecuteOut = tmp;
+      }
+   }
+
+   directionOut = "";
+   int sigPos = JsonFindKeyOutsideString(json, "\"signal\"", 0);
+   if(sigPos < 0)
+      sigPos = 0;
+   if(!JsonGetStringFromPos(json, sigPos, "\"direction\"", directionOut))
+   {
+      if(!JsonGetString(json, "\"direction\"", directionOut))
+         return false;
+   }
+   StringToUpper(directionOut);
+   if(directionOut == "LONG") directionOut = "BUY";
+   if(directionOut == "SHORT") directionOut = "SELL";
+
+   entryOut = 0.0;
+   slOut = 0.0;
+   tpOut = 0.0;
+
+   int entryPos = JsonFindKeyOutsideString(json, "\"entry\"", 0);
+   if(entryPos < 0)
+      return false;
+   if(!JsonGetNumberFrom2(json, entryPos, "\"price\"", entryOut))
+      return false;
+   JsonGetNumberFrom2(json, entryPos, "\"stopLoss\"", slOut);
+   JsonGetNumberFrom2(json, entryPos, "\"takeProfit\"", tpOut);
+
+   lotsOut = 0.0;
+   int rmPos = JsonFindKeyOutsideString(json, "\"riskManagement\"", 0);
+   if(rmPos >= 0)
+      JsonGetNumberFrom2(json, rmPos, "\"positionSize\"", lotsOut);
+
+   return true;
+}
+
+bool ExtractSignalDedupeKey(const string json, const string direction, const double entry, const double sl, const double tp, const double lots, const double strength, const double confidence, string &outKey)
+{
+   outKey = "";
+   int sigPos = JsonFindKeyOutsideString(json, "\"signal\"", 0);
+   if(sigPos < 0)
+      sigPos = 0;
+   string id = "";
+   if(!JsonGetStringFromPos(json, sigPos, "\"id\"", id))
+      JsonGetStringFromPos(json, sigPos, "\"signalId\"", id);
+   string ts = "";
+   if(!JsonGetStringFromPos(json, sigPos, "\"time\"", ts))
+      JsonGetStringFromPos(json, sigPos, "\"timestamp\"", ts);
+
+   if(StringLen(id) > 0)
+   {
+      outKey = id;
+      if(StringLen(ts) > 0)
+         outKey = StringConcatenate(id, "|", ts);
+      return true;
+   }
+
+   outKey = StringConcatenate(direction,
+                              "|", DoubleToString(entry, 5),
+                              "|", DoubleToString(sl, 5),
+                              "|", DoubleToString(tp, 5),
+                              "|", DoubleToString(lots, 2),
+                              "|", DoubleToString(strength, 0),
+                              "|", DoubleToString(confidence, 0));
+   return true;
+}
+
+bool FetchServerPolicy(bool logOnSuccess)
+{
+   string response = "";
+   if(!BridgeRequest("GET", "/agent/config", "", response, false))
+      return false;
+
+   int policyPos = StringFind(response, "\"serverPolicy\"");
+   if(policyPos < 0)
+      return false;
+
+   int execPos = StringFind(response, "\"execution\"", policyPos);
+   if(execPos < 0)
+      execPos = policyPos;
+
+   double minC = g_serverMinConfidence;
+   double minS = g_serverMinStrength;
+   bool requireLayers = g_serverRequireLayers18;
+   bool requireEnter = g_serverRequiresEnterState;
+
+   JsonGetNumberFrom(response, "\"minConfidence\"", minC);
+   JsonGetNumberFrom(response, "\"minStrength\"", minS);
+   JsonGetBoolFrom(response, "\"requireLayers18\"", requireLayers);
+   JsonGetBoolFrom(response, "\"requiresEnterState\"", requireEnter);
+
+   g_serverMinConfidence = minC;
+   g_serverMinStrength = minS;
+   g_serverRequireLayers18 = requireLayers;
+   g_serverRequiresEnterState = requireEnter;
+   g_serverPolicyLoaded = true;
+   g_lastServerPolicyFetch = TimeCurrent();
+
+   if(logOnSuccess)
+      Print("Server policy synced: minConfidence=", g_serverMinConfidence,
+            " minStrength=", g_serverMinStrength,
+            " requireLayers18=", g_serverRequireLayers18,
+            " requiresEnterState=", g_serverRequiresEnterState);
+
+   return true;
 }
 
 bool HttpRequest(string method,
@@ -508,6 +1210,26 @@ string BuildSessionPayload(bool includeForceFlag)
       "\",\"currency\":\"", AccountCurrency(), "\"");
    if(includeForceFlag)
       payload = StringConcatenate(payload, ",\"forceReconnect\":", ForceReconnect ? "true" : "false");
+   payload = StringConcatenate(
+      payload,
+      ",\"ea\":{",
+      "\"platform\":\"mt4\"",
+      ",\"respectServerExecution\":", SmartStrongMode ? "true" : "false",
+      ",\"tradeMajorsAndMetalsOnly\":", TradeMajorsAndMetalsOnly ? "true" : "false",
+      ",\"maxFreeMarginUsagePct\":", DoubleToString(MaxFreeMarginUsagePct, 3),
+      ",\"maxSpreadPoints\":", IntegerToString(MaxSpreadPoints),
+      ",\"smartStrongMode\":", SmartStrongMode ? "true" : "false",
+      ",\"smartMinAtrPips\":", DoubleToString(SmartMinAtrPips, 2),
+      ",\"smartMaxAtrPips\":", DoubleToString(SmartMaxAtrPips, 2),
+      ",\"smartMaxSpreadToAtrPct\":", DoubleToString(SmartMaxSpreadToAtrPct, 2),
+      ",\"enableDailyGuards\":", EnableDailyGuards ? "true" : "false",
+      ",\"dailyProfitTargetCurrency\":", DoubleToString(DailyProfitTargetCurrency, 2),
+      ",\"dailyProfitTargetPct\":", DoubleToString(DailyProfitTargetPct, 2),
+      ",\"dailyMaxLossCurrency\":", DoubleToString(DailyMaxLossCurrency, 2),
+      ",\"dailyMaxLossPct\":", DoubleToString(DailyMaxLossPct, 2),
+      ",\"enforceMaxTradesPerDay\":", EnforceMaxTradesPerDay ? "true" : "false",
+      ",\"maxTradesPerDay\":", IntegerToString(MaxTradesPerDay),
+      "}");
    payload = StringConcatenate(payload, "}");
    return(payload);
 }
@@ -593,6 +1315,21 @@ bool PostMarketQuotes()
       string tmp = FeedSymbolsCsv;
       StringReplace(tmp, " ", "");
       symbolCount = StringSplit(tmp, ',', symbols);
+      if(symbolCount > 0)
+      {
+         int kept = 0;
+         for(int i = 0; i < symbolCount; i++)
+         {
+            if(StringLen(symbols[i]) <= 0)
+               continue;
+            if(!IsTradeSymbolEligible(symbols[i]))
+               continue;
+            symbols[kept] = symbols[i];
+            kept++;
+         }
+         symbolCount = kept;
+         ArrayResize(symbols, symbolCount);
+      }
    }
    if(symbolCount <= 0)
    {
@@ -616,6 +1353,8 @@ bool PostMarketQuotes()
          string resolved = ResolveBrokerSymbol(raw);
          if(StringLen(resolved) <= 0)
             continue;
+         if(!IsTradeSymbolEligible(resolved))
+            continue;
 
          bool exists = false;
          int n = ArraySize(activeList);
@@ -636,7 +1375,7 @@ bool PostMarketQuotes()
 
       // Always include chart symbol
       string chartSym = Symbol();
-      if(StringLen(chartSym) > 0)
+      if(StringLen(chartSym) > 0 && IsTradeSymbolEligible(chartSym))
       {
          bool exists = false;
          for(int j = 0; j < ArraySize(activeList); j++)
@@ -668,6 +1407,8 @@ bool PostMarketQuotes()
       {
          string name = SymbolName(i, true);
          if(StringLen(name) <= 0)
+            continue;
+         if(!IsTradeSymbolEligible(name))
             continue;
          bool exists = false;
          for(int j = 0; j < symbolCount; j++)
@@ -707,6 +1448,8 @@ bool PostMarketQuotes()
       {
          string sym = g_prioritySymbols[i];
          if(StringLen(sym) <= 0)
+            continue;
+         if(!IsTradeSymbolEligible(sym))
             continue;
 
          double bid = MarketInfo(sym, MODE_BID);
@@ -933,6 +1676,8 @@ bool PostMarketBars()
 
    if(StringLen(sym) <= 0)
       sym = Symbol();
+   if(!IsTradeSymbolEligible(sym))
+      return(false);
 
    // M1 is sent as an intra-candle "moving" bar for UI.
    bool ok = PostMarketBarsForSymbol(sym, PERIOD_M1, "M1");
@@ -1318,6 +2063,8 @@ int OnInit()
    // Don't fail init if the bridge is down; keep EA alive and auto-reconnect.
    if(!SendSessionConnect())
       Print("Bridge not connected yet. EA will keep trying (check URL/token/WebRequest allowlist)." );
+   if(SmartStrongMode)
+      FetchServerPolicy(true);
    EventSetTimer(1);
    return(INIT_SUCCEEDED);
 }
@@ -1350,6 +2097,13 @@ void OnTimer()
    {
       if(!SendHeartbeat())
          Print("Heartbeat failed");
+   }
+
+   // Periodically refresh server policy (keeps MT4 aligned with backend config changes).
+   if(SmartStrongMode && ServerPolicyRefreshSec > 0)
+   {
+      if(g_lastServerPolicyFetch == 0 || (TimeCurrent() - g_lastServerPolicyFetch) >= ServerPolicyRefreshSec)
+         FetchServerPolicy(false);
    }
 
    // Poll active symbols from dashboard/server (lazy loading)
@@ -1399,7 +2153,8 @@ void OnTimer()
    {
       if(TimeCurrent() - g_lastSignalCheck >= g_signalCheckInterval)
       {
-         CheckAndExecuteSignals();
+         if(IsDailyTradingAllowed())
+            CheckAndExecuteSignals();
          g_lastSignalCheck = TimeCurrent();
       }
    }
@@ -1413,6 +2168,23 @@ void OnTimer()
 
    // Monitor and manage open positions
    ManageOpenPositions();
+
+   // Smart close on opposite strong signal
+   if(SmartStrongMode && SmartStrongCloseOnOpposite)
+      CheckSmartCloseOppositeSignals();
+
+   // Server-guided position management + command polling
+   if(EnableServerPositionSync && (g_lastPositionSync == 0 || (TimeCurrent() - g_lastPositionSync) >= PositionSyncIntervalSec))
+   {
+      if(PostPositionManagement(true))
+         g_lastPositionSync = TimeCurrent();
+   }
+
+   if(EnableCommandPolling && (g_lastCommandPoll == 0 || (TimeCurrent() - g_lastCommandPoll) >= CommandPollIntervalSec))
+   {
+      if(PollManagementCommands())
+         g_lastCommandPoll = TimeCurrent();
+   }
 }
 
 void ClearSignalOverlayObjects()
@@ -1448,14 +2220,14 @@ void UpdateSignalOverlay()
       return;
 
    string response = "";
-   string payload = StringConcatenate(
-      "{\"symbol\":\"", Symbol(),
-      "\",\"broker\":\"mt4\"",
-      ",\"accountMode\":\"", AccountMode(),
-      "\",\"timeframe\":\"", Period(), "\"}"
+   string path = StringConcatenate(
+      "/signal/get?symbol=", Symbol(),
+      "&accountMode=", AccountMode(),
+      "&timeframe=", Period(),
+      "&broker=mt4"
    );
 
-   if(!HttpRequest("GET", "/signal/get", payload, response))
+   if(!BridgeRequest("GET", path, "", response, true))
    {
       ClearSignalOverlayObjects();
       return;
@@ -1468,18 +2240,21 @@ void UpdateSignalOverlay()
       return;
    }
 
-   if(OverlayRespectServerExecution)
+   bool shouldExecute = true;
+   string directionU = "";
+   double entry = 0.0, sl = 0.0, tp = 0.0, lots = 0.0;
+   if(!ParseSignalForExecution(response, directionU, entry, sl, tp, lots, shouldExecute))
    {
-      if(StringFind(response, "\"shouldExecute\":true") < 0 && StringFind(response, "\"shouldExecute\" : true") < 0)
-      {
-         ClearSignalOverlayObjects();
-         return;
-      }
+      ClearSignalOverlayObjects();
+      return;
+   }
+   if(OverlayRespectServerExecution && !shouldExecute)
+   {
+      ClearSignalOverlayObjects();
+      return;
    }
 
-   string direction = "buy";
-   if(StringFind(response, "\"direction\":\"SELL\"") >= 0 || StringFind(response, "\"direction\":\"sell\"") >= 0)
-      direction = "sell";
+   string direction = (directionU == "SELL") ? "sell" : "buy";
 
    string key = StringConcatenate(Symbol(), "|", direction);
    if(key == g_lastOverlayKey)
@@ -1490,78 +2265,664 @@ void UpdateSignalOverlay()
 }
 
 //+------------------------------------------------------------------+
+//| Server-guided trade management                                  |
+//+------------------------------------------------------------------+
+string ExtractJsonString(const string src, const string key, int startPos)
+{
+   string needle = StringConcatenate("\"", key, "\"");
+   int p = JsonFindKeyOutsideString(src, needle, startPos);
+   if(p < 0)
+      return "";
+   int colon = StringFind(src, ":", p + StringLen(needle));
+   if(colon < 0)
+      return "";
+   int s = JsonSkipWhitespace(src, colon + 1);
+   string out = "";
+   int endPos = s;
+   if(!JsonReadStringValue(src, s, out, endPos))
+      return "";
+   return out;
+}
+
+double ExtractJsonNumber(const string src, const string key, int startPos)
+{
+   string needle = StringConcatenate("\"", key, "\"");
+   int p = JsonFindKeyOutsideString(src, needle, startPos);
+   if(p < 0)
+      return 0.0;
+   int colon = StringFind(src, ":", p + StringLen(needle));
+   if(colon < 0)
+      return 0.0;
+   int s = JsonSkipWhitespace(src, colon + 1);
+   int e = s;
+   while(e < StringLen(src))
+   {
+      int c = StringGetCharacter(src, e);
+      if((c >= '0' && c <= '9') || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E')
+      {
+         e++;
+         continue;
+      }
+      break;
+   }
+   if(e <= s)
+      return 0.0;
+   return StrToDouble(StringSubstr(src, s, e - s));
+}
+
+void ExecuteManagementCommand(string type, string symbol, double price, double percent, double distancePips)
+{
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         continue;
+      if(OrderMagicNumber() != MagicNumber)
+         continue;
+      if(StringLen(symbol) > 0 && OrderSymbol() != symbol)
+         continue;
+
+      bool isBuy = OrderType() == OP_BUY;
+      bool isSell = OrderType() == OP_SELL;
+      if(!isBuy && !isSell)
+         continue;
+
+      if(type == "partial_close")
+      {
+         double pct = MathMax(0.0, MathMin(1.0, percent));
+         if(pct <= 0.0)
+            return;
+         double closeLots = OrderLots() * pct;
+         closeLots = MathMax(MinLotSize, MathMin(OrderLots(), closeLots));
+         if(closeLots <= 0)
+            return;
+         double closePrice = isBuy ? Bid : Ask;
+         if(OrderClose(OrderTicket(), closeLots, closePrice, Slippage, clrGold))
+            Print("Partial close executed: ", OrderTicket(), " lots=", closeLots);
+         else
+            Print("Partial close failed: ", GetLastError());
+         return;
+      }
+
+      if(type == "modify_sl")
+      {
+         if(price <= 0)
+            return;
+         double newSL = NormalizeDouble(price, Digits);
+         if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue))
+            Print("Stop loss modified: ", OrderTicket(), " newSL=", newSL);
+         else
+            Print("Stop loss modify failed: ", GetLastError());
+         return;
+      }
+
+      if(type == "trail")
+      {
+         if(distancePips <= 0)
+            return;
+         double distance = distancePips * Point;
+         double newSL = isBuy ? Bid - distance : Ask + distance;
+         newSL = NormalizeDouble(newSL, Digits);
+         bool shouldModify = false;
+         if(isBuy && newSL > OrderStopLoss() && newSL < Bid) shouldModify = true;
+         if(isSell && (newSL < OrderStopLoss() || OrderStopLoss() == 0) && newSL > Ask) shouldModify = true;
+         if(shouldModify)
+         {
+            if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue))
+               Print("Trail SL updated: ", OrderTicket(), " newSL=", newSL);
+            else
+               Print("Trail SL failed: ", GetLastError());
+         }
+         return;
+      }
+
+      if(type == "close_position")
+      {
+         double closePrice2 = isBuy ? Bid : Ask;
+         if(OrderClose(OrderTicket(), OrderLots(), closePrice2, Slippage, clrRed))
+            Print("Position closed: ", OrderTicket());
+         else
+            Print("Close position failed: ", GetLastError());
+         return;
+      }
+   }
+}
+
+void ParseAndExecuteCommands(string response)
+{
+   int pos = 0;
+   while(true)
+   {
+      int typePos = StringFind(response, "\"type\":\"", pos);
+      if(typePos < 0)
+         break;
+      string type = ExtractJsonString(response, "type", typePos);
+      string symbol = ExtractJsonString(response, "symbol", typePos);
+      double price = ExtractJsonNumber(response, "price", typePos);
+      double percent = ExtractJsonNumber(response, "percent", typePos);
+      double distancePips = ExtractJsonNumber(response, "distancePips", typePos);
+
+      if(StringLen(type) > 0)
+         ExecuteManagementCommand(type, symbol, price, percent, distancePips);
+
+      pos = typePos + 10;
+   }
+}
+
+bool PostPositionManagement(bool enqueue)
+{
+   string payload = "{\"positions\":[";
+   int count = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         continue;
+      if(OrderMagicNumber() != MagicNumber)
+         continue;
+
+      string sym = OrderSymbol();
+      double entry = OrderOpenPrice();
+      double current = (OrderType() == OP_BUY) ? Bid : Ask;
+      double sl = OrderStopLoss();
+      double tp = OrderTakeProfit();
+      string dir = (OrderType() == OP_BUY) ? "BUY" : "SELL";
+
+      if(count > 0) payload += ",";
+      payload += StringConcatenate(
+         "{\"symbol\":\"", sym, "\"",
+         ",\"direction\":\"", dir, "\"",
+         ",\"entryPrice\":", DoubleToString(entry, Digits),
+         ",\"currentPrice\":", DoubleToString(current, Digits),
+         ",\"stopLoss\":", DoubleToString(sl, Digits),
+         ",\"takeProfit\":", DoubleToString(tp, Digits),
+         ",\"ticket\":", OrderTicket(),
+         ",\"lots\":", DoubleToString(OrderLots(), 2),
+         ",\"managementState\":{\"partialsTaken\":[]}",
+         "}"
+      );
+      count++;
+   }
+   payload += StringConcatenate("]", ",\"enqueue\":", enqueue ? "true" : "false", "}");
+
+   string response = "";
+   if(BridgeRequest("POST", "/agent/manage", payload, response, true))
+   {
+      if(StringLen(response) > 0)
+         ParseAndExecuteCommands(response);
+      return(true);
+   }
+   return(false);
+}
+
+bool PollManagementCommands()
+{
+   string response = "";
+   if(BridgeRequest("GET", "/agent/commands?limit=20", "", response, true))
+   {
+      if(StringLen(response) > 0)
+         ParseAndExecuteCommands(response);
+      return(true);
+   }
+   return(false);
+}
+
+//+------------------------------------------------------------------+
 //| Check for signals and execute trades                             |
 //+------------------------------------------------------------------+
 void CheckAndExecuteSignals()
 {
-   string response = "";
-   string payload = StringConcatenate(
-      "{\"symbol\":\"", Symbol(),
-      "\",\"broker\":\"mt4\"",
-      ",\"accountMode\":\"", AccountMode(),
-      "\",\"timeframe\":\"", Period(), "\"}"
-   );
+   string candidates[];
+   ArrayResize(candidates, 0);
 
-   if(HttpRequest("GET", "/signal/get", payload, response))
+   int activeN = ArraySize(g_activeSymbols);
+   if(activeN > 0)
    {
-      // Parse response and execute if signal is valid
-      if(StringFind(response, "\"shouldExecute\":true") >= 0)
+      for(int i = 0; i < activeN && ArraySize(candidates) < MaxActiveSymbols; i++)
       {
-         ExecuteSignalFromResponse(response);
+         string raw = g_activeSymbols[i];
+         if(StringLen(raw) <= 0)
+            continue;
+         string resolved = ResolveBrokerSymbol(raw);
+         if(StringLen(resolved) <= 0)
+            continue;
+         if(!IsTradeSymbolEligible(resolved))
+            continue;
+         int n = ArraySize(candidates);
+         ArrayResize(candidates, n + 1);
+         candidates[n] = resolved;
       }
+   }
+   else
+   {
+      int total = SymbolsTotal(true);
+      int cap = MaxActiveSymbols;
+      if(cap <= 0)
+         cap = 40;
+      for(int i = 0; i < total && ArraySize(candidates) < cap; i++)
+      {
+         string name = SymbolName(i, true);
+         if(StringLen(name) <= 0)
+            continue;
+         if(!IsTradeSymbolEligible(name))
+            continue;
+         int n = ArraySize(candidates);
+         ArrayResize(candidates, n + 1);
+         candidates[n] = name;
+      }
+   }
+
+   string chartSym = Symbol();
+   if(StringLen(chartSym) > 0 && IsTradeSymbolEligible(chartSym))
+   {
+      bool exists = false;
+      for(int j = 0; j < ArraySize(candidates); j++)
+      {
+         if(candidates[j] == chartSym)
+         {
+            exists = true;
+            break;
+         }
+      }
+      if(!exists)
+      {
+         int n = ArraySize(candidates);
+         ArrayResize(candidates, n + 1);
+         candidates[n] = chartSym;
+      }
+   }
+
+   int candidateCount = ArraySize(candidates);
+   if(candidateCount <= 0)
+      return;
+
+   int checks = SymbolsToCheckPerSignalPoll;
+   if(checks <= 0)
+      checks = 1;
+   if(checks > candidateCount)
+      checks = candidateCount;
+
+   bool found = false;
+   string bestSym = "";
+   string bestResponse = "";
+   string bestSignalKey = "";
+   double bestStrength = -1.0;
+   double bestConfidence = -1.0;
+
+   for(int iter = 0; iter < checks; iter++)
+   {
+      int idx = 0;
+      if(g_tradeCursor < 0)
+         g_tradeCursor = 0;
+      idx = (int)(g_tradeCursor % candidateCount);
+      g_tradeCursor++;
+
+      string sym = candidates[idx];
+      if(StringLen(sym) <= 0)
+         continue;
+      if(!IsTradeSymbolEligible(sym))
+         continue;
+      if(HasOpenPositionForSymbol(sym))
+         continue;
+      if(StringLen(g_tradeCooldownSymbol) > 0 && sym == g_tradeCooldownSymbol && TimeCurrent() < g_tradeCooldownUntil)
+         continue;
+
+      string response = "";
+      string path = StringConcatenate("/signal/get?symbol=", sym, "&accountMode=", AccountMode());
+      if(!BridgeRequest("GET", path, "", response, true))
+         continue;
+
+      if(StringFind(response, "\"success\":true") < 0 && StringFind(response, "\"success\" : true") < 0)
+         continue;
+
+      bool shouldExecute = true;
+      string dirU = "";
+      double entry = 0.0, sl = 0.0, tp = 0.0, lots = 0.0;
+      if(!ParseSignalForExecution(response, dirU, entry, sl, tp, lots, shouldExecute))
+         continue;
+      if(SmartStrongMode && !shouldExecute)
+         continue;
+
+      if(SmartStrongMode && EnforceSmartStrongThresholds)
+      {
+         double strength = ExtractJsonNumber(response, "strength", 0);
+         double confidence = ExtractJsonNumber(response, "confidence", 0);
+
+         double minS = SmartStrongMinStrengthTrade;
+         double minC = SmartStrongMinConfidenceTrade;
+         if(g_serverPolicyLoaded)
+         {
+            if(g_serverMinStrength > 0) minS = MathMax(minS, g_serverMinStrength);
+            if(g_serverMinConfidence > 0) minC = MathMax(minC, g_serverMinConfidence);
+         }
+
+         if(strength < minS || confidence < minC)
+            continue;
+
+         if(SmartMaxTickAgeSec > 0)
+         {
+            datetime lastTick = (datetime)MarketInfo(sym, MODE_TIME);
+            if(lastTick > 0 && (TimeCurrent() - lastTick) > SmartMaxTickAgeSec)
+               continue;
+         }
+
+         double atr = iATR(sym, 0, 14, 0);
+         int digits = (int)MarketInfo(sym, MODE_DIGITS);
+         double point = MarketInfo(sym, MODE_POINT);
+         double pip = (digits == 3 || digits == 5) ? point * 10 : point;
+         double atrPips = pip > 0 ? atr / pip : 0;
+         if(atrPips > 0)
+         {
+            if(atrPips < SmartMinAtrPips || atrPips > SmartMaxAtrPips)
+               continue;
+         }
+
+         double ask = MarketInfo(sym, MODE_ASK);
+         double bid = MarketInfo(sym, MODE_BID);
+         double spreadPips = (ask - bid) / pip;
+         if(atrPips > 0)
+         {
+            double spreadToAtrPct = (spreadPips / atrPips) * 100.0;
+            if(spreadToAtrPct > SmartMaxSpreadToAtrPct)
+               continue;
+         }
+
+         if(g_serverRequireLayers18)
+         {
+            bool layersOk = (StringFind(response, "\"layersStatus\":{\"ok\":true") >= 0 ||
+                             StringFind(response, "\"layersStatus\":{\"ok\" : true") >= 0 ||
+                             StringFind(response, "\"layersStatus\" : {\"ok\":true") >= 0 ||
+                             StringFind(response, "\"layersStatus\" : {\"ok\" : true") >= 0);
+            if(!layersOk)
+               continue;
+         }
+
+         if(g_serverRequiresEnterState)
+         {
+            bool enterOk = (StringFind(response, "\"decisionState\":\"ENTER\"") >= 0 ||
+                            StringFind(response, "\"layer18State\":\"ENTER\"") >= 0);
+            if(!enterOk)
+               continue;
+         }
+      }
+
+      double strength = ExtractJsonNumber(response, "strength", 0);
+      double confidence = ExtractJsonNumber(response, "confidence", 0);
+
+      string sigKey = "";
+      ExtractSignalDedupeKey(response, dirU, entry, sl, tp, lots, strength, confidence, sigKey);
+      if(WasSignalRecentlyProcessed(sym, sigKey))
+         continue;
+
+      bool better = false;
+      if(!found)
+         better = true;
+      else if(strength > bestStrength)
+         better = true;
+      else if(strength == bestStrength && confidence > bestConfidence)
+         better = true;
+
+      if(better)
+      {
+         found = true;
+         bestSym = sym;
+         bestResponse = response;
+         bestSignalKey = sigKey;
+         bestStrength = strength;
+         bestConfidence = confidence;
+      }
+   }
+
+   if(!found)
+      return;
+
+   if(ExecuteSignalFromResponse(bestResponse, bestSym))
+   {
+      if(StringLen(bestSignalKey) > 0)
+         MarkSignalProcessed(bestSym, bestSignalKey);
    }
 }
 
 //+------------------------------------------------------------------+
 //| Execute trade based on signal response                           |
 //+------------------------------------------------------------------+
-void ExecuteSignalFromResponse(string response)
+bool ExecuteSignalFromResponse(string response, string symbol)
 {
-   // Parse signal details (simplified - in production use JSON parser)
-   string direction = "buy";  // Default
-   if(StringFind(response, "\"direction\":\"sell\"") >= 0)
-      direction = "sell";
+   bool shouldExecute = true;
+   string directionU = "";
+   double entry = 0.0, slServer = 0.0, tpServer = 0.0, lotsServer = 0.0;
+   if(!ParseSignalForExecution(response, directionU, entry, slServer, tpServer, lotsServer, shouldExecute))
+      return false;
+   if(SmartStrongMode && !shouldExecute)
+      return false;
 
-   double lots = CalculateLotSize();
+   string direction = (directionU == "SELL") ? "sell" : "buy";
+
+   if(StringLen(symbol) <= 0)
+      symbol = Symbol();
+   if(!SymbolSelect(symbol, true))
+      return false;
+
+   if(!IsTradeAllowed())
+      return false;
+
+   double ask = MarketInfo(symbol, MODE_ASK);
+   double bid = MarketInfo(symbol, MODE_BID);
+   double point = MarketInfo(symbol, MODE_POINT);
+   int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+
+   if(ask <= 0 || bid <= 0)
+      return false;
+
+   if(MaxSpreadPoints > 0 && point > 0)
+   {
+      double spreadPoints = (ask - bid) / point;
+      if(spreadPoints > MaxSpreadPoints)
+         return false;
+   }
+
+      double lots = CalculateLotSize(symbol);
+      if(lotsServer > 0.0)
+      lots = lotsServer;
 
    // Apply risk multiplier from learning
    lots = lots * g_riskMultiplier;
    lots = MathMax(MinLotSize, MathMin(MaxLotSize, lots));
 
    // Calculate stop loss and take profit
-   double sl = 0, tp = 0;
+   double sl = slServer;
+   double tp = tpServer;
    if(UseDynamicStopLoss)
    {
-      sl = CalculateDynamicStopLoss(direction);
-      tp = CalculateDynamicTakeProfit(direction, sl);
+      if(sl <= 0.0)
+         sl = CalculateDynamicStopLoss(direction, symbol);
+      if(tp <= 0.0 && sl > 0.0)
+         tp = CalculateDynamicTakeProfit(direction, sl, symbol);
    }
 
    // Execute order
    int ticket = -1;
+   double minLot = MarketInfo(symbol, MODE_MINLOT);
+   double maxLot = MarketInfo(symbol, MODE_MAXLOT);
+   double lotStep = MarketInfo(symbol, MODE_LOTSTEP);
+   if(minLot > 0 && lots < minLot)
+      lots = minLot;
+   if(maxLot > 0 && lots > maxLot)
+      lots = maxLot;
+   if(lotStep > 0)
+      lots = MathFloor(lots / lotStep) * lotStep;
+   lots = NormalizeDouble(lots, 2);
+
+   if(MaxFreeMarginUsagePct > 0.0)
+   {
+      double freeMargin = AccountFreeMargin();
+      double maxUse = freeMargin * MaxFreeMarginUsagePct;
+      if(maxUse > 0.0)
+      {
+         int cmd = (direction == "buy") ? OP_BUY : OP_SELL;
+         double after = AccountFreeMarginCheck(symbol, cmd, lots);
+         if(after >= 0.0)
+         {
+            double used = freeMargin - after;
+            if(used > maxUse && used > 0.0)
+            {
+               double factor = maxUse / used;
+               lots = lots * factor;
+               if(minLot > 0 && lots < minLot)
+                  lots = minLot;
+               if(maxLot > 0 && lots > maxLot)
+                  lots = maxLot;
+               if(lotStep > 0)
+                  lots = MathFloor(lots / lotStep) * lotStep;
+               lots = NormalizeDouble(lots, 2);
+            }
+         }
+      }
+   }
+
    if(direction == "buy")
    {
-      ticket = OrderSend(Symbol(), OP_BUY, lots, Ask, Slippage, sl, tp,
-                        "Intelligent EA", MagicNumber, 0, clrGreen);
+      ClampStopsForOrder(symbol, OP_BUY, NormalizeDouble(ask, digits), sl, tp);
+      int retries = 0;
+      while(true)
+      {
+         ticket = OrderSend(symbol, OP_BUY, lots, NormalizeDouble(ask, digits), Slippage, sl, tp,
+                           "Intelligent EA", MagicNumber, 0, clrGreen);
+         if(ticket > 0)
+            break;
+         int err = GetLastError();
+         if(err == 134 && retries < MaxNoMoneyRetries)
+         {
+            double step = MarketInfo(symbol, MODE_LOTSTEP);
+            if(step > 0)
+               lots = MathMax(step, lots - step);
+            else
+               lots = lots * 0.8;
+            retries++;
+            continue;
+         }
+         if((err == 130 || err == 129) && SymbolFailureCooldownSec > 0)
+         {
+            g_tradeCooldownSymbol = symbol;
+            g_tradeCooldownUntil = TimeCurrent() + SymbolFailureCooldownSec;
+         }
+         break;
+      }
    }
    else
    {
-      ticket = OrderSend(Symbol(), OP_SELL, lots, Bid, Slippage, sl, tp,
-                        "Intelligent EA", MagicNumber, 0, clrRed);
+      ClampStopsForOrder(symbol, OP_SELL, NormalizeDouble(bid, digits), sl, tp);
+      int retries = 0;
+      while(true)
+      {
+         ticket = OrderSend(symbol, OP_SELL, lots, NormalizeDouble(bid, digits), Slippage, sl, tp,
+                           "Intelligent EA", MagicNumber, 0, clrRed);
+         if(ticket > 0)
+            break;
+         int err = GetLastError();
+         if(err == 134 && retries < MaxNoMoneyRetries)
+         {
+            double step = MarketInfo(symbol, MODE_LOTSTEP);
+            if(step > 0)
+               lots = MathMax(step, lots - step);
+            else
+               lots = lots * 0.8;
+            retries++;
+            continue;
+         }
+         if((err == 130 || err == 129) && SymbolFailureCooldownSec > 0)
+         {
+            g_tradeCooldownSymbol = symbol;
+            g_tradeCooldownUntil = TimeCurrent() + SymbolFailureCooldownSec;
+         }
+         break;
+      }
    }
 
    if(ticket > 0)
-      Print("Trade opened: ", ticket, " Direction: ", direction, " Lots: ", lots);
+   {
+      Print("Trade opened: ", ticket, " Direction: ", direction, " Lots: ", lots, " Symbol: ", symbol);
+      return true;
+   }
    else
       Print("Trade failed: ", GetLastError());
+
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Smart close on opposite strong signal                           |
+//+------------------------------------------------------------------+
+void CheckSmartCloseOppositeSignals()
+{
+   if(!SmartStrongMode || !SmartStrongCloseOnOpposite)
+      return;
+   if(SmartCloseCheckIntervalSec > 0 && g_lastSmartCloseCheck > 0 && (TimeCurrent() - g_lastSmartCloseCheck) < SmartCloseCheckIntervalSec)
+      return;
+
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         continue;
+
+      if(OrderMagicNumber() != MagicNumber)
+         continue;
+
+      string sym = OrderSymbol();
+      int type = OrderType();
+
+      string response = "";
+      string path = StringConcatenate("/signal/get?symbol=", sym, "&accountMode=", AccountMode());
+      if(!BridgeRequest("GET", path, "", response, true))
+         continue;
+
+      if(StringFind(response, "\"success\":true") < 0 && StringFind(response, "\"success\" : true") < 0)
+         continue;
+
+      bool shouldExecute = true;
+      string dirU = "";
+      double entry = 0.0, sl = 0.0, tp = 0.0, lots = 0.0;
+      if(!ParseSignalForExecution(response, dirU, entry, sl, tp, lots, shouldExecute))
+         continue;
+      if(!shouldExecute)
+         continue;
+
+      double strength = ExtractJsonNumber(response, "strength", 0);
+      double confidence = ExtractJsonNumber(response, "confidence", 0);
+
+      double minS = SmartCloseMinStrength;
+      double minC = SmartCloseMinConfidence;
+      if(g_serverPolicyLoaded)
+      {
+         if(g_serverMinStrength > 0) minS = MathMax(minS, g_serverMinStrength);
+         if(g_serverMinConfidence > 0) minC = MathMax(minC, g_serverMinConfidence);
+      }
+
+      if(strength < minS || confidence < minC)
+         continue;
+
+      string direction = (dirU == "SELL") ? "sell" : "buy";
+
+      bool closed = false;
+      if(type == OP_BUY && direction == "sell")
+         closed = OrderClose(OrderTicket(), OrderLots(), Bid, Slippage, clrRed);
+      else if(type == OP_SELL && direction == "buy")
+         closed = OrderClose(OrderTicket(), OrderLots(), Ask, Slippage, clrGreen);
+
+      if(closed)
+         Print("Smart close executed for ticket: ", OrderTicket());
+   }
+
+   g_lastSmartCloseCheck = TimeCurrent();
 }
 
 //+------------------------------------------------------------------+
 //| Calculate lot size based on risk percentage                      |
 //+------------------------------------------------------------------+
-double CalculateLotSize()
+double CalculateLotSize(string symbol)
 {
    double riskAmount = AccountEquity() * (RiskPercentage / 100.0);
-   double tickValue = MarketInfo(Symbol(), MODE_TICKVALUE);
+   if(StringLen(symbol) <= 0)
+      symbol = Symbol();
+   double tickValue = MarketInfo(symbol, MODE_TICKVALUE);
    double stopLossPips = 50; // Default
 
    if(tickValue > 0)
@@ -1577,29 +2938,44 @@ double CalculateLotSize()
 //+------------------------------------------------------------------+
 //| Calculate dynamic stop loss based on ATR                         |
 //+------------------------------------------------------------------+
-double CalculateDynamicStopLoss(string direction)
+double CalculateDynamicStopLoss(string direction, string symbol)
 {
-   double atr = iATR(Symbol(), 0, 14, 0);
+   if(StringLen(symbol) <= 0)
+      symbol = Symbol();
+   double atr = iATR(symbol, 0, 14, 0);
    double slDistance = atr * 2.0 * g_stopLossMultiplier;  // Apply learning factor
 
    if(direction == "buy")
-      return(NormalizeDouble(Ask - slDistance, Digits));
+   {
+      double ask = MarketInfo(symbol, MODE_ASK);
+      int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+      return(NormalizeDouble(ask - slDistance, digits));
+   }
    else
-      return(NormalizeDouble(Bid + slDistance, Digits));
+   {
+      double bid = MarketInfo(symbol, MODE_BID);
+      int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+      return(NormalizeDouble(bid + slDistance, digits));
+   }
 }
 
 //+------------------------------------------------------------------+
 //| Calculate dynamic take profit                                    |
 //+------------------------------------------------------------------+
-double CalculateDynamicTakeProfit(string direction, double stopLoss)
+double CalculateDynamicTakeProfit(string direction, double stopLoss, string symbol)
 {
-   double slDistance = MathAbs((direction == "buy" ? Ask : Bid) - stopLoss);
+   if(StringLen(symbol) <= 0)
+      symbol = Symbol();
+   double ask = MarketInfo(symbol, MODE_ASK);
+   double bid = MarketInfo(symbol, MODE_BID);
+   int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+   double slDistance = MathAbs((direction == "buy" ? ask : bid) - stopLoss);
    double tpDistance = slDistance * 2.0;  // 2:1 reward/risk ratio
 
    if(direction == "buy")
-      return(NormalizeDouble(Ask + tpDistance, Digits));
+      return(NormalizeDouble(ask + tpDistance, digits));
    else
-      return(NormalizeDouble(Bid - tpDistance, Digits));
+      return(NormalizeDouble(bid - tpDistance, digits));
 }
 
 //+------------------------------------------------------------------+
@@ -1607,6 +2983,9 @@ double CalculateDynamicTakeProfit(string direction, double stopLoss)
 //+------------------------------------------------------------------+
 void ManageOpenPositions()
 {
+   if(TradeModifyCooldownSec > 0 && g_lastTradeModifyAt > 0 && (TimeCurrent() - g_lastTradeModifyAt) < TradeModifyCooldownSec)
+      return;
+
    for(int i = OrdersTotal() - 1; i >= 0; i--)
    {
       if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
@@ -1615,8 +2994,53 @@ void ManageOpenPositions()
       if(OrderMagicNumber() != MagicNumber)
          continue;
 
-      if(OrderSymbol() != Symbol())
+      string sym = OrderSymbol();
+      if(StringLen(sym) <= 0)
          continue;
+
+      double point = MarketInfo(sym, MODE_POINT);
+      int digits = (int)MarketInfo(sym, MODE_DIGITS);
+      double pip = (digits == 3 || digits == 5) ? point * 10 : point;
+
+      double bid = MarketInfo(sym, MODE_BID);
+      double ask = MarketInfo(sym, MODE_ASK);
+      if(bid <= 0 || ask <= 0 || !(pip > 0.0))
+         continue;
+
+      double openPrice = OrderOpenPrice();
+      double profitPips = (OrderType() == OP_BUY) ? (bid - openPrice) / pip : (openPrice - ask) / pip;
+
+      // Breakeven
+      if(EnableBreakeven && BreakevenTriggerPips > 0 && profitPips >= BreakevenTriggerPips)
+      {
+         double desiredSl = openPrice;
+         if(BreakevenBufferPoints > 0)
+         {
+            if(OrderType() == OP_BUY)
+               desiredSl = openPrice + (double)BreakevenBufferPoints * point;
+            else
+               desiredSl = openPrice - (double)BreakevenBufferPoints * point;
+         }
+
+         double tmpSl = desiredSl;
+         double tp = OrderTakeProfit();
+         ClampStopsForOrder(sym, OrderType() == OP_BUY ? OP_BUY : OP_SELL, OrderType() == OP_BUY ? bid : ask, tmpSl, tp);
+
+         bool needsMove = false;
+         if(OrderType() == OP_BUY)
+            needsMove = (OrderStopLoss() <= 0 || OrderStopLoss() < tmpSl);
+         else
+            needsMove = (OrderStopLoss() <= 0 || OrderStopLoss() > tmpSl);
+
+         if(needsMove)
+         {
+            if(OrderModify(OrderTicket(), OrderOpenPrice(), tmpSl, OrderTakeProfit(), 0, clrBlue))
+            {
+               g_lastTradeModifyAt = TimeCurrent();
+               continue;
+            }
+         }
+      }
 
       // Implement trailing stop
       double newSL = 0;
@@ -1624,22 +3048,116 @@ void ManageOpenPositions()
 
       if(OrderType() == OP_BUY)
       {
-         double trailDistance = iATR(Symbol(), 0, 14, 0) * 1.5 * g_stopLossMultiplier;
-         newSL = NormalizeDouble(Bid - trailDistance, Digits);
-
-         if(newSL > OrderStopLoss() && newSL < Bid)
+         double trailPips = TrailingDistancePips;
+         if(EnableAtrTrailing)
          {
-            shouldModify = true;
+            double atr = iATR(sym, AtrTrailingTf, 14, 0);
+            double atrPips = pip > 0 ? atr / pip : 0;
+            if(atrPips > 0)
+            {
+               if(AtrStartMultiplier > 0 && profitPips < (atrPips * AtrStartMultiplier))
+                  trailPips = 0;
+               else
+                  trailPips = MathMax(trailPips, atrPips * AtrTrailMultiplier);
+            }
+         }
+
+         if(EnableTrailingStop && trailPips > 0 && profitPips >= TrailingStartPips)
+            newSL = NormalizeDouble(bid - (trailPips * pip), digits);
+         else
+            newSL = 0;
+
+         double tmpSl = newSL;
+         double tp = OrderTakeProfit();
+         ClampStopsForOrder(sym, OP_BUY, bid, tmpSl, tp);
+         newSL = tmpSl;
+
+         if(newSL > 0 && newSL < bid)
+         {
+            double stepPoints = TrailingStepPoints;
+            if(stepPoints <= 0)
+               stepPoints = 1;
+            if(OrderStopLoss() <= 0 || (newSL - OrderStopLoss()) >= (stepPoints * point))
+               shouldModify = true;
+         }
+
+         if(CloseLosingTrades)
+         {
+            double point = MarketInfo(sym, MODE_POINT);
+            double pip = (digits == 3 || digits == 5) ? point * 10 : point;
+            if(pip > 0)
+            {
+               double lossPips = (OrderOpenPrice() - bid) / pip;
+               if(MaxLossPerTradePips > 0.0 && lossPips >= MaxLossPerTradePips)
+               {
+                  if(OrderClose(OrderTicket(), OrderLots(), bid, Slippage, clrRed))
+                     Print("Loss cut (pips) for ticket: ", OrderTicket());
+                  continue;
+               }
+            }
+            if(MaxLossPerTradeCurrency > 0.0 && OrderProfit() <= -MaxLossPerTradeCurrency)
+            {
+               if(OrderClose(OrderTicket(), OrderLots(), bid, Slippage, clrRed))
+                  Print("Loss cut (currency) for ticket: ", OrderTicket());
+               continue;
+            }
          }
       }
       else if(OrderType() == OP_SELL)
       {
-         double trailDistance = iATR(Symbol(), 0, 14, 0) * 1.5 * g_stopLossMultiplier;
-         newSL = NormalizeDouble(Ask + trailDistance, Digits);
-
-         if((newSL < OrderStopLoss() || OrderStopLoss() == 0) && newSL > Ask)
+         double trailPips = TrailingDistancePips;
+         if(EnableAtrTrailing)
          {
-            shouldModify = true;
+            double atr = iATR(sym, AtrTrailingTf, 14, 0);
+            double atrPips = pip > 0 ? atr / pip : 0;
+            if(atrPips > 0)
+            {
+               if(AtrStartMultiplier > 0 && profitPips < (atrPips * AtrStartMultiplier))
+                  trailPips = 0;
+               else
+                  trailPips = MathMax(trailPips, atrPips * AtrTrailMultiplier);
+            }
+         }
+
+         if(EnableTrailingStop && trailPips > 0 && profitPips >= TrailingStartPips)
+            newSL = NormalizeDouble(ask + (trailPips * pip), digits);
+         else
+            newSL = 0;
+
+         double tmpSl = newSL;
+         double tp = OrderTakeProfit();
+         ClampStopsForOrder(sym, OP_SELL, ask, tmpSl, tp);
+         newSL = tmpSl;
+
+         if(newSL > 0 && newSL > ask)
+         {
+            double stepPoints = TrailingStepPoints;
+            if(stepPoints <= 0)
+               stepPoints = 1;
+            if(OrderStopLoss() <= 0 || (OrderStopLoss() - newSL) >= (stepPoints * point))
+               shouldModify = true;
+         }
+
+         if(CloseLosingTrades)
+         {
+            double point = MarketInfo(sym, MODE_POINT);
+            double pip = (digits == 3 || digits == 5) ? point * 10 : point;
+            if(pip > 0)
+            {
+               double lossPips = (ask - OrderOpenPrice()) / pip;
+               if(MaxLossPerTradePips > 0.0 && lossPips >= MaxLossPerTradePips)
+               {
+                  if(OrderClose(OrderTicket(), OrderLots(), ask, Slippage, clrRed))
+                     Print("Loss cut (pips) for ticket: ", OrderTicket());
+                  continue;
+               }
+            }
+            if(MaxLossPerTradeCurrency > 0.0 && OrderProfit() <= -MaxLossPerTradeCurrency)
+            {
+               if(OrderClose(OrderTicket(), OrderLots(), ask, Slippage, clrRed))
+                  Print("Loss cut (currency) for ticket: ", OrderTicket());
+               continue;
+            }
          }
       }
 
@@ -1648,9 +3166,26 @@ void ManageOpenPositions()
          bool success = OrderModify(OrderTicket(), OrderOpenPrice(), newSL,
                                    OrderTakeProfit(), 0, clrBlue);
          if(success)
+         {
+            g_lastTradeModifyAt = TimeCurrent();
             Print("Trailing stop updated for ticket: ", OrderTicket());
+         }
       }
    }
+}
+
+bool HasOpenPositionForSymbol(const string sym)
+{
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         continue;
+      if(OrderMagicNumber() != MagicNumber)
+         continue;
+      if(OrderSymbol() == sym)
+         return(true);
+   }
+   return(false);
 }
 
 void OnTrade()

@@ -9,14 +9,14 @@ Download from: <https://code.visualstudio.com/>
 ### 2. Open Project in VS Code
 
 ```bash
-cd /path/to/sg
+cd /path/to/g
 code .
 ```
 
 On Windows (PowerShell), the equivalent is:
 
 ```powershell
-Set-Location C:\path\to\sg
+Set-Location C:\path\to\g
 code .
 ```
 
@@ -71,7 +71,6 @@ npm ci
 Type "Tasks: Run Task" and select:
 
 - 📦 **Install Dependencies** - Run `npm ci`
-- 🚀 **Start Development Server** - Start the trading system
 - 🚀 **Start Server + Dashboard** - Start backend + dashboard together (recommended)
 - 🧪 **Run Tests** - Execute all tests
 - 🔍 **Run Linter** - Check code quality
@@ -204,8 +203,10 @@ GET http://localhost:4101/api/health/heartbeat
 GET http://localhost:4101/api/broker/bridge/mt5/market/quotes?maxAgeMs=30000
 
 ### Get Signal (optional/manual)
-GET http://localhost:4101/api/broker/bridge/mt5/signal/get
-Authorization: Bearer your-token-here
+GET http://localhost:4101/api/broker/bridge/mt5/signal/get?symbol=EURUSD&accountMode=demo
+
+# (Optional) if you run the API behind auth:
+# Authorization: Bearer your-token-here
 
 ### EA Bridge Statistics
 GET http://localhost:4101/api/broker/bridge/statistics

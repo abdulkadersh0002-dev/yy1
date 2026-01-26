@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import EnhancedNewsAnalyzer from '../../../src/analyzers/enhanced-news-analyzer.js';
+import EnhancedNewsAnalyzer from '../../../src/core/analyzers/enhanced-news-analyzer.js';
 
 function createAnalyzer() {
   return new EnhancedNewsAnalyzer(

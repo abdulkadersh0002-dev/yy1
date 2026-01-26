@@ -4,7 +4,7 @@ import CircuitBreaker, {
   CircuitBreakerError,
   CircuitBreakerRegistry,
   circuitBreakerRegistry
-} from '../../../src/services/circuit-breaker.js';
+} from '../../../src/infrastructure/services/circuit-breaker.js';
 
 describe('Circuit Breaker', () => {
   let breaker;

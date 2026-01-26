@@ -1,4 +1,5 @@
 {
+  "$schema": "./schemas/historical-warehouse.schema.json",
   "_notes": [
     "Populate the prices/macro/news arrays with dataset descriptors before running the ETL script.",
     "Each descriptor can specify path, format (csv|json|ndjson), column mappings, timezone, and metadata.",

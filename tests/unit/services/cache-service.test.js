@@ -4,7 +4,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import CacheService, { createCacheFactory } from '../../../src/services/cache-service.js';
+import CacheService, { createCacheFactory } from '../../../src/infrastructure/services/cache-service.js';
 
 describe('Cache Service', () => {
   let cache;

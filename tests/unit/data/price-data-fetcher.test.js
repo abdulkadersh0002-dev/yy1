@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import PriceDataFetcher from '../../../src/data/price-data-fetcher.js';
+import PriceDataFetcher from '../../../src/infrastructure/data/price-data-fetcher.js';
 
 function createFetcher(options = {}) {
   return new PriceDataFetcher(

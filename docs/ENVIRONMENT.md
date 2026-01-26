@@ -47,24 +47,10 @@ This document provides a complete reference for all environment variables used b
 
 ### Provider Configuration
 
-| Variable                                      | Type   | Default         | Description                                 |
-| --------------------------------------------- | ------ | --------------- | ------------------------------------------- |
-| `PRICE_PROVIDERS_DISABLED`                    | string | -               | Comma-separated list of disabled providers  |
-| `PRICE_PROVIDER_TWELVEDATA_MIN_INTERVAL_MS`   | number | 1000            | Min interval between TwelveData requests    |
-| `PRICE_PROVIDER_ALPHAVANTAGE_MIN_INTERVAL_MS` | number | 15000           | Min interval between Alpha Vantage requests |
-| `PRICE_PROVIDER_POLYGON_MIN_INTERVAL_MS`      | number | 1000            | Min interval between Polygon requests       |
-| `PRICE_PROVIDER_FINNHUB_MIN_INTERVAL_MS`      | number | 1000            | Min interval between Finnhub requests       |
-| `PRICE_PROVIDER_TWELVEDATA_MAX_PER_MINUTE`    | number | 52              | Max TwelveData requests per minute          |
-| `PRICE_PROVIDER_TWELVEDATA_COOLDOWN_MS`       | number | 2000            | TwelveData rate limit cooldown              |
-| `PRICE_PROVIDER_ALPHAVANTAGE_MAX_PER_DAY`     | number | 400             | Max Alpha Vantage requests per day          |
-| `PRICE_PROVIDER_ALPHAVANTAGE_COOLDOWN_MS`     | number | 60000           | Alpha Vantage rate limit cooldown           |
-| `PRICE_PROVIDER_POLYGON_MAX_PER_MINUTE`       | number | 80              | Max Polygon requests per minute             |
-| `PRICE_PROVIDER_POLYGON_COOLDOWN_MS`          | number | 10000           | Polygon rate limit cooldown                 |
-| `PRICE_PROVIDER_FINNHUB_MAX_PER_MINUTE`       | number | 60              | Max Finnhub requests per minute             |
-| `PRICE_PROVIDER_FINNHUB_COOLDOWN_MS`          | number | 15000           | Finnhub rate limit cooldown                 |
-| `PRICE_PROVIDER_ALPHA_PREFERRED_TIMEFRAMES`   | string | H4,D1           | Timeframes preferred for Alpha Vantage      |
-| `PRICE_PROVIDER_FAST_TIMEFRAMES`              | string | M1,M5,M15,M30   | Fast provider timeframes                    |
-| `PRICE_PROVIDER_SLOW_TIMEFRAMES`              | string | H4,H6,H12,D1,W1 | Slow provider timeframes                    |
+This project defaults to **EA-only + RSS-only** operation.
+
+- No external price/news providers are required.
+- No API keys are required.
 
 ### Price Bar Data Quality
 
@@ -97,7 +83,7 @@ This document provides a complete reference for all environment variables used b
 
 | Variable                                | Type    | Default | Description                                                 |
 | --------------------------------------- | ------- | ------- | ----------------------------------------------------------- |
-| `AUTO_TRADING_AUTOSTART`                | boolean | true    | Auto-start trading on server start                          |
+| `AUTO_TRADING_AUTOSTART`                | boolean | false   | Auto-start trading on server start                          |
 | `AUTO_TRADING_PRESET`                   | string  | -       | Preset tuning (`smart_strong`)                              |
 | `AUTO_TRADING_PROFILE`                  | string  | -       | Decision profile (`balanced`, `smart_strong`, `aggressive`) |
 | `AUTO_TRADING_FORCE_BROKER`             | string  | -       | Force auto-trading broker (e.g. `mt5`)                      |

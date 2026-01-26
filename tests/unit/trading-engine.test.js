@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import TradingEngine from '../../src/engine/trading-engine.js';
+import TradingEngine from '../../src/core/engine/trading-engine.js';
 
 function createEngine(config = {}) {
   const dependencies = {
@@ -16,8 +16,7 @@ function createEngine(config = {}) {
     },
     featureStore: {
       setPersistence() {}
-    },
-    adaptiveScorer: {}
+    }
   };
 
   return new TradingEngine({

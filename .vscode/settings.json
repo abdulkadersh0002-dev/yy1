@@ -21,7 +21,11 @@
     "**/build": true,
     "**/.next": true,
     "**/coverage": true,
-    "**/.nyc_output": true
+    "**/.nyc_output": true,
+
+    "package.json": true,
+    "package-lock.json": true,
+    ".env.example": true
   },
   "javascript.updateImportsOnFileMove.enabled": "always",
   "javascript.suggest.autoImports": true,
@@ -36,7 +40,8 @@
     "**/build": true,
     "**/coverage": true,
     "**/.git": true,
-    "**/package-lock.json": true
+    "**/package-lock.json": true,
+    "package.json": true
   },
   "terminal.integrated.defaultProfile.linux": "bash",
   "terminal.integrated.scrollback": 10000,

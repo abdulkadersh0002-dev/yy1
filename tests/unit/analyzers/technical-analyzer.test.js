@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import TechnicalAnalyzer from '../../../src/analyzers/technical-analyzer.js';
+import TechnicalAnalyzer from '../../../src/core/analyzers/technical-analyzer.js';
 
 function createAnalyzer() {
   return new TechnicalAnalyzer({ logger: { info() {}, warn() {}, error() {} } });
