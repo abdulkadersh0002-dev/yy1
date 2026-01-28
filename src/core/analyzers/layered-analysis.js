@@ -387,6 +387,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
 
   const smc = safeObj(pickAnalysis?.smc) || null;
   const smcSweep = safeObj(smc?.liquiditySweep) || null;
+  const smcTrap = safeObj(smc?.liquidityTrap) || null;
   const smcOrderBlock = safeObj(smc?.orderBlock) || null;
   const smcPriceImbalance = safeObj(smc?.priceImbalance) || null;
   const smcVolumeSpike = safeObj(smc?.volumeSpike) || null;
@@ -698,10 +699,14 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
   const liquidityAvailability =
     smcSweep || smcOrderBlock ? 'available' : patterns.length ? 'partial' : 'missing';
   const liquidityDir =
-    smcSweep?.bias || smcOrderBlock?.direction || normalizeDirection(structure?.bias || candleDir);
+    smcTrap?.bias ||
+    smcSweep?.bias ||
+    smcOrderBlock?.direction ||
+    normalizeDirection(structure?.bias || candleDir);
   const liquidityConfidence = pct(
-    (smcSweep?.confidence ?? 0) * 0.65 +
-      (smcOrderBlock?.confidence ?? 0) * 0.35 +
+    (smcSweep?.confidence ?? 0) * 0.55 +
+      (smcOrderBlock?.confidence ?? 0) * 0.25 +
+      (smcTrap?.confidence ?? 0) * 0.2 +
       (hasPinbar ? 10 : 0) +
       (hasEngulf ? 8 : 0)
   );
@@ -711,6 +716,11 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     if (smcSweep) {
       parts.push(
         `Sweep=${smcSweep.type} @${smcSweep.level} → ${smcSweep.bias} (conf=${smcSweep.confidence ?? '—'}%)`
+      );
+    }
+    if (smcTrap) {
+      parts.push(
+        `Trap=${smcTrap.type} → ${smcTrap.bias} (conf=${smcTrap.confidence ?? '—'}%)`
       );
     }
     if (smcOrderBlock) {
@@ -745,6 +755,11 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     if (smcSweep) {
       parts.push(
         `Sweep=${smcSweep.type} عند ${smcSweep.level} → ${smcSweep.bias} (ثقة=${smcSweep.confidence ?? '—'}%)`
+      );
+    }
+    if (smcTrap) {
+      parts.push(
+        `Trap=${smcTrap.type} → ${smcTrap.bias} (ثقة=${smcTrap.confidence ?? '—'}%)`
       );
     }
     if (smcOrderBlock) {
@@ -793,6 +808,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         timeframeFocus: pickTf,
         liquidityQuality,
         sweep: smcSweep,
+        trap: smcTrap,
         orderBlock: smcOrderBlock,
         priceImbalance: smcPriceImbalance,
         patterns: patterns.map((p) => p?.name).filter(Boolean),
@@ -800,6 +816,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       },
       evidence: [
         smcSweep ? `sweep:${smcSweep.type}` : null,
+        smcTrap ? `trap:${smcTrap.type}` : null,
         smcOrderBlock ? `ob:${smcOrderBlock.direction}` : null,
         smcPriceImbalance && smcPriceImbalance.state ? `fvg:${smcPriceImbalance.state}` : null,
         liquidityHint ? `liquidityHint:${String(liquidityHint)}` : null,
@@ -815,6 +832,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
               ...(liquidityQuality.quality === 'thin_or_fake'
                 ? ['Thin/fake liquidity risk: require stronger confirmations.']
                 : []),
+              ...(smcTrap ? ['Trap risk detected: wait for confirmation.'] : []),
             ],
       availability: liquidityAvailability,
     })

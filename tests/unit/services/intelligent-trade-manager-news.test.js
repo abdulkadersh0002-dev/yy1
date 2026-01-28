@@ -32,4 +32,22 @@ describe('IntelligentTradeManager news summaries', () => {
     assert.ok(summary.details.length > 0);
     assert.ok(summary.volatilityMultiplier >= 1.0);
   });
+
+  it('triggers early loss exit on trap signals', () => {
+    const manager = new IntelligentTradeManager({ logger: { info() {}, warn() {}, error() {} } });
+    const trade = {
+      openPrice: 1.2,
+      stopLoss: 1.19,
+      takeProfit: 1.23,
+      direction: 'BUY',
+      symbol: 'EURUSD',
+    };
+    const currentPrice = 1.196;
+    const marketData = {
+      liquidityTrap: { confidence: 80 },
+    };
+
+    const decision = manager.monitorTrade({ trade, currentPrice, marketData });
+    assert.equal(decision.action, 'CLOSE_NOW');
+  });
 });

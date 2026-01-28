@@ -3213,9 +3213,16 @@ class EaBridgeService {
     }
 
     const guards = context.guards || {};
+    const trapScore = Number(position?.liquidityTrap?.confidence);
+    const trapExitThreshold = Number(process.env.EA_LIQUIDITY_TRAP_EXIT_SCORE) || 70;
     if (guards.news?.pauseTrading || guards.dataQuality?.blockTrading) {
       if (Number.isFinite(rMultiple) && rMultiple >= 0.6) {
         actions.push({ type: 'close', reason: 'guard_exit' });
+      }
+    }
+    if (Number.isFinite(trapScore) && trapScore >= trapExitThreshold) {
+      if (Number.isFinite(rMultiple) && rMultiple >= 0.2) {
+        actions.push({ type: 'close', reason: 'liquidity_trap_exit' });
       }
     }
 

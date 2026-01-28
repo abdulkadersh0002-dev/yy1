@@ -609,10 +609,34 @@ class IntelligentTradeManager {
       };
     }
 
+    // Small-loss exit if market flips fast or news risk spikes.
+    const earlyExitLossR = Number(process.env.EA_EARLY_EXIT_LOSS_R);
+    const earlyExitLossRatio = Number.isFinite(earlyExitLossR) ? earlyExitLossR : 0.35;
+    const trapScore = Number(marketData?.liquidityTrap?.confidence);
+    const trapExitThreshold = Number(process.env.EA_LIQUIDITY_TRAP_EXIT_SCORE) || 70;
+
+    if (lossRatio > 0 && lossRatio >= earlyExitLossRatio) {
+      const newsCheck = this.checkNewsImpact(symbol, marketData?.newsItems || []);
+      const phase = this.marketPhaseCache.get(symbol);
+      const reversal =
+        phase && this.isPhaseReversing(phase, direction) ? 'phase_reversal' : null;
+      const trap = Number.isFinite(trapScore) && trapScore >= trapExitThreshold ? 'liquidity_trap' : null;
+
+      if (!newsCheck.safe || reversal || trap) {
+        return {
+          action: 'CLOSE_NOW',
+          reason: `Early loss exit (${[!newsCheck.safe ? 'news' : null, reversal, trap]
+            .filter(Boolean)
+            .join(', ')})`,
+          urgency: 'HIGH'
+        };
+      }
+    }
+
     // Profit protection: close when 60% of TP reached
     if (profitRatio >= this.profitProtectionThreshold) {
       // Check if market is still favorable
-      const newsCheck = this.checkNewsImpact(symbol);
+      const newsCheck = this.checkNewsImpact(symbol, marketData?.newsItems || []);
       if (!newsCheck.safe) {
         return {
           action: 'CLOSE_NOW',

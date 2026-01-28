@@ -698,11 +698,57 @@ export function analyzeCandleSeries(series, { timeframe = null } = {}) {
   const structure = detectStructure(normalized, 8);
   const patterns = detectPatterns(normalized);
 
-  const smcLiquiditySweep = detectLiquiditySweep(normalized, { lookback: 20, atr });
-  const smcOrderBlock = detectOrderBlock(normalized, { atr, lookback: 40, impulseLookback: 12 });
-  const smcVolumeSpike = detectVolumeSpike(normalized, 20);
-  const smcImbalance = computeVolumeImbalance(normalized, 20);
-  const smcPriceImbalance = detectPriceImbalance(normalized, { lookback: 34, atr });
+   const smcLiquiditySweep = detectLiquiditySweep(normalized, { lookback: 20, atr });
+   const smcOrderBlock = detectOrderBlock(normalized, { atr, lookback: 40, impulseLookback: 12 });
+   const smcVolumeSpike = detectVolumeSpike(normalized, 20);
+   const smcImbalance = computeVolumeImbalance(normalized, 20);
+   const smcPriceImbalance = detectPriceImbalance(normalized, { lookback: 34, atr });
+   const liquidityTrap = (() => {
+     if (!smcLiquiditySweep || !smcLiquiditySweep.bias || !smcLiquiditySweep.confidence) {
+       return null;
+     }
+     const trapFollowThroughMax = envNumber('SMC_TRAP_FOLLOW_THROUGH_MAX_PCT', 0.12);
+     const trapConfidenceMin = envNumber('SMC_TRAP_CONFIDENCE_MIN', 62);
+     const trapVolumeRatioMax = envNumber('SMC_TRAP_VOLUME_RATIO_MAX', 1.1);
+
+     const last = normalized[normalized.length - 1];
+     const prev = normalized[normalized.length - 2];
+     if (!last || !prev) {
+       return null;
+     }
+     const movePct =
+       prev.close && prev.close !== 0 ? ((last.close - prev.close) / prev.close) * 100 : null;
+     const followThroughWeak =
+       movePct != null && Math.abs(movePct) <= trapFollowThroughMax;
+
+     const volumeRatio =
+       smcVolumeSpike && smcVolumeSpike.average && smcVolumeSpike.average > 0
+         ? smcVolumeSpike.newest / smcVolumeSpike.average
+         : null;
+     const volumeWeak = volumeRatio != null ? volumeRatio <= trapVolumeRatioMax : false;
+
+     const trapScore = clamp(
+       Math.round(
+         (smcLiquiditySweep.confidence * 0.6 +
+           (followThroughWeak ? 25 : 0) +
+           (volumeWeak ? 15 : 0))
+       ),
+       0,
+       100
+     );
+
+     if (trapScore < trapConfidenceMin) {
+       return null;
+     }
+
+     return {
+       bias: smcLiquiditySweep.bias === 'BUY' ? 'SELL' : 'BUY',
+       type: smcLiquiditySweep.type,
+       confidence: trapScore,
+       followThroughPct: movePct != null ? Number(movePct.toFixed(4)) : null,
+       volumeRatio: volumeRatio != null ? Number(volumeRatio.toFixed(2)) : null
+     };
+   })();
 
   const smcAccumDist = (() => {
     const spike = smcVolumeSpike;
@@ -844,8 +890,9 @@ export function analyzeCandleSeries(series, { timeframe = null } = {}) {
       : null,
     patterns: patterns.slice(0, 4),
     volume: volumeSummary,
-    smc: {
+     smc: {
       liquiditySweep: smcLiquiditySweep,
+      liquidityTrap,
       orderBlock: smcOrderBlock,
       volumeSpike: smcVolumeSpike,
       volumeImbalance: smcImbalance,

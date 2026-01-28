@@ -89,6 +89,11 @@ This project defaults to **EA-only + RSS-only** operation.
 | `EA_SIGNAL_NEWS_IMMINENT_EXTRA_PENALTY` | number | 4 | Extra penalty applied per imminent high-impact news event |
 | `EA_SIGNAL_NEWS_MEDIUM_IMMINENT_MULTIPLIER` | number | 0.6 | Multiplier applied for medium-impact imminent news penalty |
 | `EA_SIGNAL_NEWS_VOLATILITY_MULTIPLIER_THRESHOLD` | number | 2.2 | News volatility multiplier threshold treated as extreme |
+| `EA_EARLY_EXIT_LOSS_R` | number | 0.35 | Close losing trades early when reversal/trap/news risks appear |
+| `EA_LIQUIDITY_TRAP_EXIT_SCORE` | number | 70 | Trap confidence threshold to force protective exit |
+| `SMC_TRAP_FOLLOW_THROUGH_MAX_PCT` | number | 0.12 | Max follow-through move (pct) to classify trap |
+| `SMC_TRAP_CONFIDENCE_MIN` | number | 62 | Minimum trap confidence to emit trap signal |
+| `SMC_TRAP_VOLUME_RATIO_MAX` | number | 1.1 | Max volume ratio before trap signal is suppressed |
 
 ## Trading Configuration
 

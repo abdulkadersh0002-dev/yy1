@@ -154,4 +154,25 @@ describe('EaBridgeService news context', () => {
 
     assert.ok(adjusted.newsPenalty > 0);
   });
+
+  it('caps penalties when max penalty is exceeded', () => {
+    const svc = new EaBridgeService({ logger: { info() {}, warn() {}, error() {} } });
+    process.env.EA_SIGNAL_NEWS_MAX_PENALTY = '10';
+
+    const now = Date.now();
+    svc.recordNews({
+      broker: 'mt5',
+      items: [
+        { id: 'n1', title: 'USD event', currency: 'USD', impact: 90, time: now + 60 * 1000 },
+        { id: 'n2', title: 'USD event 2', currency: 'USD', impact: 90, time: now + 120 * 1000 },
+      ],
+    });
+
+    const context = svc.buildSignalNewsContext({ broker: 'mt5', symbol: 'USDJPY', now });
+    const baseSignal = { confidence: 90, strength: 80, direction: 'SELL' };
+    const { signal: adjusted } = svc.applyNewsContextToSignal(baseSignal, context);
+
+    assert.equal(adjusted.newsPenalty, 10);
+    assert.equal(adjusted.newsStrengthPenalty, 10);
+  });
 });
