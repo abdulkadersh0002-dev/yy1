@@ -9,12 +9,12 @@ export const executionEngine = {
         reason: signal.isValid.reason,
         pair: signal?.pair || null,
         direction: signal?.direction || null,
-        source: signal?.source || null
+        source: signal?.source || null,
       });
       return {
         success: false,
         reason: signal.isValid.reason,
-        signal
+        signal,
       };
     }
 
@@ -25,12 +25,12 @@ export const executionEngine = {
         reason: 'signal_expired',
         pair: signal?.pair || null,
         direction: signal?.direction || null,
-        expiresAt
+        expiresAt,
       });
       return {
         success: false,
         reason: 'Signal expired',
-        signal
+        signal,
       };
     }
 
@@ -40,19 +40,19 @@ export const executionEngine = {
         const validation = rules.validateOrder({
           symbol: signal.pair,
           pair: signal.pair,
-          volume: signal?.riskManagement?.positionSize
+          volume: signal?.riskManagement?.positionSize,
         });
         if (!validation.allowed) {
           auditLogger?.record?.('execution.trade.blocked', {
             reason: 'market_rules',
             pair: signal?.pair || null,
             direction: signal?.direction || null,
-            details: validation.reasons
+            details: validation.reasons,
           });
           return {
             success: false,
             reason: `Market rules blocked execution: ${validation.reasons.join(', ')}`,
-            signal
+            signal,
           };
         }
       }
@@ -107,9 +107,9 @@ export const executionEngine = {
           activationAtFraction,
           activationLevel,
           trailingDistance,
-          stepDistance
+          stepDistance,
         },
-        signal
+        signal,
       };
 
       this.activeTrades.set(trade.id, trade);
@@ -128,12 +128,12 @@ export const executionEngine = {
             tradeId: trade.id,
             pair: trade.pair,
             riskFraction: trade.riskFraction,
-            totalRiskFraction: perSymbolRisk
+            totalRiskFraction: perSymbolRisk,
           });
           return {
             success: false,
             reason: 'Max risk per symbol exceeded',
-            signal
+            signal,
           };
         }
       }
@@ -145,7 +145,7 @@ export const executionEngine = {
           tradeId: trade.id,
           pair: trade.pair,
           direction: trade.direction,
-          entryPrice: trade.entryPrice
+          entryPrice: trade.entryPrice,
         },
         'Trade executed'
       );
@@ -156,7 +156,7 @@ export const executionEngine = {
         direction: trade.direction,
         entryPrice: trade.entryPrice,
         riskFraction: trade.riskFraction,
-        source: signal?.source || null
+        source: signal?.source || null,
       });
 
       if (this.brokerRouter) {
@@ -168,12 +168,12 @@ export const executionEngine = {
             tradeId: trade.id,
             pair: trade.pair,
             direction: trade.direction,
-            error: brokerResult.error || 'unknown error'
+            error: brokerResult.error || 'unknown error',
           });
           return {
             success: false,
             reason: `Broker execution failed: ${brokerResult.error || 'unknown error'}`,
-            signal
+            signal,
           };
         }
       }
@@ -185,19 +185,19 @@ export const executionEngine = {
       return {
         success: true,
         trade,
-        signal
+        signal,
       };
     } catch (error) {
       this.logger?.error?.({ module: 'ExecutionEngine', err: error }, 'Trade execution error');
       auditLogger?.record?.('execution.trade.error', {
         reason: error?.message || 'unknown error',
         pair: signal?.pair || null,
-        direction: signal?.direction || null
+        direction: signal?.direction || null,
       });
       return {
         success: false,
         reason: error.message,
-        signal
+        signal,
       };
     }
   },
@@ -206,7 +206,7 @@ export const executionEngine = {
     for (const [tradeId, trade] of this.activeTrades) {
       try {
         const currentPrice = await this.getCurrentPriceForPair(trade.pair, {
-          broker: trade.broker || trade.brokerRoute || null
+          broker: trade.broker || trade.brokerRoute || null,
         });
         const pnl = this.calculatePnL(trade, currentPrice);
         trade.currentPnL = pnl;
@@ -219,7 +219,10 @@ export const executionEngine = {
         if (supervision?.action === 'breakeven') {
           const currentStop = Number(trade.stopLoss);
           const entryPrice = Number(trade.entryPrice);
-          if (Number.isFinite(entryPrice) && (!Number.isFinite(currentStop) || currentStop !== entryPrice)) {
+          if (
+            Number.isFinite(entryPrice) &&
+            (!Number.isFinite(currentStop) || currentStop !== entryPrice)
+          ) {
             trade.stopLoss = entryPrice;
             trade.movedToBreakeven = true;
             this.logger?.info?.(
@@ -253,7 +256,7 @@ export const executionEngine = {
             reason:
               trade.movedToBreakeven && stopLossAfter === Number(trade.entryPrice)
                 ? 'breakeven'
-                : 'trailing'
+                : 'trailing',
           });
         }
 
@@ -296,12 +299,14 @@ export const executionEngine = {
     }
   },
 
-
-  evaluateSmartTradeSupervision(trade, currentPrice) {
+  evaluateSmartTradeSupervision(trade, _currentPrice) {
     const enabled = String(process.env.SMART_TRADE_SUPERVISOR_ENABLED || '')
       .trim()
       .toLowerCase();
-    if (!enabled || (enabled !== '1' && enabled !== 'true' && enabled !== 'yes' && enabled !== 'on')) {
+    if (
+      !enabled ||
+      (enabled !== '1' && enabled !== 'true' && enabled !== 'yes' && enabled !== 'on')
+    ) {
       return null;
     }
 
@@ -391,7 +396,7 @@ export const executionEngine = {
       tradeId: trade.id,
       comment: `modify:${trade.id}`,
       source: 'execution-engine',
-      reason
+      reason,
     };
 
     const result = await this.brokerRouter.modifyPosition(payload);
@@ -410,7 +415,7 @@ export const executionEngine = {
         reason: reason || null,
         stopLoss: payload.stopLoss,
         takeProfit: payload.takeProfit,
-        result: result.result || null
+        result: result.result || null,
       });
       return { success: true, result };
     }
@@ -423,7 +428,7 @@ export const executionEngine = {
       reason: reason || null,
       stopLoss: payload.stopLoss,
       takeProfit: payload.takeProfit,
-      error: trade.brokerModifyError
+      error: trade.brokerModifyError,
     });
     return { success: false, error: trade.brokerModifyError, result };
   },
@@ -466,7 +471,7 @@ export const executionEngine = {
             module: 'ExecutionEngine',
             tradeId: trade.id,
             pair: trade.pair,
-            newStopLoss: Number(newStopLoss.toFixed(5))
+            newStopLoss: Number(newStopLoss.toFixed(5)),
           },
           'Updated trailing SL'
         );
@@ -481,7 +486,7 @@ export const executionEngine = {
             module: 'ExecutionEngine',
             tradeId: trade.id,
             pair: trade.pair,
-            newStopLoss: Number(newStopLoss.toFixed(5))
+            newStopLoss: Number(newStopLoss.toFixed(5)),
           },
           'Updated trailing SL'
         );
@@ -533,7 +538,7 @@ export const executionEngine = {
         pair: trade.pair,
         direction: trade.direction,
         pnlPercentage: trade.finalPnL?.percentage,
-        reason
+        reason,
       },
       'Trade closed'
     );
@@ -552,7 +557,7 @@ export const executionEngine = {
     return {
       pips: pips.toFixed(1),
       amount: amount.toFixed(2),
-      percentage: percentage.toFixed(2)
+      percentage: percentage.toFixed(2),
     };
   },
 
@@ -580,7 +585,8 @@ export const executionEngine = {
         null;
       const requested = Number(payload.price);
       const slippagePips =
-        Number.isFinite(filled) && Number.isFinite(requested) &&
+        Number.isFinite(filled) &&
+        Number.isFinite(requested) &&
         typeof this.calculatePips === 'function'
           ? Number(this.calculatePips(trade.pair, Math.abs(filled - requested)).toFixed(3))
           : null;
@@ -600,13 +606,13 @@ export const executionEngine = {
         slippageExceeded,
         latencyMs,
         broker: trade.broker,
-        orderId: result.order?.id || result.order?.ticket || null
+        orderId: result.order?.id || result.order?.ticket || null,
       };
 
       recordExecutionSlippage({
         broker: trade.broker,
         status: slippageExceeded ? 'high' : 'ok',
-        slippagePips
+        slippagePips,
       });
 
       if (slippageExceeded) {
@@ -618,7 +624,7 @@ export const executionEngine = {
             requested,
             filled,
             slippagePips,
-            maxSlippagePips
+            maxSlippagePips,
           },
           'Execution slippage above threshold'
         );
@@ -652,7 +658,7 @@ export const executionEngine = {
       tradeId: trade.id,
       idempotencyKey: trade.id,
       source: 'trading-engine',
-      timeInForce: routing?.timeInForce || 'GTC'
+      timeInForce: routing?.timeInForce || 'GTC',
     };
   },
 
@@ -667,7 +673,7 @@ export const executionEngine = {
         reason,
         side: trade.direction,
         units: Number(trade.positionSize) || 0,
-        comment: `close:${trade.id}`
+        comment: `close:${trade.id}`,
       };
       if (!payload.broker) {
         return { success: true };
@@ -677,5 +683,5 @@ export const executionEngine = {
       this.logger?.error?.({ module: 'ExecutionEngine', err: error }, 'Broker close failed');
       return { success: false, error: error.message };
     }
-  }
+  },
 };

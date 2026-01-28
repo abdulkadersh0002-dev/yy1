@@ -1,6 +1,6 @@
 import {
   analyzeCandleSeries,
-  aggregateCandleAnalyses
+  aggregateCandleAnalyses,
 } from '../../analyzers/candle-analysis-lite.js';
 import { computeIntermarketCorrelation } from '../../../infrastructure/services/analysis/intermarket-correlation.js';
 
@@ -39,16 +39,52 @@ export const orchestrationCoordinator = {
       if (eaOnly && brokerIsEa) {
         try {
           const eaBridgeService = options?.eaBridgeService || null;
-          if (
-            eaBridgeService &&
-            (!external || !external.quote) &&
-            typeof eaBridgeService.getLatestQuoteForSymbolMatch === 'function'
-          ) {
-            const fallbackQuote = eaBridgeService.getLatestQuoteForSymbolMatch(brokerId, pair);
-            if (fallbackQuote) {
+          const isRealBidAskQuote = (q) => {
+            if (!q || typeof q !== 'object') {
+              return false;
+            }
+            const bid = Number(q.bid);
+            const ask = Number(q.ask);
+            return Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0 && ask > bid;
+          };
+
+          if (eaBridgeService && (!external || !isRealBidAskQuote(external.quote))) {
+            // Prefer snapshot.quote if available (most reliable bid/ask in EA-only).
+            let picked = null;
+            if (typeof eaBridgeService.getMarketSnapshot === 'function') {
+              const snap = eaBridgeService.getMarketSnapshot({
+                broker: brokerId,
+                symbol: pair,
+                maxAgeMs: 5 * 60 * 1000,
+              });
+              const sq = snap?.quote && typeof snap.quote === 'object' ? snap.quote : null;
+              if (sq) {
+                const normalized = {
+                  ...sq,
+                  broker: sq.broker ?? brokerId,
+                  symbol: sq.symbol ?? pair,
+                  source: sq.source ?? snap?.source ?? 'ea_snapshot',
+                  receivedAt: sq.receivedAt ?? snap?.receivedAt ?? null,
+                  timestamp: sq.timestamp ?? snap?.timestamp ?? null,
+                };
+                if (isRealBidAskQuote(normalized)) {
+                  picked = normalized;
+                }
+              }
+            }
+
+            // Fallback to latest quote cache only if it is a real bid/ask quote.
+            if (!picked && typeof eaBridgeService.getLatestQuoteForSymbolMatch === 'function') {
+              const candidate = eaBridgeService.getLatestQuoteForSymbolMatch(brokerId, pair);
+              if (isRealBidAskQuote(candidate)) {
+                picked = candidate;
+              }
+            }
+
+            if (picked) {
               external = {
                 ...(external && typeof external === 'object' ? external : {}),
-                quote: fallbackQuote
+                quote: picked,
               };
             }
           }
@@ -153,10 +189,10 @@ export const orchestrationCoordinator = {
                 normalizedQuality: 1,
                 availableProviders: ['eaBridge'],
                 blockedProviders: [],
-                availabilityDetails: []
+                availabilityDetails: [],
               },
               availabilityStatus: 'available',
-              availabilityReasons: []
+              availabilityReasons: [],
             };
           });
           technicalAnalysis = {
@@ -186,8 +222,8 @@ export const orchestrationCoordinator = {
               timeframes: timeframes.reduce((acc, tf) => {
                 acc[tf] = { ...map[tf].dataAvailability, timeframe: tf };
                 return acc;
-              }, {})
-            }
+              }, {}),
+            },
           };
         } else {
           // If the technical analyzer didn't include midPrice yet (or series were empty), preserve it.
@@ -267,7 +303,7 @@ export const orchestrationCoordinator = {
               pivotPoints:
                 frame.pivotPoints && typeof frame.pivotPoints === 'object'
                   ? frame.pivotPoints
-                  : current.pivotPoints
+                  : current.pivotPoints,
             };
           }
 
@@ -306,7 +342,7 @@ export const orchestrationCoordinator = {
                 score: direction === 'BUY' ? absScore : -absScore,
                 confidence: Number.isFinite(Number(frame?.confidence))
                   ? Number(frame.confidence)
-                  : null
+                  : null,
               });
             }
           }
@@ -327,7 +363,7 @@ export const orchestrationCoordinator = {
           technicalAnalysis.directionSummary = {
             BUY: buyVotes,
             SELL: sellVotes,
-            NEUTRAL: neutralVotes
+            NEUTRAL: neutralVotes,
           };
           technicalAnalysis.signals = snapshotSignals.sort(
             (a, b) => Number(b.strength || 0) - Number(a.strength || 0)
@@ -385,7 +421,7 @@ export const orchestrationCoordinator = {
               technicalAnalysis.regimeSummary = {
                 state: analysis?.regime?.state || null,
                 confidence: regimeConfidence,
-                averageSlope: analysis?.regime?.slope ?? null
+                averageSlope: analysis?.regime?.slope ?? null,
               };
             }
 
@@ -397,7 +433,7 @@ export const orchestrationCoordinator = {
             ) {
               technicalAnalysis.volatilitySummary = {
                 state: analysis?.volatility?.state || null,
-                averageScore: Number(atrPct.toFixed(3))
+                averageScore: Number(atrPct.toFixed(3)),
               };
             }
 
@@ -418,7 +454,7 @@ export const orchestrationCoordinator = {
                     .map((p) => p?.name)
                     .filter(Boolean)
                     .slice(0, 4)
-                : []
+                : [],
             });
           }
 
@@ -491,7 +527,7 @@ export const orchestrationCoordinator = {
                 indicators: {},
                 score: 0,
                 sentiment: 'neutral',
-                strength: 0
+                strength: 0,
               },
               quote: {
                 currency: quoteCurrency || 'QUOTE',
@@ -499,12 +535,12 @@ export const orchestrationCoordinator = {
                 indicators: {},
                 score: 0,
                 sentiment: 'neutral',
-                strength: 0
+                strength: 0,
               },
               relativeSentiment: 0,
               direction: 'NEUTRAL',
               strength: 0,
-              confidence: 0
+              confidence: 0,
             };
           }
         } else {
@@ -516,7 +552,7 @@ export const orchestrationCoordinator = {
               indicators: {},
               score: 0,
               sentiment: 'neutral',
-              strength: 0
+              strength: 0,
             },
             quote: {
               currency: quoteCurrency || 'QUOTE',
@@ -524,12 +560,12 @@ export const orchestrationCoordinator = {
               indicators: {},
               score: 0,
               sentiment: 'neutral',
-              strength: 0
+              strength: 0,
             },
             relativeSentiment: 0,
             direction: 'NEUTRAL',
             strength: 0,
-            confidence: 0
+            confidence: 0,
           };
         }
 
@@ -540,7 +576,7 @@ export const orchestrationCoordinator = {
           .slice(0, 50)
           .map((event) => ({
             ...event,
-            source: event?.source || 'ea'
+            source: event?.source || 'ea',
           }));
 
         const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -657,7 +693,7 @@ export const orchestrationCoordinator = {
               time: event.time,
               actual: event.actual ?? null,
               forecast: event.forecast ?? null,
-              score: Number(eventScore.toFixed(2))
+              score: Number(eventScore.toFixed(2)),
             });
           }
 
@@ -666,7 +702,7 @@ export const orchestrationCoordinator = {
           return {
             biasScore: Number(clamp(biasScore / 4, -25, 25).toFixed(2)),
             riskScore: Number(clamp(riskScore, 0, 100).toFixed(1)),
-            topEvents: scored.slice(0, 5)
+            topEvents: scored.slice(0, 5),
           };
         };
 
@@ -688,7 +724,7 @@ export const orchestrationCoordinator = {
             url: item.url || item.link || null,
             impact: Number.isFinite(Number(item.impact)) ? Number(item.impact) : null,
             score: Number.isFinite(Number(item.score)) ? Number(item.score) : null,
-            sentimentLabel: item.sentimentLabel || null
+            sentimentLabel: item.sentimentLabel || null,
           };
         };
 
@@ -717,8 +753,8 @@ export const orchestrationCoordinator = {
               calendarEvents,
               eventBias: macro,
               newsSources: {
-                eaBridge: true
-              }
+                eaBridge: true,
+              },
             };
           }
         } else {
@@ -740,13 +776,13 @@ export const orchestrationCoordinator = {
             calendarEvents,
             eventBias: macro,
             newsSources: {
-              eaBridge: true
+              eaBridge: true,
             },
             evidence: {
               base: [],
               quote: [],
-              external: externalEvidence
-            }
+              external: externalEvidence,
+            },
           };
         }
 
@@ -755,7 +791,7 @@ export const orchestrationCoordinator = {
         [economicAnalysis, newsAnalysis, technicalAnalysis] = await Promise.all([
           this.analyzeEconomics(pair),
           this.analyzeNews(pair, { external }),
-          this.analyzeTechnical(pair)
+          this.analyzeTechnical(pair),
         ]);
       }
 
@@ -808,11 +844,11 @@ export const orchestrationCoordinator = {
             status: null,
             pips: null,
             provider: brokerId || null,
-            timestamp: externalQuote?.timestamp || null
+            timestamp: externalQuote?.timestamp || null,
           },
           weekendGap: { severity: 'none', maxPips: 0 },
           syntheticRelaxed: false,
-          syntheticContext: null
+          syntheticContext: null,
         };
       } else if (
         !eaOnly &&
@@ -840,7 +876,7 @@ export const orchestrationCoordinator = {
           try {
             dataQualityReport = await this.assessMarketData(pair, {
               timeframes: ['M15', 'H1', 'H4', 'D1'],
-              bars: 240
+              bars: 240,
             });
           } catch (error) {
             this.logger?.error?.(
@@ -859,11 +895,81 @@ export const orchestrationCoordinator = {
         {
           economic: economicAnalysis,
           news: newsAnalysis,
-          technical: technicalAnalysis
+          technical: technicalAnalysis,
         },
         marketPrice,
         dataQualityReport
       );
+
+      // EA-only fallback: if the EA is streaming bars but not quotes (e.g., WebRequest blocked or
+      // SymbolInfoTick unavailable), derive a minimal quote from the latest bar close.
+      // This keeps the dashboard usable and prevents "market:eaQuote" from staying missing.
+      const allowSynthetic =
+        String(process.env.ALLOW_SYNTHETIC_DATA || '').toLowerCase() === 'true' ||
+        String(process.env.REQUIRE_REALTIME_DATA || '').toLowerCase() === 'false';
+
+      if (
+        allowSynthetic &&
+        signal &&
+        typeof signal === 'object' &&
+        brokerIsEa &&
+        (eaOnly || eaHybrid)
+      ) {
+        try {
+          if (!signal.components || typeof signal.components !== 'object') {
+            signal.components = {};
+          }
+
+          const marketData =
+            signal.components.marketData && typeof signal.components.marketData === 'object'
+              ? signal.components.marketData
+              : {};
+
+          const hasEaQuote =
+            marketData?.eaQuote && typeof marketData.eaQuote === 'object' ? true : false;
+
+          if (!hasEaQuote) {
+            const tfBars =
+              external?.barsByTimeframe && typeof external.barsByTimeframe === 'object'
+                ? external.barsByTimeframe
+                : null;
+            const m1Series = tfBars?.M1 || tfBars?.m1 || null;
+            const lastBar =
+              Array.isArray(m1Series) && m1Series.length ? m1Series[m1Series.length - 1] : null;
+
+            const lastClose = Number(lastBar?.close);
+            const fallbackPrice =
+              Number.isFinite(lastClose) && lastClose > 0
+                ? lastClose
+                : Number.isFinite(Number(marketPrice))
+                  ? Number(marketPrice)
+                  : Number.isFinite(Number(technicalAnalysis?.latestPrice))
+                    ? Number(technicalAnalysis.latestPrice)
+                    : null;
+
+            const vol = Number(lastBar?.volume);
+            const ts = lastBar?.timestamp ?? lastBar?.time ?? null;
+
+            if (fallbackPrice != null && fallbackPrice > 0) {
+              marketData.eaQuote = {
+                bid: fallbackPrice,
+                ask: fallbackPrice,
+                spreadPoints: null,
+                liquidityHint: null,
+                volume: Number.isFinite(vol) ? vol : null,
+                timestamp: ts,
+                receivedAt: Date.now(),
+                rawTimestamp: ts,
+                source: 'ea.bars.M1',
+              };
+            }
+          }
+
+          signal.components.marketData = marketData;
+        } catch (_error) {
+          // best-effort
+        }
+      }
 
       // EA-only execution data: use EA quote (bid/ask) to populate spreadPips so
       // validateSignal() can enforce execution/spread gates even when external
@@ -918,7 +1024,7 @@ export const orchestrationCoordinator = {
           timestamp: external.quote.receivedAt ?? external.quote.timestamp ?? null,
           receivedAt: external.quote.receivedAt ?? null,
           rawTimestamp: external.quote.timestamp ?? null,
-          source: external.quote.source ?? null
+          source: external.quote.source ?? null,
         };
 
         signal.components.marketData = marketData;
@@ -939,14 +1045,14 @@ export const orchestrationCoordinator = {
             assetClass: meta?.assetClass || null,
             timeframe: 'M15',
             window: 96,
-            maxAgeMs: 0
+            maxAgeMs: 0,
           });
 
           if (!signal.components || typeof signal.components !== 'object') {
             signal.components = {};
           }
           signal.components.intermarket = {
-            correlation
+            correlation,
           };
         }
       } catch (_error) {
@@ -976,7 +1082,7 @@ export const orchestrationCoordinator = {
             eaQuote && typeof this.recordQuoteTelemetry === 'function'
               ? this.recordQuoteTelemetry(pairKey, {
                   ...eaQuote,
-                  spreadPips: marketData?.spreadPips ?? null
+                  spreadPips: marketData?.spreadPips ?? null,
                 })
               : { available: false, current: null, recent: [] };
 
@@ -994,7 +1100,7 @@ export const orchestrationCoordinator = {
             quote: quoteTelemetry?.current || null,
             quoteRecent: Array.isArray(quoteTelemetry?.recent) ? quoteTelemetry.recent : [],
             session: sessionTelemetry,
-            news: newsTelemetry
+            news: newsTelemetry,
           };
         }
       } catch (_error) {
@@ -1054,7 +1160,7 @@ export const orchestrationCoordinator = {
                 ...(signal.isValid && typeof signal.isValid.checks === 'object'
                   ? signal.isValid.checks
                   : {}),
-                liveBacktest: false
+                liveBacktest: false,
               },
               decision: {
                 ...currentDecision,
@@ -1062,8 +1168,8 @@ export const orchestrationCoordinator = {
                 blocked: false,
                 blockers: Array.isArray(currentDecision.blockers)
                   ? [...currentDecision.blockers, 'live_backtest']
-                  : ['live_backtest']
-              }
+                  : ['live_backtest'],
+              },
             };
           } else if (liveBacktest && liveBacktest.passed === true) {
             if (signal?.isValid && typeof signal.isValid === 'object') {
@@ -1071,7 +1177,7 @@ export const orchestrationCoordinator = {
                 ...(signal.isValid.checks && typeof signal.isValid.checks === 'object'
                   ? signal.isValid.checks
                   : {}),
-                liveBacktest: true
+                liveBacktest: true,
               };
             }
           }
@@ -1129,7 +1235,7 @@ export const orchestrationCoordinator = {
                 ...(signal.isValid && typeof signal.isValid.checks === 'object'
                   ? signal.isValid.checks
                   : {}),
-                advancedFilter: false
+                advancedFilter: false,
               },
               decision: {
                 ...currentDecision,
@@ -1137,8 +1243,8 @@ export const orchestrationCoordinator = {
                 blocked: false,
                 blockers: Array.isArray(currentDecision.blockers)
                   ? [...currentDecision.blockers, 'advanced_filter']
-                  : ['advanced_filter']
-              }
+                  : ['advanced_filter'],
+              },
             };
           } else if (filterResult && filterResult.passed === true) {
             if (signal?.isValid && typeof signal.isValid === 'object') {
@@ -1146,7 +1252,7 @@ export const orchestrationCoordinator = {
                 ...(signal.isValid.checks && typeof signal.isValid.checks === 'object'
                   ? signal.isValid.checks
                   : {}),
-                advancedFilter: true
+                advancedFilter: true,
               };
             }
           }
@@ -1178,7 +1284,7 @@ export const orchestrationCoordinator = {
           scoreBucket: bucketize(signal.finalScore, 10, 100),
           strengthBucket: bucketize(signal.strength, 10, 100),
           confidenceBucket: bucketize(signal.confidence, 10, 100),
-          winRateBucket: bucketize(signal.estimatedWinRate, 5, 100)
+          winRateBucket: bucketize(signal.estimatedWinRate, 5, 100),
         };
       }
 
@@ -1194,7 +1300,7 @@ export const orchestrationCoordinator = {
           score: signal?.isValid?.decision?.score ?? null,
           blocked: Boolean(signal?.isValid?.decision?.blocked),
           reason: reasons.length ? reasons[0] : signal.isValid?.reason || null,
-          reasons: reasons.slice(0, 4)
+          reasons: reasons.slice(0, 4),
         };
       }
 
@@ -1224,7 +1330,7 @@ export const orchestrationCoordinator = {
             H8: 480,
             H12: 720,
             D1: 1440,
-            W1: 10080
+            W1: 10080,
           };
           return map[normalized] || null;
         };
@@ -1310,7 +1416,7 @@ export const orchestrationCoordinator = {
           expiresAt,
           ttlMs,
           evaluatedAt: now,
-          reason: signal?.isValid?.reason || null
+          reason: signal?.isValid?.reason || null,
         };
       }
 
@@ -1324,7 +1430,7 @@ export const orchestrationCoordinator = {
       const classified = this.classifyError?.(error, { scope: 'generateSignal', pair }) || {
         type: 'unknown',
         category: 'Unknown engine error',
-        context: { scope: 'generateSignal', pair }
+        context: { scope: 'generateSignal', pair },
       };
       this.logger?.error?.(
         { module: 'OrchestrationCoordinator', pair, err: error, errorType: classified.type },
@@ -1344,8 +1450,8 @@ export const orchestrationCoordinator = {
             success: false,
             reason: error.message,
             errorType: classified.type,
-            signal: fallback
-          }
+            signal: fallback,
+          },
         };
       }
       return fallback;
@@ -1363,7 +1469,7 @@ export const orchestrationCoordinator = {
       const classified = this.classifyError?.(error, { scope: 'generateAndExecute', pair }) || {
         type: 'unknown',
         category: 'Unknown engine error',
-        context: { scope: 'generateAndExecute', pair }
+        context: { scope: 'generateAndExecute', pair },
       };
       this.logger?.error?.(
         { module: 'OrchestrationCoordinator', pair, err: error, errorType: classified.type },
@@ -1376,9 +1482,9 @@ export const orchestrationCoordinator = {
           success: false,
           reason: error.message,
           errorType: classified.type,
-          signal: fallback
-        }
+          signal: fallback,
+        },
       };
     }
-  }
+  },
 };

@@ -1,5 +1,13 @@
 export function buildEaConnectionDiagnostics({ eaBridgeService, broker, symbol, maxAgeMs, now }) {
-  const normalizedBroker = broker ? String(broker).trim().toLowerCase() : null;
+  const normalizedBroker = broker
+    ? typeof eaBridgeService?.normalizeBroker === 'function'
+      ? eaBridgeService.normalizeBroker(broker)
+      : String(broker)
+          .trim()
+          .toLowerCase()
+          .replace(/["']/g, '')
+          .replace(/[\\/]+/g, '')
+    : null;
   const effectiveNow = Number.isFinite(Number(now)) ? Number(now) : Date.now();
   const effectiveMaxAgeMs = Number.isFinite(Number(maxAgeMs))
     ? Math.max(0, Number(maxAgeMs))
@@ -10,7 +18,7 @@ export function buildEaConnectionDiagnostics({ eaBridgeService, broker, symbol, 
       ? Boolean(
           eaBridgeService.isBrokerConnected({
             broker: normalizedBroker,
-            maxAgeMs: effectiveMaxAgeMs
+            maxAgeMs: effectiveMaxAgeMs,
           })
         )
       : false;
@@ -38,7 +46,7 @@ export function buildEaConnectionDiagnostics({ eaBridgeService, broker, symbol, 
       ? eaBridgeService.getQuotes({
           broker: normalizedBroker,
           ...(symbol ? { symbols: [String(symbol).trim().toUpperCase()] } : null),
-          maxAgeMs: effectiveMaxAgeMs
+          maxAgeMs: effectiveMaxAgeMs,
         })
       : [];
 
@@ -58,8 +66,8 @@ export function buildEaConnectionDiagnostics({ eaBridgeService, broker, symbol, 
           quotesByBroker: stats?.marketFeed?.quotes?.byBroker || {},
           snapshotsTotal: Number(stats?.marketFeed?.snapshots?.total || 0),
           barsSeries: Number(stats?.marketFeed?.bars?.series || 0),
-          barsTotal: Number(stats?.marketFeed?.bars?.totalBars || 0)
-        }
+          barsTotal: Number(stats?.marketFeed?.bars?.totalBars || 0),
+        },
       }
     : null;
 
@@ -70,14 +78,14 @@ export function buildEaConnectionDiagnostics({ eaBridgeService, broker, symbol, 
     sessions: {
       count: brokerSessions.length,
       lastHeartbeat,
-      lastHeartbeatAgeMs
+      lastHeartbeatAgeMs,
     },
     quotes: {
       count: quoteCount,
       latestQuoteAt,
-      latestQuoteAgeMs
+      latestQuoteAgeMs,
     },
-    statistics: statsSummary
+    statistics: statsSummary,
   };
 }
 
@@ -87,8 +95,18 @@ export function buildEaNotConnectedResponse({ broker, symbol, eaBridgeService, m
     symbol,
     eaBridgeService,
     maxAgeMs,
-    now
+    now,
   });
+
+  const brokerLower =
+    diagnostics?.broker ||
+    (broker
+      ? String(broker)
+          .trim()
+          .toLowerCase()
+          .replace(/["']/g, '')
+          .replace(/[\\/]+/g, '')
+      : null);
 
   const upper = String(broker || '')
     .trim()
@@ -97,24 +115,19 @@ export function buildEaNotConnectedResponse({ broker, symbol, eaBridgeService, m
     'Start the MT4/MT5 terminal on the same machine as the backend.',
     'Attach the EA bridge to an open chart and enable AutoTrading/Algo Trading.',
     'Confirm the EA is configured to POST heartbeats/quotes to this backend URL/port.',
-    'Then refresh this request; the backend requires a fresh heartbeat or quote feed.'
+    'Then refresh this request; the backend requires a fresh heartbeat or quote feed.',
   ];
 
   return {
     success: false,
     error: `Broker ${upper} is not connected yet`,
-    broker:
-      String(broker || '')
-        .trim()
-        .toLowerCase() || null,
+    broker: brokerLower || null,
     howToFix,
     diagnostics,
     nextChecks: {
       sessions: '/api/broker/bridge/sessions',
       statistics: '/api/broker/bridge/statistics',
-      quotes: broker
-        ? `/api/broker/bridge/${String(broker).trim().toLowerCase()}/market/quotes?maxAgeMs=30000`
-        : null
-    }
+      quotes: brokerLower ? `/api/broker/bridge/${brokerLower}/market/quotes?maxAgeMs=30000` : null,
+    },
   };
 }

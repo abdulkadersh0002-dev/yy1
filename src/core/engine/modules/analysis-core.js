@@ -9,7 +9,7 @@ export const analysisCore = {
 
       const [baseAnalysis, quoteAnalysis] = await Promise.all([
         this.economicAnalyzer.analyzeCurrency(baseCurrency),
-        this.economicAnalyzer.analyzeCurrency(quoteCurrency)
+        this.economicAnalyzer.analyzeCurrency(quoteCurrency),
       ]);
 
       const relativeSentiment = (baseAnalysis.score ?? 0) - (quoteAnalysis.score ?? 0);
@@ -20,7 +20,7 @@ export const analysisCore = {
         relativeSentiment,
         direction: relativeSentiment > 10 ? 'BUY' : relativeSentiment < -10 ? 'SELL' : 'NEUTRAL',
         strength: Math.abs(relativeSentiment),
-        confidence: Math.min((baseAnalysis.strength + quoteAnalysis.strength) / 2, 100)
+        confidence: Math.min((baseAnalysis.strength + quoteAnalysis.strength) / 2, 100),
       };
     }
 
@@ -42,13 +42,13 @@ export const analysisCore = {
         }
         mergedCalendarEvents.push({
           ...event,
-          source: event.source || 'ea'
+          source: event.source || 'ea',
         });
       }
     }
 
     const sources = {
-      ...(analysis.sources || {})
+      ...(analysis.sources || {}),
     };
     if (externalEvents.length || externalNewsItems.length) {
       sources.eaBridge = true;
@@ -72,7 +72,7 @@ export const analysisCore = {
         url: item.url || item.link || null,
         impact: Number.isFinite(Number(item.impact)) ? Number(item.impact) : null,
         score: Number.isFinite(Number(item.score)) ? Number(item.score) : null,
-        sentimentLabel: item.sentimentLabel || null
+        sentimentLabel: item.sentimentLabel || null,
       };
     };
 
@@ -95,8 +95,8 @@ export const analysisCore = {
       evidence: {
         base: evidenceBase.map(projectEvidenceItem).filter(Boolean),
         quote: evidenceQuote.map(projectEvidenceItem).filter(Boolean),
-        external: evidenceExternal
-      }
+        external: evidenceExternal,
+      },
     };
   },
 
@@ -116,7 +116,7 @@ export const analysisCore = {
       regimeSummary: analysis.regimeSummary,
       volatilitySummary: analysis.volatilitySummary,
       divergenceSummary: analysis.divergenceSummary,
-      volumePressureSummary: analysis.volumePressureSummary
+      volumePressureSummary: analysis.volumePressureSummary,
     };
   },
 
@@ -145,6 +145,16 @@ export const analysisCore = {
     const newsScore = this.normalizeScore(news.sentiment, -50, 50) * 100;
     const technicalScore = technical.score;
 
+    const newsQuality = this.computeNewsQuality(news);
+    const componentWeights = this.computeComponentWeights({
+      economic,
+      news,
+      technical,
+      dataConfidence,
+      newsQuality,
+      dataQualityContext,
+    });
+
     // Optional ML scoring is intentionally disabled (EA+RSS-only architecture).
 
     const weightedComposite =
@@ -159,7 +169,7 @@ export const analysisCore = {
 
     let finalScore = amplifiedComposite;
 
-    let directionPreQuality = this.determineDirection(finalScore, economic, news, technical);
+    const directionPreQuality = this.determineDirection(finalScore, economic, news, technical);
 
     if (dataQualityContext.modifier !== 1) {
       const adjustedScore = Number((finalScore * dataQualityContext.modifier).toFixed(2));
@@ -179,7 +189,7 @@ export const analysisCore = {
 
     const baseConfidence = this.calculateConfidence(economic, news, technical, dataConfidence, {
       newsQuality,
-      componentWeights
+      componentWeights,
     });
 
     let confidence = baseConfidence;
@@ -241,7 +251,7 @@ export const analysisCore = {
       finalScore,
       dataQuality: resolvedDataQuality,
       dataQualityContext,
-      directionPreQuality
+      directionPreQuality,
     });
 
     const reasoning = this.generateReasoning(explainability);
@@ -249,7 +259,7 @@ export const analysisCore = {
       action: direction,
       reason: Array.isArray(reasoning) && reasoning.length ? reasoning[0] : null,
       reasons: Array.isArray(reasoning) ? reasoning.slice(0, 4) : [],
-      tradeValid: null
+      tradeValid: null,
     };
 
     let estimatedWinRate = this.estimateWinRate({
@@ -257,7 +267,7 @@ export const analysisCore = {
       strength,
       confidence,
       entry: entryParams,
-      components: { economic, news, technical }
+      components: { economic, news, technical },
     });
 
     if (resolvedDataQuality) {
@@ -292,7 +302,7 @@ export const analysisCore = {
         this.evaluateVolatilityAlert(pair, volatilitySnapshot, {
           strength,
           confidence,
-          volatilityState: entryParams?.volatilityState || volatilitySnapshot?.state || null
+          volatilityState: entryParams?.volatilityState || volatilitySnapshot?.state || null,
         });
       } catch (error) {
         console.warn(`Volatility alert evaluation failed for ${pair}:`, error.message);
@@ -317,9 +327,9 @@ export const analysisCore = {
           weight: Number(componentWeights.weights.economic.toFixed(3)),
           quality: {
             confidence: Number(Math.min(Math.max(economic.confidence || 0, 0), 100).toFixed(1)),
-            normalized: Number((componentWeights.economicQuality ?? 0).toFixed(3))
+            normalized: Number((componentWeights.economicQuality ?? 0).toFixed(3)),
           },
-          details: economic
+          details: economic,
         },
         news: {
           score: newsScore,
@@ -341,8 +351,8 @@ export const analysisCore = {
             sentiment: Number(newsQuality.sentimentFeedScore.toFixed(3)),
             calendar: Number(newsQuality.calendarScore.toFixed(3)),
             syntheticSentimentSources: newsQuality.syntheticSentimentSources,
-            syntheticNewsSources: newsQuality.syntheticNewsSources
-          }
+            syntheticNewsSources: newsQuality.syntheticNewsSources,
+          },
         },
         technical: {
           score: technicalScore,
@@ -366,7 +376,7 @@ export const analysisCore = {
                 bearish: Array.isArray(technical.divergenceSummary.bearish)
                   ? [...technical.divergenceSummary.bearish]
                   : [],
-                total: technical.divergenceSummary.total ?? 0
+                total: technical.divergenceSummary.total ?? 0,
               }
             : { bullish: [], bearish: [], total: 0 },
           volumePressure: technical.volumePressureSummary
@@ -384,8 +394,8 @@ export const analysisCore = {
             technicalFactor: Number((componentWeights.technicalQuality ?? 0).toFixed(3)),
             dataQualityWeightFactor: Number(
               (componentWeights.dataQualityWeightFactor ?? 1).toFixed(3)
-            )
-          }
+            ),
+          },
         },
         marketData: resolvedDataQuality
           ? {
@@ -409,15 +419,15 @@ export const analysisCore = {
               circuitBreaker: dataQualityContext.circuitBreaker || null,
               syntheticRelaxed: dataQualityContext.syntheticRelaxed,
               syntheticContext:
-                resolvedDataQuality.syntheticContext || dataQualityContext.syntheticContext || null
+                resolvedDataQuality.syntheticContext || dataQualityContext.syntheticContext || null,
             }
-          : null
+          : null,
       },
       meta: {
         componentWeights: {
           economic: Number(componentWeights.weights.economic.toFixed(3)),
           news: Number(componentWeights.weights.news.toFixed(3)),
-          technical: Number(componentWeights.weights.technical.toFixed(3))
+          technical: Number(componentWeights.weights.technical.toFixed(3)),
         },
         newsQuality,
         weightingDiagnostics: {
@@ -441,7 +451,7 @@ export const analysisCore = {
             componentWeights.availabilityPenaltyMeta?.normalizedQuality != null
               ? Number(componentWeights.availabilityPenaltyMeta.normalizedQuality.toFixed(3))
               : null,
-          availabilityViable: componentWeights.availabilityPenaltyMeta?.viable ?? true
+          availabilityViable: componentWeights.availabilityPenaltyMeta?.viable ?? true,
         },
         dataQuality: resolvedDataQuality
           ? {
@@ -465,13 +475,13 @@ export const analysisCore = {
               circuitBreaker: dataQualityContext.circuitBreaker || null,
               syntheticRelaxed: dataQualityContext.syntheticRelaxed,
               syntheticContext:
-                resolvedDataQuality.syntheticContext || dataQualityContext.syntheticContext || null
+                resolvedDataQuality.syntheticContext || dataQualityContext.syntheticContext || null,
             }
-          : null
+          : null,
       },
       entry: entryParams,
       explainability,
-      reasoning
+      reasoning,
     };
   },
 
@@ -557,7 +567,7 @@ export const analysisCore = {
     const directionalVotes = [
       economic.direction,
       this.normalizeNewsDirection(news.direction),
-      technical.direction
+      technical.direction,
     ].filter((dir) => dir && dir !== 'NEUTRAL');
 
     let alignmentBoost = 0;
@@ -659,7 +669,7 @@ export const analysisCore = {
       confidenceScore,
       calendarScore,
       syntheticSentimentSources: syntheticSentimentSummary,
-      syntheticNewsSources: syntheticNewsSummary
+      syntheticNewsSources: syntheticNewsSummary,
     };
   },
 
@@ -669,7 +679,7 @@ export const analysisCore = {
     technical = {},
     dataConfidence = null,
     newsQuality = null,
-    dataQualityContext = null
+    dataQualityContext = null,
   }) {
     const baseWeights = { economic: 0.28, news: 0.32, technical: 0.4 };
 
@@ -713,7 +723,7 @@ export const analysisCore = {
     const weighted = {
       economic: baseWeights.economic * economicQuality,
       news: baseWeights.news * newsReliability,
-      technical: baseWeights.technical * technicalQuality
+      technical: baseWeights.technical * technicalQuality,
     };
 
     const total = weighted.economic + weighted.news + weighted.technical;
@@ -722,7 +732,7 @@ export const analysisCore = {
         ? {
             economic: weighted.economic / total,
             news: weighted.news / total,
-            technical: weighted.technical / total
+            technical: weighted.technical / total,
           }
         : { ...baseWeights };
 
@@ -734,7 +744,7 @@ export const analysisCore = {
       dataQualityWeightFactor,
       availabilityPenalty: availabilityPenalty.factor,
       availabilityPenaltyMeta: availabilityPenalty.meta,
-      baseTechnicalQuality
+      baseTechnicalQuality,
     };
   },
 
@@ -748,8 +758,8 @@ export const analysisCore = {
           blockedTimeframes: [],
           reasons: [],
           normalizedQuality: null,
-          viable: true
-        }
+          viable: true,
+        },
       };
     }
 
@@ -806,8 +816,8 @@ export const analysisCore = {
         normalizedQuality: Number.isFinite(availability.normalizedQuality)
           ? availability.normalizedQuality
           : null,
-        viable: availability.viable !== false
-      }
+        viable: availability.viable !== false,
+      },
     };
   },
 
@@ -826,7 +836,7 @@ export const analysisCore = {
     const issueReasons = Array.isArray(availability.reasons) ? availability.reasons : [];
     const issues = [
       'availability:providers_unavailable',
-      ...new Set(issueReasons.map((reason) => `availability:${reason}`))
+      ...new Set(issueReasons.map((reason) => `availability:${reason}`)),
     ];
 
     return {
@@ -835,7 +845,7 @@ export const analysisCore = {
       status: 'critical',
       recommendation: 'block',
       score: Math.max(0, Math.min(100, scoreBase)),
-      issues
+      issues,
     };
   },
 
@@ -924,7 +934,7 @@ export const analysisCore = {
       (additionContext.notes || []).forEach((value) => notes.add(value));
       merged.syntheticContext = {
         suppressedIssues: Array.from(suppressed),
-        notes: Array.from(notes)
+        notes: Array.from(notes),
       };
     }
 
@@ -947,7 +957,7 @@ export const analysisCore = {
         spreadPips: null,
         confidenceFloor: null,
         confidenceFloorBreached: false,
-        circuitBreaker: null
+        circuitBreaker: null,
       };
     }
 
@@ -1045,7 +1055,7 @@ export const analysisCore = {
       confidenceFloorBreached: false,
       circuitBreaker,
       syntheticRelaxed,
-      syntheticContext: report.syntheticContext || null
+      syntheticContext: report.syntheticContext || null,
     };
   },
 
@@ -1073,7 +1083,7 @@ export const analysisCore = {
       relativeSentiment,
       direction,
       strength,
-      confidence
+      confidence,
     };
   },
 
@@ -1092,7 +1102,7 @@ export const analysisCore = {
     if (this.economicAnalyzer?.getDefaultAnalysis) {
       return {
         ...this.economicAnalyzer.getDefaultAnalysis(quote),
-        assetClass: metadata?.assetClass || 'multi'
+        assetClass: metadata?.assetClass || 'multi',
       };
     }
 
@@ -1112,7 +1122,7 @@ export const analysisCore = {
       value: score,
       impact: score,
       trend: sentiment,
-      source: 'CrossAssetModel'
+      source: 'CrossAssetModel',
     };
 
     return {
@@ -1122,7 +1132,7 @@ export const analysisCore = {
       indicators: { structural: structuralIndicator },
       score,
       sentiment,
-      strength
+      strength,
     };
   },
 
@@ -1164,7 +1174,7 @@ export const analysisCore = {
       indicators: {},
       score: 0,
       sentiment: 'neutral',
-      strength: 0
+      strength: 0,
     };
   },
 
@@ -1189,9 +1199,9 @@ export const analysisCore = {
       bullish: 'BUY',
       strong_sell: 'SELL',
       sell: 'SELL',
-      bearish: 'SELL'
+      bearish: 'SELL',
     };
 
     return map[direction] || null;
-  }
+  },
 };

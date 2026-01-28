@@ -11,10 +11,10 @@ const PLACEHOLDER_PATTERNS = [
   /^changeme$/i,
   /^your[_-]/i,
   /^none$/i,
-  /^na$/i
+  /^na$/i,
 ];
 
-function isLikelyPlaceholder(value) {
+function _isLikelyPlaceholder(value) {
   if (!value) {
     return true;
   }
@@ -35,9 +35,7 @@ export function enforceRealTimeProviderReadiness(apiKeys = {}, envConfig = appCo
   }
 
   if (allowSyntheticData(envConfig)) {
-    const error = new Error(
-      'Real-time data enforcement requires ALLOW_SYNTHETIC_DATA=false'
-    );
+    const error = new Error('Real-time data enforcement requires ALLOW_SYNTHETIC_DATA=false');
     error.code = 'REALTIME_DATA_REQUIRED';
     throw error;
   }

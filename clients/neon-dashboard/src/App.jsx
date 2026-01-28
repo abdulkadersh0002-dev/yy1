@@ -29,6 +29,7 @@ import {
   MAX_SIGNAL_ITEMS,
   MAX_TICKER_RENDER,
   MAX_TICKER_SEARCH_RESULTS,
+  TICKER_CATALOG_SYMBOLS,
   SESSION_BLUEPRINT,
   TICKER_ADVANCE_STEP,
   TICKER_CATEGORIES,
@@ -39,13 +40,14 @@ import {
   isCryptoSymbol,
   isFxSymbol,
   isMetalSymbol,
+  normalizeBrokerId,
   normalizeTickerSymbol,
   toNumber,
   toTimestamp
 } from './app/app-constants.js';
 
 const SHOW_AUTOTRADING_UI = false;
-const DASHBOARD_AUTOTRADING_AUTOSTART = false;
+const DASHBOARD_AUTOTRADING_AUTOSTART = true;
 
 const matchesTickerCategory = (symbolUpper, categoryId) => {
   const allowed = isFxSymbol(symbolUpper) || isMetalSymbol(symbolUpper) || isCryptoSymbol(symbolUpper);
@@ -702,7 +704,7 @@ function App() {
   }, []);
 
   const selectedPlatformId = useMemo(
-    () => String(selectedPlatform || '').toLowerCase(),
+    () => normalizeBrokerId(selectedPlatform || ''),
     [selectedPlatform]
   );
 
@@ -711,11 +713,14 @@ function App() {
       engineSnapshot?.status?.autoTrading?.forcedBroker ??
       engineSnapshot?.status?.forcedBroker ??
       null;
-    const normalized = String(broker || '').toLowerCase();
+    const normalized = normalizeBrokerId(broker || '');
     return normalized || null;
   }, [engineSnapshot?.status]);
 
-  const effectivePlatformId = forcedBrokerId || selectedPlatformId;
+  const effectivePlatformId = useMemo(
+    () => normalizeBrokerId(forcedBrokerId || selectedPlatformId || ''),
+    [forcedBrokerId, selectedPlatformId]
+  );
 
   const refreshMarketFeed = useCallback(
     async (options = {}) => {
@@ -1198,7 +1203,7 @@ function App() {
 
           if (msg.type === 'ea.market.quotes') {
             const payload = msg.payload || {};
-            const broker = String(payload?.broker || '').toLowerCase();
+            const broker = normalizeBrokerId(payload?.broker || '');
             if (broker !== effectivePlatformId) {
               return;
             }
@@ -1226,7 +1231,7 @@ function App() {
           }
 
           if (msg.type === 'signal') {
-            const payloadBroker = String(msg.payload?.broker || '').toLowerCase();
+            const payloadBroker = normalizeBrokerId(msg.payload?.broker || '');
             if (payloadBroker && payloadBroker !== effectivePlatformId) {
               return;
             }
@@ -1238,7 +1243,7 @@ function App() {
           }
 
           if (msg.type === 'signal_candidate') {
-            const payloadBroker = String(msg.payload?.broker || '').toLowerCase();
+            const payloadBroker = normalizeBrokerId(msg.payload?.broker || '');
             if (payloadBroker && payloadBroker !== effectivePlatformId) {
               return;
             }
@@ -1258,7 +1263,7 @@ function App() {
                 : [];
             const normalized = items
               .filter((s) => {
-                const b = String(s?.broker || '').toLowerCase();
+                const b = normalizeBrokerId(s?.broker || '');
                 return !b || b === effectivePlatformId;
               })
               .map((s) => normalizeSignal(s, msg.timestamp))
@@ -1278,7 +1283,7 @@ function App() {
                 : [];
             const normalized = items
               .filter((s) => {
-                const b = String(s?.broker || '').toLowerCase();
+                const b = normalizeBrokerId(s?.broker || '');
                 return !b || b === effectivePlatformId;
               })
               .map((s) => normalizeSignal(s, msg.timestamp))
@@ -1892,7 +1897,7 @@ function App() {
 
   useEffect(() => {
     refreshEaBridgeStats();
-    const timer = setInterval(refreshEaBridgeStats, 30000);
+    const timer = setInterval(refreshEaBridgeStats, 60000);
     return () => clearInterval(timer);
   }, [refreshEaBridgeStats]);
 
@@ -1906,7 +1911,7 @@ function App() {
     // Quotes need to be near-live; news does not. Poll quotes frequently and refresh news less often.
     refreshMarketFeed({ includeNews: true });
 
-    const quotesPollIntervalMs = wsMarketConnected ? 120000 : 8000;
+    const quotesPollIntervalMs = wsMarketConnected ? 120000 : 15000;
     const quotesTimer = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) {
         return;
@@ -1919,7 +1924,7 @@ function App() {
         return;
       }
       refreshMarketFeed({ includeNews: true });
-    }, 300000);
+    }, 600000);
 
     return () => {
       clearInterval(quotesTimer);
@@ -2090,8 +2095,24 @@ function App() {
     return marketFeed.quotes;
   }, [marketFeed.quotes]);
 
+  const tickerCatalogQuotes = useMemo(() => {
+    const bySymbol = quotesBySymbolRef.current || new Map();
+    const list = Array.isArray(TICKER_CATALOG_SYMBOLS) ? TICKER_CATALOG_SYMBOLS : [];
+    if (list.length === 0) {
+      return [];
+    }
+
+    return list.map((symbol) => {
+      const normalized = normalizeTickerSymbol(symbol);
+      if (!normalized) {
+        return null;
+      }
+      return bySymbol.get(normalized) || { symbol: normalized };
+    }).filter(Boolean);
+  }, [marketFeed.updatedAt]);
+
   const tickerFilteredQuotes = useMemo(() => {
-    const list = sortedQuotes;
+    const list = tickerCatalogQuotes;
     if (!Array.isArray(list) || list.length === 0) {
       return [];
     }
@@ -2100,7 +2121,7 @@ function App() {
       const symbolUpper = normalizeTickerSymbol(quote?.symbol || quote?.pair);
       return matchesTickerCategory(symbolUpper, category);
     });
-  }, [sortedQuotes, tickerCategory]);
+  }, [tickerCatalogQuotes, tickerCategory]);
 
   const analyzerQuote = useMemo(() => {
     if (!analyzerSymbolNormalized) {
@@ -2126,7 +2147,6 @@ function App() {
 
     // For very short queries, "startsWith" cuts down accidental matches.
     const shortQuery = needle.length <= 2;
-
     const results = [];
     for (const quote of tickerFilteredQuotes) {
       const symbol = normalizeTickerSymbol(quote?.symbol || quote?.pair);
@@ -2134,18 +2154,30 @@ function App() {
         continue;
       }
 
-      const match = shortQuery ? symbol.startsWith(needle) : symbol.includes(needle);
-      if (!match) {
+      const exact = symbol === needle;
+      const starts = shortQuery ? symbol.startsWith(needle) : symbol.startsWith(needle);
+      const includes = shortQuery ? symbol.startsWith(needle) : symbol.includes(needle);
+      if (!exact && !starts && !includes) {
         continue;
       }
 
-      results.push(quote);
-      if (results.length >= MAX_TICKER_SEARCH_RESULTS) {
-        break;
-      }
+      const hasQuote =
+        Number.isFinite(Number(quote?.bid)) ||
+        Number.isFinite(Number(quote?.ask)) ||
+        Number.isFinite(Number(quote?.last));
+      const score = (exact ? 3 : starts ? 2 : 1) + (hasQuote ? 0.5 : 0);
+      results.push({ quote, symbol, score });
     }
 
-    return results;
+    return results
+      .sort((a, b) => {
+        if (b.score !== a.score) {
+          return b.score - a.score;
+        }
+        return a.symbol.localeCompare(b.symbol);
+      })
+      .slice(0, MAX_TICKER_SEARCH_RESULTS)
+      .map((item) => item.quote);
   }, [tickerFilteredQuotes, tickerSearchNormalized]);
 
   const tickerMatchesCount = useMemo(() => {
@@ -2249,7 +2281,7 @@ function App() {
               ? ask
               : last;
 
-      const broker = String(quote?.broker || effectivePlatformId || '').toLowerCase();
+      const broker = normalizeBrokerId(quote?.broker || effectivePlatformId || '');
       const symbolNormalized = normalizeTickerSymbol(symbolValue);
       const deltaKey = `${broker}:${symbolNormalized}`;
       const prevMid = lastMidBySymbolRef.current.get(deltaKey);
@@ -2297,7 +2329,11 @@ function App() {
             ? `Bid ${formatNumber(bid, displayDigits)}`
             : ask != null
               ? `Ask ${formatNumber(ask, displayDigits)}`
-              : '';
+              : mid != null
+                ? `Mid ${formatNumber(mid, displayDigits)}`
+                : last != null
+                  ? `Last ${formatNumber(last, displayDigits)}`
+                  : '';
 
       const loopTag = tickerSearchNormalized
         ? 's'
@@ -3068,6 +3104,9 @@ function App() {
                               : null;
                             const layer1Metrics = layer1?.metrics || null;
                             const formatNum = (value, digits = 6) => {
+                              if (value == null || value === '') {
+                                return '—';
+                              }
                               const n = Number(value);
                               if (!Number.isFinite(n)) {
                                 return '—';
@@ -3077,6 +3116,77 @@ function App() {
                             };
                             const formatBool = (value) =>
                               value === true ? 'yes' : value === false ? 'no' : '—';
+
+                            const layer1Derived = (() => {
+                              if (!layer1Metrics) {
+                                return null;
+                              }
+
+                              const symbolUpper = String(layer1Metrics?.symbol || '').toUpperCase();
+                              const inferDigits = (sym) => {
+                                if (/^[A-Z]{6}$/.test(sym)) {
+                                  const quote = sym.slice(3, 6);
+                                  return quote === 'JPY' ? 3 : 5;
+                                }
+                                if (/^(XAU|XAG|XPT|XPD)[A-Z]{3}(\.[A-Z0-9]{1,6})?$/.test(sym)) {
+                                  return 2;
+                                }
+                                return 3;
+                              };
+
+                              const digits =
+                                layer1Metrics?.digits != null && Number.isFinite(Number(layer1Metrics.digits))
+                                  ? Math.max(0, Math.min(8, Math.trunc(Number(layer1Metrics.digits))))
+                                  : inferDigits(symbolUpper);
+
+                              const point = (() => {
+                                const p = Number(layer1Metrics?.point);
+                                if (Number.isFinite(p) && p > 0) {
+                                  return p;
+                                }
+                                return Math.pow(10, -digits);
+                              })();
+
+                              const bidRaw = layer1Metrics?.bid;
+                              const askRaw = layer1Metrics?.ask;
+                              const midRaw = layer1Metrics?.mid;
+                              const lastRaw = layer1Metrics?.last;
+
+                              const bidFallback =
+                                bidRaw != null && bidRaw !== '' ? bidRaw : midRaw ?? lastRaw;
+                              const askFallback =
+                                askRaw != null && askRaw !== '' ? askRaw : midRaw ?? lastRaw;
+
+                              const bid = Number.isFinite(Number(bidFallback)) ? Number(bidFallback) : null;
+                              const ask = Number.isFinite(Number(askFallback)) ? Number(askFallback) : null;
+                              const mid = Number.isFinite(Number(midRaw))
+                                ? Number(midRaw)
+                                : bid != null && ask != null
+                                  ? (bid + ask) / 2
+                                  : bid != null
+                                    ? bid
+                                    : ask != null
+                                      ? ask
+                                      : null;
+
+                              const spread = bid != null && ask != null ? ask - bid : null;
+                              const spreadPoints =
+                                spread != null && Number.isFinite(point) && point > 0 ? spread / point : null;
+                              const spreadPct =
+                                spread != null && mid != null && mid !== 0 ? (spread / mid) * 100 : null;
+
+                              return {
+                                symbolUpper,
+                                digits,
+                                point,
+                                bid,
+                                ask,
+                                mid,
+                                spread,
+                                spreadPoints,
+                                spreadPct
+                              };
+                            })();
 
                             const scenarioAt = toTimestamp(scenario?.generatedAt);
                             const analyzerAt = toTimestamp(analyzerSnapshot?.updatedAt);
@@ -3137,6 +3247,14 @@ function App() {
                                         fontSize: 12
                                       }}
                                     >
+                                      {(() => {
+                                        const bidFallback =
+                                          layer1Derived?.bid != null ? layer1Derived.bid : layer1Metrics?.bid;
+                                        const askFallback =
+                                          layer1Derived?.ask != null ? layer1Derived.ask : layer1Metrics?.ask;
+
+                                        return (
+                                          <>
                                       <div>
                                         <strong>Symbol</strong>:{' '}
                                         {String(layer1Metrics.symbol || '—')}
@@ -3147,11 +3265,14 @@ function App() {
                                       </div>
 
                                       <div>
-                                        <strong>Bid</strong>: {formatNum(layer1Metrics.bid, 6)}
+                                        <strong>Bid</strong>: {formatNum(bidFallback, 6)}
                                       </div>
                                       <div style={{ textAlign: 'right' }}>
-                                        <strong>Ask</strong>: {formatNum(layer1Metrics.ask, 6)}
+                                        <strong>Ask</strong>: {formatNum(askFallback, 6)}
                                       </div>
+                                          </>
+                                        );
+                                      })()}
 
                                       <div>
                                         <strong>Mid</strong>: {formatNum(layer1Metrics.mid, 6)}
@@ -3162,34 +3283,57 @@ function App() {
 
                                       <div>
                                         <strong>Spread</strong>:{' '}
-                                        {formatNum(layer1Metrics.spread, 6)}
+                                        {layer1Metrics.spread != null && layer1Metrics.spread !== ''
+                                          ? formatNum(layer1Metrics.spread, 6)
+                                          : layer1Derived?.spread != null
+                                            ? formatNum(layer1Derived.spread, 6)
+                                            : '—'}
                                       </div>
                                       <div style={{ textAlign: 'right' }}>
                                         <strong>Spread pts</strong>:{' '}
-                                        {formatNum(layer1Metrics.spreadPoints, 2)}
+                                        {layer1Metrics.spreadPoints != null &&
+                                        layer1Metrics.spreadPoints !== ''
+                                          ? formatNum(layer1Metrics.spreadPoints, 2)
+                                          : layer1Derived?.spreadPoints != null
+                                            ? formatNum(layer1Derived.spreadPoints, 2)
+                                            : '—'}
                                       </div>
 
                                       <div>
                                         <strong>Spread %</strong>:{' '}
-                                        {formatNum(layer1Metrics.spreadPct, 4)}
+                                        {layer1Metrics.spreadPct != null && layer1Metrics.spreadPct !== ''
+                                          ? formatNum(layer1Metrics.spreadPct, 4)
+                                          : layer1Derived?.spreadPct != null
+                                            ? formatNum(layer1Derived.spreadPct, 4)
+                                            : '—'}
                                       </div>
                                       <div style={{ textAlign: 'right' }}>
                                         <strong>Liquidity</strong>:{' '}
-                                        {String(layer1Metrics.liquidityHint || '—')}
+                                        {String(layer1Metrics.liquidityHint || 'N/A')}
                                       </div>
 
                                       <div>
                                         <strong>Velocity</strong>:{' '}
-                                        {formatNum(layer1Metrics.midVelocityPerSec, 8)}/s
+                                        {formatNum(
+                                          layer1Metrics.midVelocityPerSec != null
+                                            ? layer1Metrics.midVelocityPerSec
+                                            : 0,
+                                          8
+                                        )}/s
                                       </div>
                                       <div style={{ textAlign: 'right' }}>
                                         <strong>Mid Δ</strong>:{' '}
-                                        {formatNum(layer1Metrics.midDelta, 8)}
+                                        {formatNum(layer1Metrics.midDelta != null ? layer1Metrics.midDelta : 0, 8)}
                                       </div>
 
                                       <div>
                                         <strong>Acceleration</strong>{' '}
-                                        {formatNum(layer1Metrics.midAccelerationPerSec2, 8)}/s²
+                                        {formatNum(
+                                          layer1Metrics.midAccelerationPerSec2 != null
+                                            ? layer1Metrics.midAccelerationPerSec2
+                                            : 0,
+                                          8
+                                        )}/s²
                                       </div>
 
                                       <div>
@@ -5605,6 +5749,7 @@ function App() {
               onRefreshBrokers={refreshBrokerStatus}
               selectedPlatform={selectedPlatform}
               onSelectedPlatformChange={setSelectedPlatform}
+              showAutoTradingControls={false}
             />
           </section>
         )}

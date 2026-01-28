@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { ok, badRequest, serverError } from '../../../utils/http-response.js';
-import { parseRequestQuery } from '../../../utils/validation.js';
-import { buildEaNotConnectedResponse } from '../../../utils/ea-bridge-diagnostics.js';
+import { ok, badRequest, serverError } from '../../../../utils/http-response.js';
+import { parseRequestQuery } from '../../../../utils/validation.js';
+import { buildEaNotConnectedResponse } from '../../../../utils/ea-bridge-diagnostics.js';
 import { createTradingSignalDTO, validateTradingSignalDTO } from '../../../../contracts/dtos.js';
-import { eaOnlyMode } from '../../../config/runtime-flags.js';
-import { getPairMetadata } from '../../../config/pair-catalog.js';
-import { buildLayeredAnalysis } from '../../../core/analyzers/layered-analysis.js';
-import { computeIntermarketCorrelation } from '../../../infrastructure/services/analysis/intermarket-correlation.js';
+import { eaOnlyMode } from '../../../../config/runtime-flags.js';
+import { getPairMetadata } from '../../../../config/pair-catalog.js';
+import { buildLayeredAnalysis } from '../../../../core/analyzers/layered-analysis.js';
+import { computeIntermarketCorrelation } from '../../../../infrastructure/services/analysis/intermarket-correlation.js';
 
 const querySchema = z.object({
   pair: z.string().min(3).max(32).optional(),
@@ -26,7 +26,7 @@ const querySchema = z.object({
         return normalized === 'true' || normalized === '1' || normalized === 'yes';
       }
       return undefined;
-    })
+    }),
 });
 
 const normalizeDirection = (value) => {
@@ -170,7 +170,7 @@ const getPairCurrencies = (pair) => {
       base: String(meta.base).toUpperCase(),
       quote: String(meta.quote).toUpperCase(),
       assetClass: meta.assetClass || null,
-      source: 'catalog'
+      source: 'catalog',
     };
   }
 
@@ -179,7 +179,7 @@ const getPairCurrencies = (pair) => {
       base: normalized.slice(0, 3),
       quote: normalized.slice(3, 6),
       assetClass: null,
-      source: 'heuristic'
+      source: 'heuristic',
     };
   }
 
@@ -199,7 +199,7 @@ const summarizeCurrencyAnalysis = (analysis) => {
     'interestRate',
     'unemployment',
     'retailSales',
-    'manufacturing'
+    'manufacturing',
   ];
   const available = indicatorKeys.filter((key) => indicators?.[key]?.value != null);
 
@@ -210,7 +210,7 @@ const summarizeCurrencyAnalysis = (analysis) => {
     strength: toFiniteNumber(analysis.strength),
     sentiment: analysis.sentiment || 'neutral',
     coveragePct: Math.round((available.length / indicatorKeys.length) * 100),
-    indicators: indicators
+    indicators: indicators,
   };
 };
 
@@ -227,7 +227,7 @@ const computeRelativeMacro = (baseSummary, quoteSummary, pair) => {
       differential: null,
       direction: 'NEUTRAL',
       confidence: 0,
-      note: 'Insufficient fundamentals coverage to compute macro bias.'
+      note: 'Insufficient fundamentals coverage to compute macro bias.',
     };
   }
 
@@ -250,7 +250,7 @@ const computeRelativeMacro = (baseSummary, quoteSummary, pair) => {
         ? 'Macro fundamentals favor the base currency (bullish bias on the pair).'
         : direction === 'SELL'
           ? 'Macro fundamentals favor the quote currency (bearish bias on the pair).'
-          : 'Macro fundamentals are mixed/neutral relative to each other.'
+          : 'Macro fundamentals are mixed/neutral relative to each other.',
   };
 };
 
@@ -258,13 +258,13 @@ export default function scenarioRoutes({
   tradingEngine,
   eaBridgeService,
   logger,
-  requireSignalsGenerate
+  requireSignalsGenerate,
 }) {
   const router = Router();
 
   router.get('/scenario/analyze', requireSignalsGenerate, async (req, res) => {
     const parsed = parseRequestQuery(querySchema, req, res, {
-      errorMessage: 'Invalid scenario request'
+      errorMessage: 'Invalid scenario request',
     });
     if (!parsed) {
       return null;
@@ -318,7 +318,7 @@ export default function scenarioRoutes({
               symbol: requestedPair,
               eaBridgeService,
               maxAgeMs: 2 * 60 * 1000,
-              now: Date.now()
+              now: Date.now(),
             })
           );
         }
@@ -365,7 +365,9 @@ export default function scenarioRoutes({
             typeof eaBridgeService.bestSymbolMatch === 'function'
               ? eaBridgeService.bestSymbolMatch(requestedPair, candidateSymbols)
               : typeof eaBridgeService.resolveSymbolFromQuotes === 'function'
-                ? eaBridgeService.resolveSymbolFromQuotes(effectiveBroker, requestedPair, { maxAgeMs })
+                ? eaBridgeService.resolveSymbolFromQuotes(effectiveBroker, requestedPair, {
+                    maxAgeMs,
+                  })
                 : requestedPair;
 
           const hasQuoteForPair =
@@ -380,7 +382,7 @@ export default function scenarioRoutes({
                   ? eaBridgeService.getMarketSnapshot({
                       broker: effectiveBroker,
                       symbol: resolvedSymbol || requestedPair,
-                      maxAgeMs
+                      maxAgeMs,
                     })
                   : null;
 
@@ -398,7 +400,7 @@ export default function scenarioRoutes({
                   ask: snapshotPrice,
                   last: snapshotPrice,
                   timestamp: snapshot.timestamp || Date.now(),
-                  source: 'ea-snapshot'
+                  source: 'ea-snapshot',
                 });
               } else {
                 // Best-effort: request a snapshot so the EA prioritizes this symbol.
@@ -406,7 +408,7 @@ export default function scenarioRoutes({
                   eaBridgeService.requestMarketSnapshot({
                     broker: effectiveBroker,
                     symbol: requestedPair,
-                    ttlMs: maxAgeMs
+                    ttlMs: maxAgeMs,
                   });
                 }
                 return res.status(409).json({
@@ -414,7 +416,7 @@ export default function scenarioRoutes({
                   error: `Waiting for live ${effectiveBroker.toUpperCase()} price for ${requestedPair}`,
                   broker: effectiveBroker,
                   pair: requestedPair,
-                  resolvedSymbol
+                  resolvedSymbol,
                 });
               }
             } catch (_error) {
@@ -424,7 +426,7 @@ export default function scenarioRoutes({
                 error: `Waiting for live ${effectiveBroker.toUpperCase()} price for ${requestedPair}`,
                 broker: effectiveBroker,
                 pair: requestedPair,
-                resolvedSymbol
+                resolvedSymbol,
               });
             }
           }
@@ -442,14 +444,14 @@ export default function scenarioRoutes({
               error: `Waiting for live ${effectiveBroker.toUpperCase()} price for ${requestedPair}`,
               broker: effectiveBroker,
               pair: requestedPair,
-              resolvedSymbol
+              resolvedSymbol,
             });
           }
         } else if (wantsEaOnly) {
           return res.status(409).json({
             success: false,
             error: `EA quotes unavailable for broker ${effectiveBroker.toUpperCase()}`,
-            broker: effectiveBroker
+            broker: effectiveBroker,
           });
         }
       }
@@ -460,7 +462,7 @@ export default function scenarioRoutes({
         ? { broker: effectiveBroker, eaOnly: true, analysisMode: 'ea' }
         : {
             ...(broker ? { broker } : null),
-            ...(effectiveAnalysisMode ? { analysisMode: effectiveAnalysisMode } : null)
+            ...(effectiveAnalysisMode ? { analysisMode: effectiveAnalysisMode } : null),
           };
 
       const rawSignal = await tradingEngine.generateSignal(requestedPair, options);
@@ -484,7 +486,7 @@ export default function scenarioRoutes({
         broker: broker || null,
         mode: {
           analysisMode: effectiveAnalysisMode || null,
-          eaOnly: Boolean(wantsEaOnly)
+          eaOnly: Boolean(wantsEaOnly),
         },
         generatedAt: signal.generatedAt || signal.createdAt || signal.timestamp || Date.now(),
         sources: {
@@ -499,7 +501,7 @@ export default function scenarioRoutes({
               : [],
             external: Array.isArray(signal.components?.news?.evidence?.external)
               ? signal.components.news.evidence.external.slice(0, 8)
-              : []
+              : [],
           },
           calendar: Array.isArray(signal.components?.news?.calendarEvents)
             ? signal.components.news.calendarEvents.slice(0, 12).map((evt) => ({
@@ -508,9 +510,9 @@ export default function scenarioRoutes({
                 impact: evt?.impact ?? null,
                 time: evt?.time ?? evt?.timestamp ?? evt?.date ?? null,
                 source: evt?.source || null,
-                url: evt?.url || evt?.sourceUrl || evt?.link || null
+                url: evt?.url || evt?.sourceUrl || evt?.link || null,
               }))
-            : []
+            : [],
         },
         decision: {
           isTradeValid: Boolean(signal.isValid?.isValid),
@@ -528,7 +530,7 @@ export default function scenarioRoutes({
             : [],
           context: signal.isValid?.decision?.context || null,
           contributors: signal.isValid?.decision?.contributors || null,
-          modifiers: signal.isValid?.decision?.modifiers || null
+          modifiers: signal.isValid?.decision?.modifiers || null,
         },
         primary: {
           direction,
@@ -542,18 +544,18 @@ export default function scenarioRoutes({
             riskReward,
             atr,
             trailingStop: entry?.trailingStop ?? null,
-            volatilityState: entry?.volatilityState ?? null
-          }
+            volatilityState: entry?.volatilityState ?? null,
+          },
         },
         alternative: {
           direction: oppositeDirection(direction),
-          note: 'Alternative scenario is the opposite bias and should be considered only if the primary scenario invalidates.'
+          note: 'Alternative scenario is the opposite bias and should be considered only if the primary scenario invalidates.',
         },
         factors: {
           economic: {
             relativeSentiment: toFiniteNumber(economic.relativeSentiment),
             direction: economic.direction || null,
-            confidence: toFiniteNumber(economic.confidence)
+            confidence: toFiniteNumber(economic.confidence),
           },
           news: {
             sentiment: toFiniteNumber(news.sentiment),
@@ -561,7 +563,7 @@ export default function scenarioRoutes({
             impact: toFiniteNumber(news.impact),
             confidence: toFiniteNumber(news.confidence),
             upcomingEvents: toFiniteNumber(news.upcomingEvents),
-            quality: news.quality || null
+            quality: news.quality || null,
           },
           candles: signal.components?.technical?.candlesSummary || null,
           technical: {
@@ -569,11 +571,11 @@ export default function scenarioRoutes({
             direction: technical.direction || null,
             strength: toFiniteNumber(technical.strength),
             regime: technical.regime || technical.regimeSummary || null,
-            volatility: technical.volatility || technical.volatilitySummary || null
+            volatility: technical.volatility || technical.volatilitySummary || null,
           },
-          marketData: signal.components?.marketData || null
+          marketData: signal.components?.marketData || null,
         },
-        reasoning: Array.isArray(signal.reasoning) ? signal.reasoning.slice(0, 10) : []
+        reasoning: Array.isArray(signal.reasoning) ? signal.reasoning.slice(0, 10) : [],
       };
 
       // Attach real-time market context from the EA bridge (best-effort).
@@ -624,10 +626,43 @@ export default function scenarioRoutes({
               midDelta: toFiniteNumber(best?.midDelta),
               midVelocityPerSec: toFiniteNumber(best?.midVelocityPerSec),
               spreadPoints: toFiniteNumber(best?.spreadPoints),
+              broker: best?.broker || brokerId || null,
               source: best?.source || null,
               receivedAt: receivedAt != null ? receivedAt : null,
-              ageMs
+              ageMs,
             };
+          } else if (
+            eaBridgeService &&
+            brokerId &&
+            typeof eaBridgeService.getMarketSnapshot === 'function'
+          ) {
+            const snapshot = eaBridgeService.getMarketSnapshot({
+              broker: brokerId,
+              symbol: requestedUpper,
+              maxAgeMs: 5 * 60 * 1000,
+            });
+            const snapQuote =
+              snapshot?.quote && typeof snapshot.quote === 'object' ? snapshot.quote : null;
+            if (snapQuote) {
+              const receivedAt =
+                toFiniteNumber(snapshot?.receivedAt) ?? toFiniteNumber(snapshot?.timestamp);
+              const nowMs = Date.now();
+              const ageMs = receivedAt != null ? Math.max(0, nowMs - receivedAt) : null;
+              market.quote = {
+                symbol: snapQuote?.symbol || snapshot?.symbol || requestedUpper,
+                bid: toFiniteNumber(snapQuote?.bid),
+                ask: toFiniteNumber(snapQuote?.ask),
+                last: toFiniteNumber(snapQuote?.last),
+                mid: toFiniteNumber(snapQuote?.mid),
+                midDelta: toFiniteNumber(snapQuote?.midDelta),
+                midVelocityPerSec: toFiniteNumber(snapQuote?.midVelocityPerSec),
+                spreadPoints: toFiniteNumber(snapQuote?.spreadPoints),
+                broker: snapQuote?.broker || brokerId || null,
+                source: snapQuote?.source || snapshot?.source || 'ea_snapshot',
+                receivedAt: receivedAt != null ? receivedAt : null,
+                ageMs,
+              };
+            }
           } else if (
             eaBridgeService &&
             brokerId &&
@@ -637,14 +672,14 @@ export default function scenarioRoutes({
             eaBridgeService.requestMarketSnapshot({
               broker: brokerId,
               symbol: requestedUpper,
-              ttlMs: 2 * 60 * 1000
+              ttlMs: 2 * 60 * 1000,
             });
             market.quote = {
               symbol: requestedUpper,
               pending: true,
               source: 'ea',
               receivedAt: null,
-              ageMs: null
+              ageMs: null,
             };
           }
         }
@@ -694,7 +729,7 @@ export default function scenarioRoutes({
             market.news = {
               impactScore: Number(impactScore.toFixed(1)),
               matchedItems: matched,
-              lookbackHours: 12
+              lookbackHours: 12,
             };
           }
         }
@@ -709,7 +744,7 @@ export default function scenarioRoutes({
             symbol: market.quote.symbol || requestedPair,
             receivedAt: market.quote.receivedAt ?? null,
             ageMs: market.quote.ageMs ?? null,
-            pending: Boolean(market.quote.pending)
+            pending: Boolean(market.quote.pending),
           };
         }
 
@@ -726,8 +761,8 @@ export default function scenarioRoutes({
                 assetClass: meta?.assetClass || null,
                 timeframe: 'M15',
                 window: 96,
-                maxAgeMs: 0
-              })
+                maxAgeMs: 0,
+              }),
             };
           }
         } catch (_error) {
@@ -746,7 +781,7 @@ export default function scenarioRoutes({
       try {
         if (wantsEaOnly) {
           scenario.fundamentals = {
-            note: 'EA-only mode is enabled: external macro fundamentals are disabled for this analysis.'
+            note: 'EA-only mode is enabled: external macro fundamentals are disabled for this analysis.',
           };
         } else {
           const { base, quote, assetClass, source } = getPairCurrencies(requestedPair);
@@ -764,7 +799,7 @@ export default function scenarioRoutes({
                 score: 0,
                 sentiment: 'neutral',
                 strength: 0,
-                note: 'Fundamentals fetch timed out.'
+                note: 'Fundamentals fetch timed out.',
               };
             }
             return result;
@@ -778,7 +813,7 @@ export default function scenarioRoutes({
 
           const [baseAnalysis, quoteAnalysis] = await Promise.all([
             baseAnalysisPromise,
-            quoteAnalysisPromise
+            quoteAnalysisPromise,
           ]);
           const baseSummary = summarizeCurrencyAnalysis(baseAnalysis);
           const quoteSummary = summarizeCurrencyAnalysis(quoteAnalysis);
@@ -794,7 +829,7 @@ export default function scenarioRoutes({
                 ? null
                 : base
                   ? 'Non-fiat or unsupported base currency.'
-                  : 'Unknown base currency.'
+                  : 'Unknown base currency.',
             },
             quote: {
               currency: quote,
@@ -804,9 +839,9 @@ export default function scenarioRoutes({
                 ? null
                 : quote
                   ? 'Non-fiat or unsupported quote currency.'
-                  : 'Unknown quote currency.'
+                  : 'Unknown quote currency.',
             },
-            relative: computeRelativeMacro(baseSummary, quoteSummary, requestedPair)
+            relative: computeRelativeMacro(baseSummary, quoteSummary, requestedPair),
           };
 
           // For non-FX instruments, the quote currency macro is usually the main driver.
@@ -836,7 +871,7 @@ export default function scenarioRoutes({
       return ok(res, {
         scenario,
         signal,
-        durationMs: Number(durationMs.toFixed(1))
+        durationMs: Number(durationMs.toFixed(1)),
       });
     } catch (error) {
       logger?.error?.({ err: error, pair: requestedPair }, 'Scenario analysis failed');

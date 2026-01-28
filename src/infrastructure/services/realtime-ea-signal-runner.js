@@ -4,7 +4,7 @@ import {
   extractBaseSymbol,
   isSaneEaSymbolToken,
   normalizeBroker,
-  normalizeSymbol
+  normalizeSymbol,
 } from '../../utils/ea-symbols.js';
 
 const computeMidFromQuote = (quote) => {
@@ -41,14 +41,12 @@ const toEpochMs = (value) => {
   return numeric > 10_000_000_000 ? numeric : numeric * 1000;
 };
 
-
 const isStrictEaSymbolFilterEnabled = () => {
   const raw = String(process.env.EA_STRICT_SYMBOL_FILTER || '')
     .trim()
     .toLowerCase();
   return raw === '1' || raw === 'true' || raw === 'yes';
 };
-
 
 export class RealtimeEaSignalRunner {
   constructor(options = {}) {
@@ -355,7 +353,11 @@ export class RealtimeEaSignalRunner {
         ? options.dashboardEntryOnly
         : envEntryOnly === '0' || envEntryOnly === 'false' || envEntryOnly === 'no'
           ? false
-          : true;
+          : envEntryOnly === '1' || envEntryOnly === 'true' || envEntryOnly === 'yes'
+            ? true
+            : eaOnlyMode || isNonProd
+              ? false
+              : true;
 
     this.minConfidence = Number.isFinite(Number(options.minConfidence))
       ? Number(options.minConfidence)
@@ -553,7 +555,7 @@ export class RealtimeEaSignalRunner {
           symbol: sym,
           timeframe,
           limit: 3,
-          maxAgeMs: 0
+          maxAgeMs: 0,
         });
         const list = Array.isArray(bars) ? bars : [];
         if (list.length === 0) {
@@ -591,7 +593,7 @@ export class RealtimeEaSignalRunner {
         symbol: sym,
         timeframe: tf,
         limit: minBars,
-        maxAgeMs: 0
+        maxAgeMs: 0,
       });
       return Array.isArray(bars) && bars.length >= Math.max(30, Number(minBars) || 120);
     } catch (_error) {
@@ -748,7 +750,7 @@ export class RealtimeEaSignalRunner {
             symbol,
             timeframe,
             limit: 1,
-            maxAgeMs: 0
+            maxAgeMs: 0,
           });
           const list = Array.isArray(bars) ? bars : [];
           const newest = list[0] || null;
@@ -787,7 +789,7 @@ export class RealtimeEaSignalRunner {
       if (this.eaBridgeService?.isBrokerConnected) {
         const connected = this.eaBridgeService.isBrokerConnected({
           broker,
-          maxAgeMs: this.quoteMaxAgeMs
+          maxAgeMs: this.quoteMaxAgeMs,
         });
         if (!connected) {
           return;
@@ -801,14 +803,14 @@ export class RealtimeEaSignalRunner {
             this.eaBridgeService?.requestMarketSnapshot?.({
               broker,
               symbol,
-              ttlMs: this.snapshotRequestTtlMs
+              ttlMs: this.snapshotRequestTtlMs,
             });
           }
         } else {
           this.eaBridgeService?.requestMarketSnapshot?.({
             broker,
             symbol,
-            ttlMs: this.snapshotRequestTtlMs
+            ttlMs: this.snapshotRequestTtlMs,
           });
         }
       } catch (_error) {
@@ -882,14 +884,14 @@ export class RealtimeEaSignalRunner {
           this.eaBridgeService?.requestMarketSnapshot?.({
             broker,
             symbol,
-            ttlMs: this.snapshotRequestTtlMs
+            ttlMs: this.snapshotRequestTtlMs,
           });
         }
       } else {
         this.eaBridgeService?.requestMarketSnapshot?.({
           broker,
           symbol,
-          ttlMs: this.snapshotRequestTtlMs
+          ttlMs: this.snapshotRequestTtlMs,
         });
       }
 
@@ -923,7 +925,7 @@ export class RealtimeEaSignalRunner {
       rawSignal = await this.tradingEngine.generateSignal(symbol, {
         broker,
         analysisMode: 'ea',
-        eaOnly: true
+        eaOnly: true,
       });
     } catch (error) {
       this.logger?.warn?.(
@@ -950,7 +952,7 @@ export class RealtimeEaSignalRunner {
       eaBridgeService: this.eaBridgeService,
       quoteMaxAgeMs: this.quoteMaxAgeMs,
       barFallback,
-      now
+      now,
     });
 
     if (this.smartStrong && this.smartRequireBarsCoverage) {
@@ -1033,7 +1035,7 @@ export class RealtimeEaSignalRunner {
       tradeValid,
       status: statusNow,
       confluenceScore: Number.isFinite(confluenceScoreNow) ? Number(confluenceScoreNow) : null,
-      expiresAt: Number.isFinite(expiresAtNow) ? Number(expiresAtNow) : null
+      expiresAt: Number.isFinite(expiresAtNow) ? Number(expiresAtNow) : null,
     };
 
     const isLifecycleUpdate = Boolean(
@@ -1061,7 +1063,7 @@ export class RealtimeEaSignalRunner {
     const layersStatus = evaluateLayers18Readiness({
       layeredAnalysis: layered,
       minConfluence: this.dashboardLayers18MinConfluence,
-      decisionStateFallback: decisionState
+      decisionStateFallback: decisionState,
     });
     const layers18 = Array.isArray(layered?.layers) ? layered.layers : [];
     const layers18Ready = layersStatus.ok === true;
@@ -1181,7 +1183,7 @@ export class RealtimeEaSignalRunner {
         direction: dto.direction,
         strength: dto.strength,
         confidence: dto.confidence,
-        tier: tier || (isLifecycleUpdate ? 'update' : 'filtered')
+        tier: tier || (isLifecycleUpdate ? 'update' : 'filtered'),
       },
       'Broadcasted EA realtime signal'
     );

@@ -7,17 +7,67 @@ import assert from 'node:assert/strict';
 import EaBridgeService from '../../../src/infrastructure/services/brokers/ea-bridge-service.js';
 
 describe('EaBridgeService symbol aliasing', () => {
+  it('does not restrict FX symbols when only metalsSymbols are configured', () => {
+    const prevAllowlist = process.env.BROKER_SYMBOL_ALLOWLIST;
+    const prevMetals = process.env.BROKER_METALS_SYMBOLS;
+    const prevAllowAll = process.env.ALLOW_ALL_SYMBOLS;
+
+    try {
+      process.env.BROKER_SYMBOL_ALLOWLIST = '';
+      process.env.BROKER_METALS_SYMBOLS = 'XAUUSD,XAGUSD';
+      process.env.ALLOW_ALL_SYMBOLS = 'false';
+
+      const svc = new EaBridgeService({ logger: { info() {}, warn() {}, error() {} } });
+      const req = svc.requestMarketSnapshot({ broker: 'mt5', symbol: 'EURUSD', ttlMs: 30_000 });
+      assert.equal(req.success, true);
+    } finally {
+      if (prevAllowlist === undefined) {
+        delete process.env.BROKER_SYMBOL_ALLOWLIST;
+      } else {
+        process.env.BROKER_SYMBOL_ALLOWLIST = prevAllowlist;
+      }
+      if (prevMetals === undefined) {
+        delete process.env.BROKER_METALS_SYMBOLS;
+      } else {
+        process.env.BROKER_METALS_SYMBOLS = prevMetals;
+      }
+      if (prevAllowAll === undefined) {
+        delete process.env.ALLOW_ALL_SYMBOLS;
+      } else {
+        process.env.ALLOW_ALL_SYMBOLS = prevAllowAll;
+      }
+    }
+  });
+
   it('resolves snapshot requests to broker-available symbol (quotes-driven)', () => {
     const svc = new EaBridgeService({ logger: { info() {}, warn() {}, error() {} } });
 
     // Simulate EA terminal symbols with suffix by recording a quote for EURUSDm.
     svc.recordQuotes({
       broker: 'mt5',
-      quotes: [{ symbol: 'EURUSDm', bid: 1.1, ask: 1.1002, timestamp: Date.now() }]
+      quotes: [{ symbol: 'EURUSDm', bid: 1.1, ask: 1.1002, timestamp: Date.now() }],
     });
 
     // Dashboard will often request normalized symbol EURUSD.
     const req = svc.requestMarketSnapshot({ broker: 'mt5', symbol: 'EURUSD', ttlMs: 30_000 });
+
+    assert.equal(req.success, true);
+    assert.equal(req.broker, 'mt5');
+    assert.equal(req.symbol, 'EURUSDM');
+
+    const pending = svc.consumeMarketSnapshotRequests({ broker: 'mt5', max: 10 });
+    assert.deepEqual(pending, ['EURUSDM']);
+  });
+
+  it('accepts UI-decorated symbols in snapshot requests (EURUSD · MT5)', () => {
+    const svc = new EaBridgeService({ logger: { info() {}, warn() {}, error() {} } });
+
+    svc.recordQuotes({
+      broker: 'mt5',
+      quotes: [{ symbol: 'EURUSDm', bid: 1.1, ask: 1.1002, timestamp: Date.now() }],
+    });
+
+    const req = svc.requestMarketSnapshot({ broker: 'mt5', symbol: 'EURUSD · MT5', ttlMs: 30_000 });
 
     assert.equal(req.success, true);
     assert.equal(req.broker, 'mt5');
@@ -45,10 +95,10 @@ describe('EaBridgeService symbol aliasing', () => {
             high: 1.2,
             low: 0.9,
             close: 1.1,
-            time: Math.trunc(Date.now() / 1000)
-          }
-        }
-      }
+            time: Math.trunc(Date.now() / 1000),
+          },
+        },
+      },
     });
 
     const snap = svc.getMarketSnapshot({ broker: 'mt5', symbol: 'EURUSD' });
@@ -65,7 +115,7 @@ describe('EaBridgeService symbol aliasing', () => {
       broker: 'mt5',
       symbol: 'EURUSDm',
       timeframe: 'M1',
-      bars: [{ time: nowSec, open: 1.1, high: 1.2, low: 1.0, close: 1.15, volume: 10 }]
+      bars: [{ time: nowSec, open: 1.1, high: 1.2, low: 1.0, close: 1.15, volume: 10 }],
     });
 
     const bars = svc.getMarketBars({ broker: 'mt5', symbol: 'EURUSD', timeframe: 'M1', limit: 1 });
@@ -81,7 +131,7 @@ describe('EaBridgeService symbol aliasing', () => {
       broker: 'mt5',
       symbol: 'EURUSD',
       timestamp: Date.now(),
-      timeframes: { M15: { direction: 'BUY', score: 80, indicators: { rsi: { value: 60 } } } }
+      timeframes: { M15: { direction: 'BUY', score: 80, indicators: { rsi: { value: 60 } } } },
     });
 
     const req = svc.requestMarketSnapshot({ broker: 'mt5', symbol: 'EURUSD', ttlMs: 30_000 });

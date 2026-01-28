@@ -1,6 +1,5 @@
 import RSSParser from 'rss-parser';
 import axios from 'axios';
-import { appConfig } from '../../app/config.js';
 
 const DEFAULT_FEEDS = [
   // === MAJOR FINANCIAL NEWS SOURCES ===
@@ -9,60 +8,60 @@ const DEFAULT_FEEDS = [
     name: 'Reuters',
     url: [
       'https://www.reuters.com/feed/rss/businessNews',
-      'https://news.google.com/rss/search?q=site:reuters.com+business&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=site:reuters.com+business&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'macro',
-    priority: 1
+    priority: 1,
   },
   {
     id: 'reuters-markets',
     name: 'Reuters Markets',
     url: [
       'https://www.reuters.com/markets/europe/rss',
-      'https://news.google.com/rss/search?q=site:reuters.com+markets&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=site:reuters.com+markets&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'markets',
-    priority: 1
+    priority: 1,
   },
   {
     id: 'bloomberg-markets',
     name: 'Bloomberg Markets',
     url: [
       'https://news.google.com/rss/search?q=site:bloomberg.com+markets&hl=en-US&gl=US&ceid=US:en',
-      'https://news.google.com/rss/search?q=Bloomberg+forex+currency&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=Bloomberg+forex+currency&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'markets',
-    priority: 1
+    priority: 1,
   },
   {
     id: 'cnbc-markets',
     name: 'CNBC Markets',
     url: [
       'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664',
-      'https://news.google.com/rss/search?q=site:cnbc.com+markets&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=site:cnbc.com+markets&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'markets',
-    priority: 1
+    priority: 1,
   },
   {
     id: 'yahoo-finance',
     name: 'Yahoo Finance',
     url: [
       'https://finance.yahoo.com/news/rssindex',
-      'https://news.google.com/rss/search?q=site:finance.yahoo.com+forex&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=site:finance.yahoo.com+forex&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'markets',
-    priority: 2
+    priority: 2,
   },
   {
     id: 'marketwatch',
     name: 'MarketWatch',
     url: [
       'https://feeds.marketwatch.com/marketwatch/marketpulse/',
-      'https://news.google.com/rss/search?q=site:marketwatch.com+markets&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=site:marketwatch.com+markets&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'markets',
-    priority: 2
+    priority: 2,
   },
   // === FOREX SPECIALIZED SOURCES ===
   {
@@ -70,40 +69,40 @@ const DEFAULT_FEEDS = [
     name: 'Investing.com',
     url: [
       'https://www.investing.com/rss/news_25.rss',
-      'https://news.google.com/rss/search?q=site:investing.com+forex&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=site:investing.com+forex&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'forex',
-    priority: 1
+    priority: 1,
   },
   {
     id: 'forexlive',
     name: 'ForexLive',
     url: [
       'https://www.forexlive.com/feed/news',
-      'https://news.google.com/rss/search?q=site:forexlive.com&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=site:forexlive.com&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'forex',
-    priority: 1
+    priority: 1,
   },
   {
     id: 'dailyfx',
     name: 'DailyFX',
     url: [
       'https://www.dailyfx.com/feeds/forex_market_news',
-      'https://news.google.com/rss/search?q=DailyFX+forex&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=DailyFX+forex&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'forex',
-    priority: 1
+    priority: 1,
   },
   {
     id: 'fxstreet',
     name: 'FXStreet',
     url: [
       'https://news.google.com/rss/search?q=site:fxstreet.com+forex&hl=en-US&gl=US&ceid=US:en',
-      'https://news.google.com/rss/search?q=FXStreet+currency&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=FXStreet+currency&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'forex',
-    priority: 2
+    priority: 2,
   },
   // === CENTRAL BANK & ECONOMIC SOURCES ===
   {
@@ -111,40 +110,40 @@ const DEFAULT_FEEDS = [
     name: 'Federal Reserve',
     url: [
       'https://news.google.com/rss/search?q=Federal+Reserve+interest+rate&hl=en-US&gl=US&ceid=US:en',
-      'https://news.google.com/rss/search?q=Fed+monetary+policy&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=Fed+monetary+policy&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'macro',
-    priority: 1
+    priority: 1,
   },
   {
     id: 'ecb-news',
     name: 'ECB News',
     url: [
       'https://news.google.com/rss/search?q=ECB+European+Central+Bank&hl=en-US&gl=US&ceid=US:en',
-      'https://news.google.com/rss/search?q=ECB+interest+rate&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=ECB+interest+rate&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'macro',
-    priority: 1
+    priority: 1,
   },
   {
     id: 'financial-times',
     name: 'Financial Times',
     url: [
       'https://news.google.com/rss/search?q=site:ft.com+markets&hl=en-US&gl=US&ceid=US:en',
-      'https://news.google.com/rss/search?q=Financial+Times+forex&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=Financial+Times+forex&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'markets',
-    priority: 1
+    priority: 1,
   },
   {
     id: 'wsj-markets',
     name: 'Wall Street Journal',
     url: [
       'https://news.google.com/rss/search?q=site:wsj.com+markets&hl=en-US&gl=US&ceid=US:en',
-      'https://news.google.com/rss/search?q=Wall+Street+Journal+forex&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=Wall+Street+Journal+forex&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'markets',
-    priority: 1
+    priority: 1,
   },
   // === ECONOMIC CALENDAR & DATA (FREE) ===
   {
@@ -152,30 +151,30 @@ const DEFAULT_FEEDS = [
     name: 'Trading Economics',
     url: [
       'https://tradingeconomics.com/rss/calendar.aspx',
-      'https://news.google.com/rss/search?q=site:tradingeconomics.com+economic+calendar&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=site:tradingeconomics.com+economic+calendar&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'economic-calendar',
-    priority: 1
+    priority: 1,
   },
   {
     id: 'forex-factory',
     name: 'Forex Factory',
     url: [
       'https://news.google.com/rss/search?q=site:forexfactory.com+calendar&hl=en-US&gl=US&ceid=US:en',
-      'https://news.google.com/rss/search?q=Forex+Factory+economic+data&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=Forex+Factory+economic+data&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'economic-calendar',
-    priority: 1
+    priority: 1,
   },
   {
     id: 'myfxbook',
     name: 'Myfxbook Economic Calendar',
     url: [
       'https://news.google.com/rss/search?q=site:myfxbook.com+economic&hl=en-US&gl=US&ceid=US:en',
-      'https://news.google.com/rss/search?q=Myfxbook+calendar&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=Myfxbook+calendar&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'economic-calendar',
-    priority: 2
+    priority: 2,
   },
   // === SENTIMENT & ANALYSIS (FREE) ===
   {
@@ -183,21 +182,21 @@ const DEFAULT_FEEDS = [
     name: 'Sentiment Trader',
     url: [
       'https://news.google.com/rss/search?q=market+sentiment+forex&hl=en-US&gl=US&ceid=US:en',
-      'https://news.google.com/rss/search?q=fear+greed+index&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=fear+greed+index&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'sentiment',
-    priority: 2
+    priority: 2,
   },
   {
     id: 'commitment-of-traders',
     name: 'COT Reports',
     url: [
       'https://news.google.com/rss/search?q=CFTC+commitment+of+traders&hl=en-US&gl=US&ceid=US:en',
-      'https://news.google.com/rss/search?q=COT+report+forex&hl=en-US&gl=US&ceid=US:en'
+      'https://news.google.com/rss/search?q=COT+report+forex&hl=en-US&gl=US&ceid=US:en',
     ],
     category: 'sentiment',
-    priority: 2
-  }
+    priority: 2,
+  },
 ];
 
 function parseDate(value) {
@@ -233,20 +232,9 @@ function buildNormalizedItem(feedMeta, item) {
     raw: {
       guid: item.guid || null,
       categories: item.categories || [],
-      author: item.creator || item.author || null
-    }
+      author: item.creator || item.author || null,
+    },
   };
-}
-
-function isRealKey(value) {
-  if (!value) {
-    return false;
-  }
-  const normalized = String(value).toLowerCase();
-  if (normalized === 'demo' || normalized === 'free') {
-    return false;
-  }
-  return !normalized.startsWith('test_');
 }
 
 export default class RssFeedAggregator {
@@ -258,19 +246,19 @@ export default class RssFeedAggregator {
       polygonLimit = 40,
       finnhubCategory = 'forex',
       logger = console,
-      nodeEnv = process.env.NODE_ENV
+      nodeEnv = process.env.NODE_ENV,
     } = options;
     this.requestHeaders = {
       'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0 Safari/537.36',
-      Accept: 'application/rss+xml, application/xml;q=0.9, */*;q=0.8'
+      Accept: 'application/rss+xml, application/xml;q=0.9, */*;q=0.8',
     };
     this.parser = new RSSParser({
       timeout: 10000,
       headers: this.requestHeaders,
       requestOptions: {
-        headers: this.requestHeaders
-      }
+        headers: this.requestHeaders,
+      },
     });
     this.feeds = feeds;
     this.cacheTtlMs = cacheTtlMs;
@@ -339,7 +327,7 @@ export default class RssFeedAggregator {
     this.feedFailureState.set(feedId, {
       failures,
       nextRetryAt,
-      lastStatus: typeof statusCode === 'number' ? statusCode : null
+      lastStatus: typeof statusCode === 'number' ? statusCode : null,
     });
 
     return delayMs;
@@ -390,7 +378,7 @@ export default class RssFeedAggregator {
         const fetchResponse = await axios.get(url, {
           headers: this.requestHeaders,
           timeout: 10000,
-          responseType: 'text'
+          responseType: 'text',
         });
 
         const parsedFeed = await this.parser.parseString(fetchResponse.data);

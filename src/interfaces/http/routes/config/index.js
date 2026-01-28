@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { ok, serverError } from '../../../utils/http-response.js';
-import { parseRequestBody } from '../../../utils/validation.js';
+import { ok, serverError } from '../../../../utils/http-response.js';
+import { parseRequestBody } from '../../../../utils/validation.js';
 
 export default function configRoutes({
   tradingEngine,
@@ -9,7 +9,7 @@ export default function configRoutes({
   auditLogger,
   logger,
   requireConfigRead,
-  requireConfigWrite
+  requireConfigWrite,
 }) {
   const router = Router();
 
@@ -20,14 +20,14 @@ export default function configRoutes({
     maxDailyRisk: z.number().positive().max(1).optional(),
     maxConcurrentTrades: z.number().int().min(1).max(100).optional(),
     signalAmplifier: z.number().positive().max(10).optional(),
-    directionThreshold: z.number().int().min(1).max(100).optional()
+    directionThreshold: z.number().int().min(1).max(100).optional(),
   });
 
   router.get('/pairs', requireConfigRead, (req, res) => {
     try {
       return ok(res, {
         pairs: tradeManager.tradingPairs,
-        count: tradeManager.tradingPairs.length
+        count: tradeManager.tradingPairs.length,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to fetch trading pairs');
@@ -49,12 +49,12 @@ export default function configRoutes({
       void auditLogger.record('config.pair_add', {
         actor: req.identity?.id || 'unknown',
         pair,
-        success: Boolean(result.success)
+        success: Boolean(result.success),
       });
 
       return ok(res, {
         message: result.message,
-        pairs: result.pairs
+        pairs: result.pairs,
       });
     } catch (error) {
       logger.error({ err: error, pair: req.body?.pair }, 'Failed to add trading pair');
@@ -76,12 +76,12 @@ export default function configRoutes({
       void auditLogger.record('config.pair_remove', {
         actor: req.identity?.id || 'unknown',
         pair,
-        success: Boolean(result.success)
+        success: Boolean(result.success),
       });
 
       return ok(res, {
         message: result.message,
-        pairs: result.pairs
+        pairs: result.pairs,
       });
     } catch (error) {
       logger.error({ err: error, pair: req.body?.pair }, 'Failed to remove trading pair');
@@ -98,8 +98,8 @@ export default function configRoutes({
           maxDailyRisk: tradingEngine.config.maxDailyRisk,
           maxConcurrentTrades: tradingEngine.config.maxConcurrentTrades,
           signalAmplifier: tradingEngine.config.signalAmplifier,
-          directionThreshold: tradingEngine.config.directionThreshold
-        }
+          directionThreshold: tradingEngine.config.directionThreshold,
+        },
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to fetch configuration');
@@ -110,7 +110,7 @@ export default function configRoutes({
   router.post('/config/update', requireConfigWrite, (req, res) => {
     try {
       const updates = parseRequestBody(configUpdateSchema, req, res, {
-        errorMessage: 'Invalid configuration payload'
+        errorMessage: 'Invalid configuration payload',
       });
       if (!updates) {
         return null;
@@ -120,12 +120,12 @@ export default function configRoutes({
 
       void auditLogger.record('config.update', {
         actor: req.identity?.id || 'unknown',
-        updates
+        updates,
       });
 
       return ok(res, {
         message: 'Configuration updated',
-        config: tradingEngine.config
+        config: tradingEngine.config,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to update configuration');

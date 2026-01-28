@@ -6,14 +6,14 @@
 import logger from '../logging/logger.js';
 import {
   analyzeCandleSeries,
-  aggregateCandleAnalyses
+  aggregateCandleAnalyses,
 } from '../../../core/analyzers/candle-analysis-lite.js';
 import { attachLayeredAnalysisToSignal, evaluateLayers18Readiness } from '../ea-signal-pipeline.js';
 import { getPairMetadata } from '../../../config/pair-catalog.js';
 import { isSaneEaSymbolToken } from '../../../utils/ea-symbols.js';
 import {
   resolveLiquidityGuardThresholds,
-  resolveNewsGuardThresholds
+  resolveNewsGuardThresholds,
 } from '../../../core/policy/trading-policy.js';
 
 class EaBridgeService {
@@ -118,13 +118,20 @@ class EaBridgeService {
     // Set ALLOW_ALL_SYMBOLS=true to disable filtering.
     this.restrictSymbols = String(process.env.ALLOW_ALL_SYMBOLS || '').toLowerCase() !== 'true';
 
-    const allowlist = [];
-    if (Array.isArray(this.brokerMeta?.symbolAllowlist)) {
-      allowlist.push(...this.brokerMeta.symbolAllowlist);
-    }
-    if (Array.isArray(this.brokerMeta?.metalsSymbols)) {
+    const explicitAllowlist = Array.isArray(this.brokerMeta?.symbolAllowlist)
+      ? this.brokerMeta.symbolAllowlist
+      : [];
+    const hasExplicitAllowlist = explicitAllowlist.some((v) => String(v || '').trim());
+
+    // IMPORTANT:
+    // - If an explicit allowlist is configured, enforce it (and augment with metalsSymbols).
+    // - If no explicit allowlist is configured, do NOT implicitly restrict to metalsSymbols.
+    //   In that case we fall back to the default FX/metals/crypto heuristic.
+    const allowlist = hasExplicitAllowlist ? [...explicitAllowlist] : [];
+    if (hasExplicitAllowlist && Array.isArray(this.brokerMeta?.metalsSymbols)) {
       allowlist.push(...this.brokerMeta.metalsSymbols);
     }
+
     this.symbolAllowlist = new Set(
       allowlist
         .map((value) =>
@@ -238,7 +245,7 @@ class EaBridgeService {
       symbol: sym,
       timeframe: tf,
       limit: lim,
-      maxAgeMs: maxAge
+      maxAgeMs: maxAge,
     });
 
     const series = Array.isArray(candles) ? candles : [];
@@ -276,7 +283,7 @@ class EaBridgeService {
     symbol,
     timeframes = ['M1', 'M15', 'H1', 'H4', 'D1'],
     limit = 200,
-    maxAgeMs = 0
+    maxAgeMs = 0,
   } = {}) {
     const brokerId = String(broker || '')
       .trim()
@@ -310,7 +317,7 @@ class EaBridgeService {
         symbol: sym,
         timeframe: tf,
         limit,
-        maxAgeMs
+        maxAgeMs,
       });
       if (analysis) {
         analyses[tf] = analysis;
@@ -319,7 +326,7 @@ class EaBridgeService {
 
     return {
       analyses,
-      aggregate: aggregateCandleAnalyses(analyses)
+      aggregate: aggregateCandleAnalyses(analyses),
     };
   }
 
@@ -359,7 +366,7 @@ class EaBridgeService {
       'CNH',
       'CNY',
       'SGD',
-      'HKD'
+      'HKD',
     ]);
 
     const metalBases = new Set(['XAU', 'XAG', 'XPT', 'XPD']);
@@ -377,7 +384,7 @@ class EaBridgeService {
       'AVAX',
       'TRX',
       'XLM',
-      'LINK'
+      'LINK',
     ]);
 
     if (symbol.length >= 6) {
@@ -410,17 +417,46 @@ class EaBridgeService {
   isAllowedAssetSymbol(value) {
     if (this.symbolAllowlist && this.symbolAllowlist.size > 0) {
       const raw = this.normalizeSymbol(value);
+      const canonical = this.canonicalizeSymbol(value);
+      const mapped = this.mapSymbolAlias(value);
+
+      // Fast paths.
       if (raw && this.symbolAllowlist.has(raw)) {
         return true;
       }
-      const canonical = this.canonicalizeSymbol(value);
-      if (canonical && this.symbolAllowlist.has(canonical)) {
-        return true;
-      }
-      const mapped = this.mapSymbolAlias(value);
       if (mapped && this.symbolAllowlist.has(mapped)) {
         return true;
       }
+
+      // When we have a broker allowlist, symbols may still come in with suffixes or UI decorations
+      // (e.g., EURUSDm, EURUSD.c, XAUUSD.J26, or "EURUSD · MT5").
+      // Accept those if their canonical form matches (or starts with) an allowlisted canonical.
+      if (canonical) {
+        for (const allowedRaw of this.symbolAllowlist) {
+          if (!allowedRaw) {
+            continue;
+          }
+          if (raw && raw === allowedRaw) {
+            return true;
+          }
+          const allowedCanonical = this.canonicalizeSymbol(allowedRaw);
+          if (!allowedCanonical) {
+            continue;
+          }
+          if (canonical === allowedCanonical) {
+            return true;
+          }
+          if (canonical.startsWith(allowedCanonical)) {
+            return true;
+          }
+        }
+      }
+
+      // Alias fallback.
+      if (mapped && mapped !== value && this.isAllowedAssetSymbol(mapped)) {
+        return true;
+      }
+
       return false;
     }
     if (!this.restrictSymbols) {
@@ -497,7 +533,7 @@ class EaBridgeService {
         success: true,
         message: 'Active symbols ignored (full-scan enabled)',
         broker: broker || null,
-        symbols: []
+        symbols: [],
       };
     }
     const broker = this.normalizeBroker(options.broker);
@@ -594,7 +630,7 @@ class EaBridgeService {
         message: 'broker is required',
         broker: null,
         recorded: 0,
-        ignored: 0
+        ignored: 0,
       };
     }
     if (rawSymbols.length === 0) {
@@ -603,7 +639,7 @@ class EaBridgeService {
         message: 'symbols array is required',
         broker,
         recorded: 0,
-        ignored: 0
+        ignored: 0,
       };
     }
 
@@ -650,7 +686,7 @@ class EaBridgeService {
       broker,
       recorded,
       ignored,
-      count: this.registeredSymbols.get(broker)?.size || 0
+      count: this.registeredSymbols.get(broker)?.size || 0,
     };
   }
 
@@ -875,7 +911,7 @@ class EaBridgeService {
         message: 'Snapshot already fresh',
         broker,
         symbol,
-        freshAt: existing.receivedAt || null
+        freshAt: existing.receivedAt || null,
       };
     }
 
@@ -887,7 +923,7 @@ class EaBridgeService {
         message: 'Snapshot already in flight',
         broker,
         symbol,
-        inflightUntil
+        inflightUntil,
       };
     }
 
@@ -937,13 +973,18 @@ class EaBridgeService {
     const raw = String(value || '')
       .trim()
       .toLowerCase();
-    if (raw === 'mt4' || raw === 'metatrader4') {
+
+    // Defensive normalization: broker ids sometimes arrive with path-ish junk
+    // (e.g. from shell quoting or UI decorations like "mt5\\").
+    const cleaned = raw.replace(/["']/g, '').replace(/[\\/]+/g, '');
+
+    if (cleaned === 'mt4' || cleaned === 'metatrader4') {
       return 'mt4';
     }
-    if (raw === 'mt5' || raw === 'metatrader5') {
+    if (cleaned === 'mt5' || cleaned === 'metatrader5') {
       return 'mt5';
     }
-    return raw || null;
+    return cleaned || null;
   }
 
   normalizeSymbol(value) {
@@ -980,14 +1021,14 @@ class EaBridgeService {
     if (
       !this.isTimestampFresh(timestamp, {
         maxAgeMs: this.maxQuoteAgeMs,
-        maxFutureMs: this.maxFutureQuoteMs
+        maxFutureMs: this.maxFutureQuoteMs,
       })
     ) {
       return {
         success: true,
         message: 'Quote ignored (stale or future timestamp)',
         broker,
-        symbol
+        symbol,
       };
     }
     const bidRaw = payload.bid != null ? Number(payload.bid) : null;
@@ -1000,6 +1041,14 @@ class EaBridgeService {
     const tickSize = payload.tickSize != null ? Number(payload.tickSize) : null;
     const tickValue = payload.tickValue != null ? Number(payload.tickValue) : null;
     const contractSize = payload.contractSize != null ? Number(payload.contractSize) : null;
+    const volumeRaw =
+      payload.volume != null
+        ? Number(payload.volume)
+        : payload.tickVolume != null
+          ? Number(payload.tickVolume)
+          : payload.volumeReal != null
+            ? Number(payload.volumeReal)
+            : null;
 
     // Some EAs send bid/ask as 0 for certain symbols; treat non-positive prices as missing.
     let bid = Number.isFinite(bidRaw) && bidRaw > 0 ? bidRaw : null;
@@ -1073,9 +1122,10 @@ class EaBridgeService {
       tickSize: Number.isFinite(tickSize) ? tickSize : null,
       tickValue: Number.isFinite(tickValue) ? tickValue : null,
       contractSize: Number.isFinite(contractSize) ? contractSize : null,
+      volume: Number.isFinite(volumeRaw) ? volumeRaw : null,
       timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
       receivedAt,
-      source: payload.source || 'ea'
+      source: payload.source || 'ea',
     };
 
     const key = `${broker}:${symbol}`;
@@ -1088,7 +1138,7 @@ class EaBridgeService {
         bid: quote.bid,
         ask: quote.ask,
         spreadPoints: quote.spreadPoints,
-        velocityPerSec: quote.midVelocityPerSec
+        velocityPerSec: quote.midVelocityPerSec,
       });
       while (history.length > 6) {
         history.shift();
@@ -1174,9 +1224,10 @@ class EaBridgeService {
     const orderBy = String(options.orderBy || '')
       .trim()
       .toLowerCase();
-    const maxAgeMs = Number.isFinite(Number(options.maxAgeMs))
-      ? Number(options.maxAgeMs)
-      : 30 * 1000;
+    const parsedMaxAgeMs = Number(options.maxAgeMs);
+    const maxAgeMs = Number.isFinite(parsedMaxAgeMs) ? parsedMaxAgeMs : 30 * 1000;
+    // Convention: maxAgeMs=0 means "no age filtering".
+    const effectiveMaxAgeMs = maxAgeMs === 0 ? null : maxAgeMs;
     const now = Date.now();
 
     const wantedSymbols = symbols
@@ -1191,7 +1242,7 @@ class EaBridgeService {
       if (wantedSymbols && !wantedSymbols.has(quote.symbol)) {
         continue;
       }
-      if (maxAgeMs != null && now - Number(quote.receivedAt || 0) > maxAgeMs) {
+      if (effectiveMaxAgeMs != null && now - Number(quote.receivedAt || 0) > effectiveMaxAgeMs) {
         continue;
       }
       results.push(quote);
@@ -1271,7 +1322,7 @@ class EaBridgeService {
       if (
         !this.isTimestampFresh(timeMs, {
           maxAgeMs: this.maxNewsAgeMs,
-          maxFutureMs: this.maxFutureNewsMs
+          maxFutureMs: this.maxFutureNewsMs,
         })
       ) {
         continue;
@@ -1298,7 +1349,7 @@ class EaBridgeService {
         notes: raw.notes || raw.comment || null,
         receivedAt: Date.now(),
         kind,
-        raw
+        raw,
       };
 
       const key = `${broker}:${id}`;
@@ -1529,7 +1580,7 @@ class EaBridgeService {
         low: Number.isFinite(low) ? Math.min(low, p) : p,
         close: p,
         receivedAt: now,
-        source: 'quotes'
+        source: 'quotes',
       };
     } else {
       existing.unshift({
@@ -1540,7 +1591,7 @@ class EaBridgeService {
         close: p,
         volume: null,
         receivedAt: now,
-        source: 'quotes'
+        source: 'quotes',
       });
     }
 
@@ -1690,7 +1741,7 @@ class EaBridgeService {
             success: true,
             message: 'Snapshot ignored (asset class not allowed)',
             broker,
-            symbol
+            symbol,
           };
         }
       } catch (_error) {
@@ -1698,7 +1749,7 @@ class EaBridgeService {
           success: true,
           message: 'Snapshot ignored (asset class not allowed)',
           broker,
-          symbol
+          symbol,
         };
       }
     }
@@ -1834,8 +1885,8 @@ class EaBridgeService {
           indicators: {
             rsi: rsiValue != null ? { value: rsiValue } : {},
             macd: macdHistogram != null ? { histogram: macdHistogram } : {},
-            atr: atrValue != null ? { value: atrValue } : {}
-          }
+            atr: atrValue != null ? { value: atrValue } : {},
+          },
         };
 
         if (confidence != null) {
@@ -1859,7 +1910,7 @@ class EaBridgeService {
             high: high != null ? high : null,
             low: low != null ? low : null,
             close: close != null ? close : null,
-            time: time != null ? time : null
+            time: time != null ? time : null,
           };
           if (
             normalized.open != null ||
@@ -1887,8 +1938,102 @@ class EaBridgeService {
       timestamp: Number.isFinite(snapshotTimestamp) ? snapshotTimestamp : Date.now(),
       receivedAt: Date.now(),
       source: payload.source || 'ea',
-      timeframes: normalizedTimeframes
+      quote: payload.quote && typeof payload.quote === 'object' ? payload.quote : null,
+      timeframes: normalizedTimeframes,
     };
+
+    // Many EA configurations only post snapshots + bars (no /market/quotes tick stream).
+    // Seed a lightweight quote from the snapshot's lastPrice so the dashboard and
+    // readiness checks can still operate in real-time.
+    try {
+      const existing = this.latestQuotes.get(`${broker}:${symbol}`) || null;
+      const now = Date.now();
+      const existingFresh =
+        existing && existing.receivedAt
+          ? now - Number(existing.receivedAt || 0) <= 30 * 1000
+          : false;
+
+      if (!existingFresh) {
+        const quoteRaw = payload.quote && typeof payload.quote === 'object' ? payload.quote : null;
+        const quoteBid = quoteRaw?.bid != null ? Number(quoteRaw.bid) : null;
+        const quoteAsk = quoteRaw?.ask != null ? Number(quoteRaw.ask) : null;
+        const quoteLast = quoteRaw?.last != null ? Number(quoteRaw.last) : null;
+        const quoteDigits = quoteRaw?.digits != null ? Number(quoteRaw.digits) : null;
+        const quotePoint = quoteRaw?.point != null ? Number(quoteRaw.point) : null;
+        const quoteSpreadPoints =
+          quoteRaw?.spreadPoints != null ? Number(quoteRaw.spreadPoints) : null;
+        const quoteTickSize = quoteRaw?.tickSize != null ? Number(quoteRaw.tickSize) : null;
+        const quoteTickValue = quoteRaw?.tickValue != null ? Number(quoteRaw.tickValue) : null;
+        const quoteContractSize =
+          quoteRaw?.contractSize != null ? Number(quoteRaw.contractSize) : null;
+        const quoteVolume =
+          quoteRaw?.volume != null
+            ? Number(quoteRaw.volume)
+            : quoteRaw?.tickVolume != null
+              ? Number(quoteRaw.tickVolume)
+              : quoteRaw?.volumeReal != null
+                ? Number(quoteRaw.volumeReal)
+                : null;
+
+        const pickLastPrice = () => {
+          const preference = ['M15', 'H1', 'H4', 'D1', 'M5', 'M1', 'W1', 'MN1', 'M30'];
+          for (const tf of preference) {
+            const frame = normalizedTimeframes?.[tf] || null;
+            const lp = frame?.lastPrice;
+            const v = Number(lp);
+            if (Number.isFinite(v) && v > 0) {
+              return v;
+            }
+            const candle = frame?.latestCandle || frame?.latest || null;
+            const close = Number(candle?.close ?? candle?.c);
+            if (Number.isFinite(close) && close > 0) {
+              return close;
+            }
+          }
+
+          // Fallback: first available timeframe.
+          for (const frame of Object.values(normalizedTimeframes || {})) {
+            const v = Number(frame?.lastPrice);
+            if (Number.isFinite(v) && v > 0) {
+              return v;
+            }
+            const candle = frame?.latestCandle || frame?.latest || null;
+            const close = Number(candle?.close ?? candle?.c);
+            if (Number.isFinite(close) && close > 0) {
+              return close;
+            }
+          }
+          return null;
+        };
+
+        const lastPrice = pickLastPrice();
+        const hasQuotePayload =
+          Number.isFinite(quoteBid) || Number.isFinite(quoteAsk) || Number.isFinite(quoteLast);
+        if (hasQuotePayload || lastPrice != null) {
+          // Snapshot timestamps can be terminal-time (timezone) and appear far in the future.
+          // For lightweight quote seeding we use local time to satisfy freshness guards.
+          const quoteTimestamp = now;
+          this.recordQuote({
+            broker,
+            symbol,
+            bid: Number.isFinite(quoteBid) ? quoteBid : lastPrice,
+            ask: Number.isFinite(quoteAsk) ? quoteAsk : lastPrice,
+            last: Number.isFinite(quoteLast) ? quoteLast : lastPrice,
+            digits: Number.isFinite(quoteDigits) ? quoteDigits : undefined,
+            point: Number.isFinite(quotePoint) ? quotePoint : undefined,
+            spreadPoints: Number.isFinite(quoteSpreadPoints) ? quoteSpreadPoints : undefined,
+            tickSize: Number.isFinite(quoteTickSize) ? quoteTickSize : undefined,
+            tickValue: Number.isFinite(quoteTickValue) ? quoteTickValue : undefined,
+            contractSize: Number.isFinite(quoteContractSize) ? quoteContractSize : undefined,
+            volume: Number.isFinite(quoteVolume) ? quoteVolume : undefined,
+            timestamp: quoteTimestamp,
+            source: 'ea_snapshot',
+          });
+        }
+      }
+    } catch (_error) {
+      // best-effort
+    }
 
     const key = `${broker}:${symbol}`;
     this.latestSnapshots.set(key, snapshot);
@@ -1926,7 +2071,7 @@ class EaBridgeService {
             message: 'Bars ignored (asset class not allowed)',
             broker,
             symbol,
-            timeframe
+            timeframe,
           };
         }
       } catch (_error) {
@@ -1935,7 +2080,7 @@ class EaBridgeService {
           message: 'Bars ignored (asset class not allowed)',
           broker,
           symbol,
-          timeframe
+          timeframe,
         };
       }
     }
@@ -1981,8 +2126,35 @@ class EaBridgeService {
         close,
         volume: volume != null ? volume : null,
         receivedAt: now,
-        source
+        source,
       });
+    }
+
+    // If we are operating in bars-only mode (no quotes), seed a lightweight quote from the
+    // most recent bar close so UI/analytics have live mid/last prices.
+    try {
+      if (timeframe === 'M1') {
+        const existingQuote = this.latestQuotes.get(`${broker}:${symbol}`) || null;
+        const existingFresh =
+          existingQuote && existingQuote.receivedAt
+            ? now - Number(existingQuote.receivedAt || 0) <= 30 * 1000
+            : false;
+        if (!existingFresh && normalizedIncoming.length > 0) {
+          const latest = normalizedIncoming[normalizedIncoming.length - 1] || null;
+          const close = Number(latest?.close);
+          if (Number.isFinite(close) && close > 0) {
+            this.recordQuote({
+              broker,
+              symbol,
+              last: close,
+              timestamp: now,
+              source: 'ea_bars',
+            });
+          }
+        }
+      }
+    } catch (_error) {
+      // best-effort
     }
 
     if (normalizedIncoming.length === 0) {
@@ -2022,7 +2194,7 @@ class EaBridgeService {
       timeframe,
       recorded: normalizedIncoming.length,
       ignored,
-      seriesSize: deduped.length
+      seriesSize: deduped.length,
     };
   }
 
@@ -2175,7 +2347,7 @@ class EaBridgeService {
       lastHeartbeat: Date.now(),
       isActive: true,
       tradesExecuted: 0,
-      profitLoss: 0
+      profitLoss: 0,
     };
 
     this.sessions.set(sessionId, session);
@@ -2189,8 +2361,8 @@ class EaBridgeService {
       intelligentFeatures: {
         dynamicStopLoss: true,
         adaptiveRisk: true,
-        learningEnabled: true
-      }
+        learningEnabled: true,
+      },
     };
   }
 
@@ -2246,7 +2418,7 @@ class EaBridgeService {
 
     return {
       success: true,
-      instructions: this.getIntelligentInstructions(session)
+      instructions: this.getIntelligentInstructions(session),
     };
   }
 
@@ -2298,7 +2470,7 @@ class EaBridgeService {
       dataQualityGuard,
       sessionGuard,
       liquidityGuard,
-      managementDefaults: this.buildManagementDefaults()
+      managementDefaults: this.buildManagementDefaults(),
     };
   }
 
@@ -2332,7 +2504,7 @@ class EaBridgeService {
           currency: item.currency || null,
           impact,
           minutes,
-          kind: item.kind || null
+          kind: item.kind || null,
         };
       })
       .filter(Boolean)
@@ -2349,7 +2521,7 @@ class EaBridgeService {
       level: withinBlackout ? 'pause' : nextHigh ? 'caution' : 'normal',
       nextHighImpactMinutes: nextHigh ? nextHigh.minutes : null,
       nextHighImpact: nextHigh,
-      upcomingHighImpactCount: upcoming.length
+      upcomingHighImpactCount: upcoming.length,
     };
   }
 
@@ -2376,7 +2548,7 @@ class EaBridgeService {
       preferred,
       isOpening: sessionContext.isOpening,
       level: pauseTrading ? 'pause' : preferred ? 'normal' : 'caution',
-      pauseTrading
+      pauseTrading,
     };
   }
 
@@ -2402,9 +2574,7 @@ class EaBridgeService {
       return { level: 'unknown', pauseTrading: false, averageSpreadPips: null };
     }
 
-    const spreads = quotes
-      .map((q) => Number(q.spreadPips))
-      .filter((v) => Number.isFinite(v));
+    const spreads = quotes.map((q) => Number(q.spreadPips)).filter((v) => Number.isFinite(v));
 
     const avgSpread = spreads.length
       ? spreads.reduce((acc, v) => acc + v, 0) / spreads.length
@@ -2416,7 +2586,7 @@ class EaBridgeService {
       level: high ? 'pause' : 'normal',
       pauseTrading: high,
       averageSpreadPips: avgSpread != null ? Number(avgSpread.toFixed(3)) : null,
-      maxSpreadPips
+      maxSpreadPips,
     };
   }
 
@@ -2425,7 +2595,7 @@ class EaBridgeService {
       news: this.buildNewsGuard({ broker }),
       dataQuality: this.buildDataQualityGuard({ broker }),
       session: this.buildSessionGuard({ assetClass, now }),
-      liquidity: this.buildLiquidityGuard({ broker })
+      liquidity: this.buildLiquidityGuard({ broker }),
     };
   }
 
@@ -2489,7 +2659,7 @@ class EaBridgeService {
           symbol,
           status,
           recommendation,
-          score: Number.isFinite(score) ? score : null
+          score: Number.isFinite(score) ? score : null,
         };
       })
       .filter(Boolean);
@@ -2504,7 +2674,7 @@ class EaBridgeService {
       criticalCount: critical,
       degradedCount: degraded,
       blockedCount: blocked,
-      symbols: symbolReports
+      symbols: symbolReports,
     };
   }
 
@@ -2517,9 +2687,7 @@ class EaBridgeService {
       .toLowerCase();
 
     const trailingEnabled =
-      trailingEnabledEnv === '1' ||
-      trailingEnabledEnv === 'true' ||
-      trailingEnabledEnv === 'yes';
+      trailingEnabledEnv === '1' || trailingEnabledEnv === 'true' || trailingEnabledEnv === 'yes';
     const partialEnabled =
       partialEnabledEnv === '1' || partialEnabledEnv === 'true' || partialEnabledEnv === 'yes';
 
@@ -2528,16 +2696,16 @@ class EaBridgeService {
         enabled: trailingEnabled,
         breakevenAtR: 1.0,
         trailStartR: 1.2,
-        trailStepR: 0.4
+        trailStepR: 0.4,
       },
       partialClose: {
         enabled: partialEnabled,
         levels: [
           { atR: 1.0, percent: 0.4 },
           { atR: 1.6, percent: 0.3 },
-          { atR: 2.2, percent: 0.2 }
-        ]
-      }
+          { atR: 2.2, percent: 0.2 },
+        ],
+      },
     };
   }
 
@@ -2574,13 +2742,13 @@ class EaBridgeService {
         ...trailing,
         distancePips: trailingDistancePips,
         stopLossPips: Number.isFinite(stopLossPips) ? stopLossPips : null,
-        takeProfitPips: Number.isFinite(takeProfitPips) ? takeProfitPips : null
+        takeProfitPips: Number.isFinite(takeProfitPips) ? takeProfitPips : null,
       },
       partialClose,
       volatility: {
         state: volatility.state || null,
-        score: Number.isFinite(volScore) ? volScore : null
-      }
+        score: Number.isFinite(volScore) ? volScore : null,
+      },
     };
   }
 
@@ -2593,7 +2761,7 @@ class EaBridgeService {
       news: this.buildNewsGuard({ broker }),
       dataQuality: this.buildDataQualityGuard({ broker }),
       session: this.buildSessionGuard({ assetClass: 'forex', now }),
-      liquidity: this.buildLiquidityGuard({ broker })
+      liquidity: this.buildLiquidityGuard({ broker }),
     };
 
     const actions = positions
@@ -2608,7 +2776,7 @@ class EaBridgeService {
       generatedAt: now,
       guards,
       actions,
-      commands
+      commands,
     };
   }
 
@@ -2634,20 +2802,20 @@ class EaBridgeService {
           symbol,
           reason: action.reason || null,
           createdAt: now,
-          expiresAt: now + this.managementCommandTtlMs
+          expiresAt: now + this.managementCommandTtlMs,
         };
 
         if (action.type === 'partial_close') {
           commands.push({
             ...base,
             type: 'partial_close',
-            payload: { percent: action.percent }
+            payload: { percent: action.percent },
           });
         } else if (action.type === 'move_sl') {
           commands.push({
             ...base,
             type: 'modify_sl',
-            payload: { price: action.price }
+            payload: { price: action.price },
           });
         } else if (action.type === 'trail') {
           commands.push({
@@ -2655,14 +2823,14 @@ class EaBridgeService {
             type: 'trail',
             payload: {
               distancePips: action.distancePips,
-              stepR: action.stepR
-            }
+              stepR: action.stepR,
+            },
           });
         } else if (action.type === 'close') {
           commands.push({
             ...base,
             type: 'close_position',
-            payload: {}
+            payload: {},
           });
         }
       }
@@ -2688,7 +2856,7 @@ class EaBridgeService {
         ...cmd,
         broker: normalized,
         createdAt: cmd.createdAt || now,
-        expiresAt: cmd.expiresAt || now + this.managementCommandTtlMs
+        expiresAt: cmd.expiresAt || now + this.managementCommandTtlMs,
       });
     }
 
@@ -2734,7 +2902,9 @@ class EaBridgeService {
     }
 
     const entryPrice = Number(position.entryPrice || position.price || position.openPrice);
-    const currentPrice = Number(position.currentPrice || position.priceCurrent || position.bid || position.ask);
+    const currentPrice = Number(
+      position.currentPrice || position.priceCurrent || position.bid || position.ask
+    );
     const stopLoss = Number(position.stopLoss || position.sl);
     const takeProfit = Number(position.takeProfit || position.tp);
 
@@ -2742,12 +2912,11 @@ class EaBridgeService {
       return null;
     }
 
-    const pipSize = Number(getPairMetadata(symbol)?.pipSize) || (symbol.endsWith('JPY') ? 0.01 : 0.0001);
+    const pipSize =
+      Number(getPairMetadata(symbol)?.pipSize) || (symbol.endsWith('JPY') ? 0.01 : 0.0001);
     const toPips = (diff) => (Number.isFinite(diff) && pipSize > 0 ? diff / pipSize : null);
 
-    const riskPips = Number.isFinite(stopLoss)
-      ? Math.abs(toPips(entryPrice - stopLoss))
-      : null;
+    const riskPips = Number.isFinite(stopLoss) ? Math.abs(toPips(entryPrice - stopLoss)) : null;
     const profitPips = toPips(isBuy ? currentPrice - entryPrice : entryPrice - currentPrice);
 
     const rMultiple =
@@ -2761,11 +2930,11 @@ class EaBridgeService {
         takeProfitPips: Number.isFinite(takeProfit)
           ? Number(Math.abs(toPips(takeProfit - entryPrice)).toFixed(2))
           : null,
-        riskReward: Number(position.riskReward || position.rr || 0) || null
+        riskReward: Number(position.riskReward || position.rr || 0) || null,
       },
       components: {
-        technical: position.technical || {}
-      }
+        technical: position.technical || {},
+      },
     };
 
     const plan = this.buildTradeManagementPlan(pseudoSignal);
@@ -2782,7 +2951,7 @@ class EaBridgeService {
           actions.push({
             type: 'move_sl',
             reason: 'breakeven',
-            price: entryPrice
+            price: entryPrice,
           });
         }
       }
@@ -2792,7 +2961,7 @@ class EaBridgeService {
           type: 'trail',
           reason: 'dynamic_trailing',
           distancePips: plan.trailing.distancePips,
-          stepR: plan.trailing.trailStepR
+          stepR: plan.trailing.trailStepR,
         });
       }
     }
@@ -2806,7 +2975,7 @@ class EaBridgeService {
           actions.push({
             type: 'partial_close',
             reason: `target_${level.atR}R`,
-            percent: level.percent
+            percent: level.percent,
           });
           break;
         }
@@ -2827,7 +2996,7 @@ class EaBridgeService {
       profitPips: Number.isFinite(profitPips) ? Number(profitPips.toFixed(2)) : null,
       riskPips: Number.isFinite(riskPips) ? Number(riskPips.toFixed(2)) : null,
       actions,
-      managementPlan: plan
+      managementPlan: plan,
     };
   }
 
@@ -2846,7 +3015,7 @@ class EaBridgeService {
       timestamp,
       accountNumber,
       accountMode,
-      broker
+      broker,
     } = payload;
 
     const sessionId = `${broker}-${accountMode}-${accountNumber}`;
@@ -2869,7 +3038,7 @@ class EaBridgeService {
       timestamp: Number(timestamp) || Date.now(),
       broker,
       accountNumber,
-      receivedAt: Date.now()
+      receivedAt: Date.now(),
     };
 
     // Learn from completed trades
@@ -2892,8 +3061,8 @@ class EaBridgeService {
         consecutiveLosses: this.consecutiveLosses,
         consecutiveWins: this.consecutiveWins,
         riskAdjustment: this.riskAdjustmentFactor.toFixed(2),
-        stopLossAdjustment: this.stopLossAdjustmentFactor.toFixed(2)
-      }
+        stopLossAdjustment: this.stopLossAdjustmentFactor.toFixed(2),
+      },
     };
   }
 
@@ -2908,7 +3077,7 @@ class EaBridgeService {
       profit,
       volume,
       timestamp: transaction.timestamp,
-      symbol: transaction.symbol
+      symbol: transaction.symbol,
     });
 
     // Keep history bounded
@@ -3047,15 +3216,49 @@ class EaBridgeService {
         ? Math.max(1_000, envQuoteMaxAgeMs)
         : 120 * 1000;
 
+      const isRealBidAskQuote = (q) => {
+        if (!q || typeof q !== 'object') {
+          return false;
+        }
+        const bid = Number(q.bid);
+        const ask = Number(q.ask);
+        return Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0 && ask > bid;
+      };
+
       // Require EA realtime context (quote + snapshot) for strong signals.
-      const quote = broker
+      let quote = broker
         ? this.getQuotes({ broker, symbols: [pair], maxAgeMs: quoteMaxAgeMs })?.[0] || null
         : null;
-      if (!quote) {
+
+      // Fallback: use snapshot.quote if tick quote stream is missing.
+      if ((!quote || !isRealBidAskQuote(quote)) && broker) {
+        const snapForQuote = this.getMarketSnapshot({
+          broker,
+          symbol: pair,
+          maxAgeMs: quoteMaxAgeMs,
+        });
+        const sq =
+          snapForQuote?.quote && typeof snapForQuote.quote === 'object' ? snapForQuote.quote : null;
+        if (sq) {
+          const normalized = {
+            ...sq,
+            broker: sq.broker ?? broker,
+            symbol: sq.symbol ?? pair,
+            source: sq.source ?? snapForQuote?.source ?? 'ea_snapshot',
+            receivedAt: sq.receivedAt ?? snapForQuote?.receivedAt ?? null,
+            timestamp: sq.timestamp ?? snapForQuote?.timestamp ?? null,
+          };
+          if (isRealBidAskQuote(normalized)) {
+            quote = normalized;
+          }
+        }
+      }
+
+      if (!quote || !isRealBidAskQuote(quote)) {
         return {
           success: false,
           message: 'No recent EA quote available',
-          signal: null
+          signal: null,
         };
       }
 
@@ -3099,7 +3302,7 @@ class EaBridgeService {
               symbol: pair,
               timeframe,
               limit,
-              maxAgeMs: barsMaxAgeMs
+              maxAgeMs: barsMaxAgeMs,
             });
             const count = Array.isArray(bars) ? bars.length : 0;
             barsByTimeframe[timeframe] = count;
@@ -3121,8 +3324,8 @@ class EaBridgeService {
             details: {
               requiredBars,
               checkedTimeframes: timeframes,
-              barsByTimeframe
-            }
+              barsByTimeframe,
+            },
           };
         }
       }
@@ -3132,7 +3335,7 @@ class EaBridgeService {
       const analysis = await this.getAnalysisSnapshot({
         broker,
         symbol: pair,
-        accountMode: payload?.accountMode
+        accountMode: payload?.accountMode,
       });
 
       const signal = analysis?.signal || null;
@@ -3141,7 +3344,7 @@ class EaBridgeService {
         return {
           success: false,
           message: analysis?.message || 'No signal available',
-          signal: null
+          signal: null,
         };
       }
 
@@ -3150,7 +3353,7 @@ class EaBridgeService {
         return {
           success: false,
           message: 'Signal expired',
-          signal: null
+          signal: null,
         };
       }
 
@@ -3211,7 +3414,7 @@ class EaBridgeService {
         const computedLayersStatus = evaluateLayers18Readiness({
           layeredAnalysis: adjustedSignal?.components?.layeredAnalysis,
           minConfluence: layers18MinConfluence,
-          decisionStateFallback: decisionState
+          decisionStateFallback: decisionState,
         });
         layersStatus = computedLayersStatus;
 
@@ -3242,9 +3445,9 @@ class EaBridgeService {
                   minConfidence,
                   minStrength,
                   confidence,
-                  strength
-                }
-              }
+                  strength,
+                },
+              },
             };
           }
           return {
@@ -3268,9 +3471,9 @@ class EaBridgeService {
                 decisionState,
                 minConfluence: layers18MinConfluence,
                 minConfidence,
-                minStrength
-              }
-            }
+                minStrength,
+              },
+            },
           };
         }
       }
@@ -3290,8 +3493,8 @@ class EaBridgeService {
             sessionGuard,
             liquidityGuard,
             newsGuard,
-            dataQualityGuard
-          }
+            dataQualityGuard,
+          },
         };
       }
 
@@ -3299,7 +3502,7 @@ class EaBridgeService {
         return {
           success: false,
           message: 'Signal is neutral',
-          signal: null
+          signal: null,
         };
       }
 
@@ -3308,7 +3511,7 @@ class EaBridgeService {
       const enablement = this.shouldEnableTradingForExecution({
         broker,
         assetClass,
-        now: Date.now()
+        now: Date.now(),
       });
       const tradingEnabled = enablement.enabled;
       const passesStrengthFloor = confidence >= minConfidence && strength >= minStrength;
@@ -3340,9 +3543,9 @@ class EaBridgeService {
               confidence,
               strength,
               passesStrengthFloor,
-              layersStatus
-            }
-          }
+              layersStatus,
+            },
+          },
         };
       }
 
@@ -3370,16 +3573,16 @@ class EaBridgeService {
             confidence,
             strength,
             passesStrengthFloor,
-            layersStatus
-          }
-        }
+            layersStatus,
+          },
+        },
       };
     } catch (error) {
       this.logger.error({ err: error, symbol }, 'Error getting signal for EA');
       return {
         success: false,
         message: error.message,
-        signal: null
+        signal: null,
       };
     }
   }
@@ -3399,7 +3602,7 @@ class EaBridgeService {
       return {
         success: false,
         message: 'Symbol not allowed (FX/metals/crypto only)',
-        signal: null
+        signal: null,
       };
     }
 
@@ -3494,7 +3697,7 @@ class EaBridgeService {
                 ? incomingIndicators
                 : currentIndicators,
           ranges: current.ranges || incomingRanges || null,
-          pivotPoints: current.pivotPoints || incomingPivots || null
+          pivotPoints: current.pivotPoints || incomingPivots || null,
         };
       }
 
@@ -3504,9 +3707,9 @@ class EaBridgeService {
           ...originalComponents,
           technical: {
             ...originalTechnical,
-            timeframes: nextTimeframes
-          }
-        }
+            timeframes: nextTimeframes,
+          },
+        },
       };
     };
 
@@ -3520,7 +3723,7 @@ class EaBridgeService {
           symbol,
           timeframe: 'M1',
           limit: 2,
-          maxAgeMs: 0
+          maxAgeMs: 0,
         });
         const latest = Array.isArray(bars) && bars.length ? bars[0] : null;
         const prev = Array.isArray(bars) && bars.length > 1 ? bars[1] : null;
@@ -3538,7 +3741,7 @@ class EaBridgeService {
           open: open != null ? Number(open) : null,
           volume: volume != null ? Number(volume) : null,
           timeMs: timeMs != null ? Number(timeMs) : null,
-          prevClose: prev && typeof prev === 'object' ? (prev.close ?? prev.c ?? null) : null
+          prevClose: prev && typeof prev === 'object' ? (prev.close ?? prev.c ?? null) : null,
         };
       } catch (_error) {
         return null;
@@ -3560,7 +3763,7 @@ class EaBridgeService {
         snapshotForHydration = this.getMarketSnapshot({
           broker,
           symbol,
-          maxAgeMs: snapshotDisplayMaxAgeMs
+          maxAgeMs: snapshotDisplayMaxAgeMs,
         });
 
         // Best-effort: ask the EA for a new snapshot so future analysis is fully fresh.
@@ -3591,7 +3794,7 @@ class EaBridgeService {
               components:
                 hydratedSignal.components && typeof hydratedSignal.components === 'object'
                   ? { ...hydratedSignal.components }
-                  : {}
+                  : {},
             }
           : hydratedSignal;
       const isTradeValid = Boolean(signal?.isValid?.isValid);
@@ -3606,7 +3809,7 @@ class EaBridgeService {
           eaBridgeService: this,
           quoteMaxAgeMs: 30 * 1000,
           barFallback: bestEffortBarFallback(),
-          now
+          now,
         });
       } catch (_error) {
         // best-effort
@@ -3616,14 +3819,14 @@ class EaBridgeService {
         success: true,
         message: isTradeValid ? 'OK' : 'Signal not valid for trading (showing analysis only)',
         signal: dashboardSignal || null,
-        tradeValid: isTradeValid
+        tradeValid: isTradeValid,
       };
     } catch (error) {
       this.logger.error({ err: error, symbol, broker }, 'Error getting analysis snapshot');
       return {
         success: false,
         message: error?.message || 'Failed to generate analysis',
-        signal: null
+        signal: null,
       };
     }
   }
@@ -3639,8 +3842,8 @@ class EaBridgeService {
       learningMetrics: {
         winRate: this.winRate,
         riskFactor: this.riskAdjustmentFactor,
-        stopLossFactor: this.stopLossAdjustmentFactor
-      }
+        stopLossFactor: this.stopLossAdjustmentFactor,
+      },
     };
   }
 
@@ -3694,29 +3897,29 @@ class EaBridgeService {
       marketFeed: {
         quotes: {
           total: this.latestQuotes.size,
-          byBroker: quoteCountsByBroker
+          byBroker: quoteCountsByBroker,
         },
         news: {
           total: this.latestNews.size,
-          byBroker: newsCountsByBroker
+          byBroker: newsCountsByBroker,
         },
         snapshots: {
           total: this.latestSnapshots.size,
-          byBroker: snapshotCountsByBroker
+          byBroker: snapshotCountsByBroker,
         },
         bars: {
           series: this.latestBars.size,
           totalBars: totalBarsStored,
-          seriesByBroker: barsSeriesCountsByBroker
+          seriesByBroker: barsSeriesCountsByBroker,
         },
         activeSymbols: {
           brokers: this.activeSymbols.size,
-          byBroker: activeSymbolsByBroker
+          byBroker: activeSymbolsByBroker,
         },
         snapshotRequests: {
           brokers: this.snapshotRequests.size,
-          inflight: this.snapshotInflight.size
-        }
+          inflight: this.snapshotInflight.size,
+        },
       },
       learning: {
         winRate: this.winRate,
@@ -3726,7 +3929,7 @@ class EaBridgeService {
         riskAdjustment: this.riskAdjustmentFactor,
         stopLossAdjustment: this.stopLossAdjustmentFactor,
         avgProfit: this.avgProfit,
-        avgLoss: this.avgLoss
+        avgLoss: this.avgLoss,
       },
       sessions: activeSessions.map((s) => ({
         id: s.id,
@@ -3740,8 +3943,8 @@ class EaBridgeService {
         tradesExecuted: s.tradesExecuted,
         profitLoss: s.profitLoss,
         connectedAt: s.connectedAt,
-        lastHeartbeat: s.lastHeartbeat
-      }))
+        lastHeartbeat: s.lastHeartbeat,
+      })),
     };
   }
 

@@ -4,21 +4,21 @@
  */
 
 import { Router } from 'express';
-import { badRequest, ok, serverError } from '../../../utils/http-response.js';
-import { RealtimeEaSignalRunner } from '../../../infrastructure/services/realtime-ea-signal-runner.js';
+import { badRequest, ok, serverError } from '../../../../utils/http-response.js';
+import { RealtimeEaSignalRunner } from '../../../../infrastructure/services/realtime-ea-signal-runner.js';
 import {
   validateMarketBarsIngestDTO,
   validateMarketQuotesIngestDTO,
   validateMarketSnapshotIngestDTO,
-  validateMarketNewsIngestDTO
+  validateMarketNewsIngestDTO,
 } from '../../../../contracts/dtos.js';
-import { buildEaConnectionDiagnostics } from '../../../utils/ea-bridge-diagnostics.js';
-import { parseRequestBodyWithValidator } from '../../../utils/validation.js';
-import { isSaneEaSymbolToken } from '../../../utils/ea-symbols.js';
-import { readEnvBool, readEnvNumber } from '../../../utils/env.js';
+import { buildEaConnectionDiagnostics } from '../../../../utils/ea-bridge-diagnostics.js';
+import { parseRequestBodyWithValidator } from '../../../../utils/validation.js';
+import { isSaneEaSymbolToken } from '../../../../utils/ea-symbols.js';
+import { readEnvBool, readEnvNumber } from '../../../../utils/env.js';
 import {
   resolveLiquidityGuardThresholds,
-  resolveNewsGuardThresholds
+  resolveNewsGuardThresholds,
 } from '../../../../core/policy/trading-policy.js';
 
 export default function eaBridgeRoutes({
@@ -29,7 +29,7 @@ export default function eaBridgeRoutes({
   auditLogger,
   logger,
   broadcast,
-  requireBrokerWrite
+  requireBrokerWrite,
 }) {
   const router = Router();
 
@@ -66,7 +66,7 @@ export default function eaBridgeRoutes({
         // execute orders locally only when server returns shouldExecute=true.
         decision: 'server',
         execution: 'ea',
-        management: 'hybrid'
+        management: 'hybrid',
       },
       gates: {
         newsBlackoutMinutes: resolvedNewsMinutes,
@@ -83,20 +83,24 @@ export default function eaBridgeRoutes({
           ? Number(engineConfig.maxSpreadToTpHard)
           : null,
         requireBarsCoverage: Boolean(engineConfig.requireBarsCoverage),
-        barsMinM15: Number.isFinite(Number(engineConfig.barsMinM15)) ? Number(engineConfig.barsMinM15) : null,
-        barsMinH1: Number.isFinite(Number(engineConfig.barsMinH1)) ? Number(engineConfig.barsMinH1) : null,
+        barsMinM15: Number.isFinite(Number(engineConfig.barsMinM15))
+          ? Number(engineConfig.barsMinM15)
+          : null,
+        barsMinH1: Number.isFinite(Number(engineConfig.barsMinH1))
+          ? Number(engineConfig.barsMinH1)
+          : null,
         barsMaxAgeM15Ms: Number.isFinite(Number(engineConfig.barsMaxAgeM15Ms))
           ? Number(engineConfig.barsMaxAgeM15Ms)
           : null,
         barsMaxAgeH1Ms: Number.isFinite(Number(engineConfig.barsMaxAgeH1Ms))
           ? Number(engineConfig.barsMaxAgeH1Ms)
           : null,
-        requireHtfDirection: Boolean(engineConfig.requireHtfDirection)
+        requireHtfDirection: Boolean(engineConfig.requireHtfDirection),
       },
-      broker: {
+      brokerStatus: {
         killSwitchEnabled: Boolean(brokerStatus?.killSwitchEnabled),
         killSwitchReason: brokerStatus?.killSwitchReason || null,
-        defaultBroker: brokerStatus?.defaultBroker || null
+        defaultBroker: brokerStatus?.defaultBroker || null,
       },
       execution: {
         // Current server behavior: only execute ENTER signals.
@@ -107,7 +111,7 @@ export default function eaBridgeRoutes({
         allowWaitMonitorExecution,
         assetClasses: tradeManager?.autoTradingAssetClasses
           ? Array.from(tradeManager.autoTradingAssetClasses)
-          : null
+          : null,
       },
       tradeManagement: {
         dynamicTrailingEnabled,
@@ -115,32 +119,42 @@ export default function eaBridgeRoutes({
         sessionStrict: sessionStrictEnabled,
         newsGuard: {
           impactThreshold: resolvedNewsImpact,
-          blackoutMinutes: resolvedNewsMinutes
+          blackoutMinutes: resolvedNewsMinutes,
         },
         liquidityGuard: {
-          maxSpreadPips: resolvedMaxSpreadPips
-        }
+          maxSpreadPips: resolvedMaxSpreadPips,
+        },
       },
       runtime: {
         requireRealtimeData: readEnvBool('REQUIRE_REALTIME_DATA', false) === true,
         allowSyntheticData: readEnvBool('ALLOW_SYNTHETIC_DATA', false) === true,
-        allowAllSymbols: readEnvBool('ALLOW_ALL_SYMBOLS', false) === true
+        allowAllSymbols: readEnvBool('ALLOW_ALL_SYMBOLS', false) === true,
       },
       autoTrading: {
-        enabled: tradeManager?.isAutoTradingEnabled ? tradeManager.isAutoTradingEnabled(broker) : null,
+        enabled: tradeManager?.isAutoTradingEnabled
+          ? tradeManager.isAutoTradingEnabled(broker)
+          : null,
         realtimeSignalExecutionEnabled:
           autoTradingConfig?.realtimeSignalExecutionEnabled != null
             ? Boolean(autoTradingConfig.realtimeSignalExecutionEnabled)
             : null,
         maxNewTradesPerCycle: Number.isFinite(Number(autoTradingConfig.maxNewTradesPerCycle))
           ? Number(autoTradingConfig.maxNewTradesPerCycle)
-          : null
-      }
+          : null,
+      },
     };
   };
 
   const isBackgroundSignalsEnabled = () => {
-    return readEnvBool('EA_BACKGROUND_SIGNALS', false) === true;
+    // Explicit opt-in/out always wins.
+    const explicit = readEnvBool('EA_BACKGROUND_SIGNALS', null);
+    if (explicit != null) {
+      return explicit === true;
+    }
+
+    // In EA-only mode, the dashboard expects the server to continuously scan and
+    // publish WATCH/ENTER signals from the real-time EA feed.
+    return readEnvBool('EA_ONLY_MODE', true) === true;
   };
 
   const isStrictEaSymbolFilterEnabled = () => {
@@ -245,7 +259,7 @@ export default function eaBridgeRoutes({
           // best-effort
         }
       },
-      logger
+      logger,
     });
 
     // Only start continuous loops when explicitly enabled.
@@ -291,7 +305,7 @@ export default function eaBridgeRoutes({
                 const symbols = eaBridgeService.listKnownSymbols({
                   broker,
                   maxAgeMs: Number.isFinite(maxAgeMs) ? Math.max(0, maxAgeMs) : 30 * 60 * 1000,
-                  max: maxSymbols
+                  max: maxSymbols,
                 });
                 return (Array.isArray(symbols) ? symbols : [])
                   .map((s) =>
@@ -307,7 +321,7 @@ export default function eaBridgeRoutes({
                 ? eaBridgeService.getQuotes({
                     broker,
                     maxAgeMs: 5 * 60 * 1000,
-                    orderBy: 'symbol'
+                    orderBy: 'symbol',
                   })
                 : [];
               return (Array.isArray(quotes) ? quotes : [])
@@ -444,7 +458,7 @@ export default function eaBridgeRoutes({
       const broker = req.params.broker; // mt4 or mt5
       const payload = {
         ...req.body,
-        broker
+        broker,
       };
 
       const result = eaBridgeService.registerSession(payload);
@@ -452,7 +466,7 @@ export default function eaBridgeRoutes({
       void auditLogger?.record('ea.session.connect', {
         broker,
         accountNumber: payload.accountNumber,
-        accountMode: payload.accountMode
+        accountMode: payload.accountMode,
       });
 
       return ok(res, { ...result, serverPolicy: buildServerPolicy(broker) });
@@ -471,14 +485,14 @@ export default function eaBridgeRoutes({
       const broker = req.params.broker;
       const payload = {
         ...req.body,
-        broker
+        broker,
       };
 
       const result = eaBridgeService.disconnectSession(payload);
 
       void auditLogger?.record('ea.session.disconnect', {
         broker,
-        accountNumber: payload.accountNumber
+        accountNumber: payload.accountNumber,
       });
 
       return ok(res, result);
@@ -497,7 +511,7 @@ export default function eaBridgeRoutes({
       const broker = req.params.broker;
       const payload = {
         ...req.body,
-        broker
+        broker,
       };
 
       const result = eaBridgeService.handleHeartbeat(payload);
@@ -518,7 +532,7 @@ export default function eaBridgeRoutes({
       const broker = req.params.broker;
       const payload = {
         ...req.body,
-        broker
+        broker,
       };
       const result = eaBridgeService.evaluatePositionManagement(payload);
 
@@ -526,7 +540,10 @@ export default function eaBridgeRoutes({
         .trim()
         .toLowerCase();
       const enqueue =
-        payload.enqueue === true || enqueueEnv === '1' || enqueueEnv === 'true' || enqueueEnv === 'yes';
+        payload.enqueue === true ||
+        enqueueEnv === '1' ||
+        enqueueEnv === 'true' ||
+        enqueueEnv === 'yes';
 
       if (enqueue && Array.isArray(result?.commands)) {
         eaBridgeService.enqueueManagementCommands({ broker, commands: result.commands });
@@ -582,9 +599,9 @@ export default function eaBridgeRoutes({
               equity: session.equity,
               balance: session.balance,
               lastHeartbeat: session.lastHeartbeat,
-              ea: session.ea || null
+              ea: session.ea || null,
             }
-          : null
+          : null,
       });
     } catch (error) {
       logger.error({ err: error }, 'EA agent config retrieval failed');
@@ -601,7 +618,7 @@ export default function eaBridgeRoutes({
       const broker = req.params.broker;
       const payload = {
         ...req.body,
-        broker
+        broker,
       };
 
       const result = await eaBridgeService.handleTransaction(payload);
@@ -610,7 +627,7 @@ export default function eaBridgeRoutes({
         broker,
         type: payload.type,
         symbol: payload.symbol,
-        profit: payload.profit
+        profit: payload.profit,
       });
 
       return ok(res, result);
@@ -629,7 +646,7 @@ export default function eaBridgeRoutes({
       const broker = req.params.broker;
       const payload = parseRequestBodyWithValidator(validateMarketQuotesIngestDTO, req, res, {
         errorMessage: 'Invalid quotes payload',
-        payload: { ...(req.body || {}), broker }
+        payload: { ...(req.body || {}), broker },
       });
       if (!payload) {
         return null;
@@ -660,7 +677,7 @@ export default function eaBridgeRoutes({
               digits: quote?.digits ?? null,
               point: quote?.point ?? null,
               spreadPoints: quote?.spreadPoints ?? null,
-              timestamp: quote?.timestamp ?? quote?.time ?? null
+              timestamp: quote?.timestamp ?? quote?.time ?? null,
             };
           })
           .filter(Boolean);
@@ -681,7 +698,7 @@ export default function eaBridgeRoutes({
 
       void auditLogger?.record('ea.market.quotes', {
         broker,
-        recorded: result?.recorded ?? null
+        recorded: result?.recorded ?? null,
       });
 
       return ok(res, result);
@@ -713,7 +730,7 @@ export default function eaBridgeRoutes({
       void auditLogger?.record('ea.market.symbols.register', {
         broker,
         recorded: result?.recorded ?? null,
-        count: result?.count ?? null
+        count: result?.count ?? null,
       });
 
       return ok(res, { ...result, timestamp: Date.now() });
@@ -757,7 +774,7 @@ export default function eaBridgeRoutes({
         broker,
         symbols,
         maxAgeMs: req.query.maxAgeMs,
-        orderBy: req.query.orderBy
+        orderBy: req.query.orderBy,
       });
       return ok(res, { broker, quotes, count: quotes.length, timestamp: Date.now() });
     } catch (error) {
@@ -775,7 +792,7 @@ export default function eaBridgeRoutes({
       const broker = req.params.broker;
       const payload = parseRequestBodyWithValidator(validateMarketNewsIngestDTO, req, res, {
         errorMessage: 'Invalid news payload',
-        payload: { ...(req.body || {}), broker }
+        payload: { ...(req.body || {}), broker },
       });
       if (!payload) {
         return null;
@@ -785,7 +802,7 @@ export default function eaBridgeRoutes({
 
       void auditLogger?.record('ea.market.news', {
         broker,
-        ingested: result?.ingested ?? null
+        ingested: result?.ingested ?? null,
       });
 
       return ok(res, result);
@@ -804,7 +821,7 @@ export default function eaBridgeRoutes({
       const broker = req.params.broker;
       const payload = parseRequestBodyWithValidator(validateMarketSnapshotIngestDTO, req, res, {
         errorMessage: 'Invalid snapshot payload',
-        payload: { ...(req.body || {}), broker }
+        payload: { ...(req.body || {}), broker },
       });
       if (!payload) {
         return null;
@@ -821,7 +838,7 @@ export default function eaBridgeRoutes({
             broker,
             symbol,
             timestamp: payload.timestamp || payload.time || null,
-            timeframes: payload.timeframes || null
+            timeframes: payload.timeframes || null,
           });
         }
       } catch (_error) {
@@ -840,7 +857,7 @@ export default function eaBridgeRoutes({
 
       void auditLogger?.record('ea.market.snapshot', {
         broker,
-        symbol: payload.symbol || payload.pair || null
+        symbol: payload.symbol || payload.pair || null,
       });
 
       return ok(res, result);
@@ -869,12 +886,12 @@ export default function eaBridgeRoutes({
         const result = eaBridgeService.requestMarketSnapshot({
           broker,
           symbol,
-          ttlMs: req.body?.ttlMs
+          ttlMs: req.body?.ttlMs,
         });
 
         void auditLogger?.record('ea.market.snapshot.request', {
           broker,
-          symbol
+          symbol,
         });
 
         return ok(res, result);
@@ -920,7 +937,7 @@ export default function eaBridgeRoutes({
         const result = eaBridgeService.setActiveSymbols({
           broker,
           symbols,
-          ttlMs: req.body?.ttlMs
+          ttlMs: req.body?.ttlMs,
         });
 
         // Best-effort: when the dashboard changes the tape, proactively run analysis.
@@ -938,7 +955,7 @@ export default function eaBridgeRoutes({
 
         void auditLogger?.record('ea.market.active_symbols.set', {
           broker,
-          count: Array.isArray(result?.symbols) ? result.symbols.length : null
+          count: Array.isArray(result?.symbols) ? result.symbols.length : null,
         });
 
         return ok(res, { ...result, timestamp: Date.now() });
@@ -979,7 +996,7 @@ export default function eaBridgeRoutes({
         const snapshot = eaBridgeService.getMarketSnapshot({
           broker,
           symbol,
-          maxAgeMs: req.query.maxAgeMs
+          maxAgeMs: req.query.maxAgeMs,
         });
         return ok(res, { broker, symbol: symbol || null, snapshot, timestamp: Date.now() });
       } catch (error) {
@@ -998,12 +1015,12 @@ export default function eaBridgeRoutes({
       const broker = req.params.broker;
       const candidate = {
         ...(req.body || {}),
-        broker
+        broker,
       };
 
       const payload = parseRequestBodyWithValidator(validateMarketBarsIngestDTO, req, res, {
         errorMessage: 'Invalid bars payload',
-        payload: candidate
+        payload: candidate,
       });
       if (!payload) {
         return null;
@@ -1021,7 +1038,7 @@ export default function eaBridgeRoutes({
             timeframe: payload.timeframe || payload.tf || null,
             timestamp: payload.timestamp || payload.time || null,
             bar: payload.bar || null,
-            bars: Array.isArray(payload.bars) ? payload.bars : null
+            bars: Array.isArray(payload.bars) ? payload.bars : null,
           });
 
           // Compute-on-close behavior: only trigger realtime analysis on higher timeframes.
@@ -1052,7 +1069,7 @@ export default function eaBridgeRoutes({
         broker,
         symbol: payload.symbol || null,
         timeframe: payload.timeframe || null,
-        recorded: result?.recorded ?? null
+        recorded: result?.recorded ?? null,
       });
 
       return ok(res, result);
@@ -1080,7 +1097,7 @@ export default function eaBridgeRoutes({
         symbol,
         timeframe,
         limit: req.query.limit,
-        maxAgeMs: req.query.maxAgeMs
+        maxAgeMs: req.query.maxAgeMs,
       });
 
       return ok(res, {
@@ -1089,7 +1106,7 @@ export default function eaBridgeRoutes({
         timeframe,
         bars,
         count: bars.length,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     } catch (error) {
       logger.error({ err: error }, 'EA market bars retrieval failed');
@@ -1119,7 +1136,7 @@ export default function eaBridgeRoutes({
           eaBridgeService.touchActiveSymbol({
             broker,
             symbol,
-            ttlMs: req.query.ttlMs
+            ttlMs: req.query.ttlMs,
           });
         } catch (_error) {
           // best-effort
@@ -1130,7 +1147,7 @@ export default function eaBridgeRoutes({
           symbol,
           timeframe,
           limit: req.query.limit,
-          maxAgeMs: req.query.maxAgeMs
+          maxAgeMs: req.query.maxAgeMs,
         });
 
         return ok(res, {
@@ -1139,7 +1156,7 @@ export default function eaBridgeRoutes({
           timeframe,
           candles,
           count: candles.length,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
       } catch (error) {
         logger.error({ err: error }, 'EA market candles retrieval failed');
@@ -1169,7 +1186,7 @@ export default function eaBridgeRoutes({
           eaBridgeService.touchActiveSymbol({
             broker,
             symbol,
-            ttlMs: req.query.ttlMs
+            ttlMs: req.query.ttlMs,
           });
         } catch (_error) {
           // best-effort
@@ -1185,7 +1202,7 @@ export default function eaBridgeRoutes({
           symbol,
           timeframes,
           limit,
-          maxAgeMs
+          maxAgeMs,
         });
 
         return ok(res, {
@@ -1196,7 +1213,7 @@ export default function eaBridgeRoutes({
           maxAgeMs,
           analyses: result.analyses,
           aggregate: result.aggregate,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
       } catch (error) {
         logger.error({ err: error }, 'EA market candle analysis retrieval failed');
@@ -1230,7 +1247,7 @@ export default function eaBridgeRoutes({
       const payload = {
         symbol: req.query.symbol || req.body?.symbol,
         broker,
-        accountMode: req.query.accountMode || req.body?.accountMode
+        accountMode: req.query.accountMode || req.body?.accountMode,
       };
 
       if (!payload.symbol) {
@@ -1257,7 +1274,7 @@ export default function eaBridgeRoutes({
       const payload = {
         symbol: req.query.symbol || req.body?.symbol,
         broker,
-        accountMode: req.query.accountMode || req.body?.accountMode
+        accountMode: req.query.accountMode || req.body?.accountMode,
       };
 
       if (!payload.symbol) {
@@ -1302,7 +1319,7 @@ export default function eaBridgeRoutes({
             symbol: payload.symbol,
             timeframe: tf,
             limit: 1,
-            maxAgeMs
+            maxAgeMs,
           });
           const latestBar = Array.isArray(bars) && bars.length ? bars[0] : null;
           barsContextByTimeframe[tf] = { symbol: payload.symbol, timeframe: tf, bar: latestBar };
@@ -1313,14 +1330,14 @@ export default function eaBridgeRoutes({
         barsContext = primary || {
           symbol: payload.symbol,
           timeframe: requestedTimeframe,
-          bar: null
+          bar: null,
         };
       } catch (error) {
         barsContext = {
           symbol: payload.symbol,
           timeframe: requestedTimeframe,
           bar: null,
-          error: error?.message || 'bars unavailable'
+          error: error?.message || 'bars unavailable',
         };
 
         if (requestedTimeframes.length > 1) {
@@ -1370,7 +1387,7 @@ export default function eaBridgeRoutes({
           broker,
           symbol,
           maxAgeMs,
-          now
+          now,
         });
         return ok(res, { now, maxAgeMs: diagnostics.maxAgeMs, ...diagnostics });
       }
@@ -1383,7 +1400,7 @@ export default function eaBridgeRoutes({
           broker: b,
           symbol,
           maxAgeMs,
-          now
+          now,
         });
       }
 

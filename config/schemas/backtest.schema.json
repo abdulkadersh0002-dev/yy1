@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": ["outputDir", "transactionCosts", "backtesterOptions", "datasets"],
   "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
     "outputDir": { "type": "string", "minLength": 1 },
     "transactionCosts": {
       "type": "object",

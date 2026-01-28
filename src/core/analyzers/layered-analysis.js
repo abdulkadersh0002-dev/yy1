@@ -175,7 +175,7 @@ const estimateFailureCost = ({ pair, entry, quoteMidVelocityPerSec }) => {
   return {
     available: true,
     invalidationDistancePips: Number(distPips.toFixed(1)),
-    timeToInvalidationSec: timeToStopSec != null ? Math.round(timeToStopSec) : null
+    timeToInvalidationSec: timeToStopSec != null ? Math.round(timeToStopSec) : null,
   };
 };
 
@@ -195,14 +195,14 @@ const sessionFromUtc = (utcHour) => {
     return {
       session: 'london_ny_overlap',
       labelEn: 'London/NY overlap',
-      labelAr: 'تداخل لندن/نيويورك'
+      labelAr: 'تداخل لندن/نيويورك',
     };
   }
   if (asia && london) {
     return {
       session: 'asia_london_overlap',
       labelEn: 'Asia/London overlap',
-      labelAr: 'تداخل آسيا/لندن'
+      labelAr: 'تداخل آسيا/لندن',
     };
   }
   if (ny) {
@@ -248,7 +248,7 @@ const buildLayer = ({
   metrics,
   evidence,
   warnings,
-  availability
+  availability,
 }) => {
   const { dir, arrow } = formatDirection(direction);
   return {
@@ -265,7 +265,7 @@ const buildLayer = ({
     summaryAr: summaryAr || null,
     metrics: safeObj(metrics) || {},
     evidence: safeArray(evidence),
-    warnings: safeArray(warnings)
+    warnings: safeArray(warnings),
   };
 };
 
@@ -301,14 +301,72 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
   const utcDow = now.getUTCDay();
   const session = sessionFromUtc(utcHour);
 
-  const spreadPoints = toFiniteNumber(quote.spreadPoints);
-  const spread = toFiniteNumber(quote.spread);
-  const spreadPct = toFiniteNumber(quote.spreadPct);
+  const quoteDigits = toFiniteNumber(quote.digits);
+  const quotePoint = toFiniteNumber(quote.point);
+
+  let spreadPoints = toFiniteNumber(quote.spreadPoints);
+  let spread = toFiniteNumber(quote.spread);
+  let spreadPct = toFiniteNumber(quote.spreadPct);
   const quoteAgeMs = toFiniteNumber(quote.ageMs);
-  const quoteBid = toFiniteNumber(quote.bid);
-  const quoteAsk = toFiniteNumber(quote.ask);
+
+  const quoteSource = String(quote?.source || '').toLowerCase();
+  const barsOnlySource =
+    quoteSource.includes('ea') &&
+    (quoteSource.includes('bars') || quoteSource.includes('snapshot'));
+
+  let quoteBid = toFiniteNumber(quote.bid);
+  let quoteAsk = toFiniteNumber(quote.ask);
   const quoteLast = toFiniteNumber(quote.last);
-  const quoteMid = toFiniteNumber(quote.mid);
+  let quoteMid = toFiniteNumber(quote.mid);
+
+  // If the EA feed is operating in "bars-only" mode (or broker blocks tick access),
+  // we may have a valid mid/last but bid/ask = 0. Synthesize bid/ask so the dashboard
+  // doesn't render zeros for otherwise-usable market data.
+  const fallbackPrice = quoteLast != null ? quoteLast : quoteMid;
+  if (!barsOnlySource && fallbackPrice != null) {
+    if (!(quoteBid > 0)) {
+      quoteBid = fallbackPrice;
+    }
+    if (!(quoteAsk > 0)) {
+      quoteAsk = fallbackPrice;
+    }
+    if (quoteMid == null) {
+      quoteMid = (quoteBid + quoteAsk) / 2;
+    }
+  }
+  const inferredSpread =
+    quoteBid != null && quoteAsk != null && quoteAsk > quoteBid
+      ? Number((quoteAsk - quoteBid).toFixed(8))
+      : null;
+  if (spread == null) {
+    spread = inferredSpread;
+  }
+  if (spreadPct == null && spread != null && quoteMid != null && quoteMid > 0) {
+    spreadPct = Number(((spread / quoteMid) * 100).toFixed(4));
+  }
+  if (spreadPoints == null && spread != null) {
+    const point =
+      quotePoint != null && quotePoint > 0
+        ? quotePoint
+        : quoteDigits != null && quoteDigits >= 0
+          ? 1 / 10 ** quoteDigits
+          : null;
+    if (point != null && point > 0) {
+      spreadPoints = Number((spread / point).toFixed(2));
+    }
+  }
+
+  if (barsOnlySource && inferredSpread == null) {
+    if (spread === 0) {
+      spread = null;
+    }
+    if (spreadPoints === 0) {
+      spreadPoints = null;
+    }
+    if (spreadPct === 0) {
+      spreadPct = null;
+    }
+  }
   const quoteMidDelta = toFiniteNumber(quote.midDelta);
   const quoteMidVelocityPerSec = toFiniteNumber(quote.midVelocityPerSec);
   const quoteMidAccelerationPerSec2 = toFiniteNumber(quote.midAccelerationPerSec2);
@@ -375,7 +433,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     .map((it) => ({
       id: it?.id != null ? String(it.id) : null,
       reason: it?.reason != null ? String(it.reason) : null,
-      label: it?.label != null ? String(it.label) : null
+      label: it?.label != null ? String(it.label) : null,
     }))
     .filter((it) => Boolean(it.id));
 
@@ -439,9 +497,9 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         quoteAgeMs,
         pending: quotePending,
         quoteSource: quote?.source || null,
-        broker: scn?.sources?.quote?.broker || null,
+        broker: scn?.sources?.quote?.broker || quote?.broker || scn?.broker || null,
         symbol: scn?.sources?.quote?.symbol || quote?.symbol || null,
-        timeframeFocus: pickTf
+        timeframeFocus: pickTf,
       },
       evidence: [
         quoteAgeMs != null ? `Quote freshness: ${quoteAgeMs}ms` : null,
@@ -451,10 +509,10 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         quoteVolume != null ? `M1 volume: ${quoteVolume}` : null,
         gapToMid != null ? `Gap to M1 close: ${gapToMid}` : null,
         scn?.sources?.quote?.broker ? `Broker source: ${scn.sources.quote.broker}` : null,
-        pickTf ? `Candle focus timeframe: ${pickTf}` : null
+        pickTf ? `Candle focus timeframe: ${pickTf}` : null,
       ].filter(Boolean),
       warnings: rawWarnings,
-      availability: quoteLast != null || quoteBid != null ? 'available' : 'partial'
+      availability: quoteLast != null || quoteBid != null ? 'available' : 'partial',
     })
   );
 
@@ -466,7 +524,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     structure,
     smcAccDist,
     trendPct,
-    candleDir
+    candleDir,
   });
   const phaseLabel = marketPhaseLabel(phase);
   layers.push(
@@ -493,14 +551,14 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
           ? {
               state: regime.state || null,
               confidence: toFiniteNumber(regime.confidence),
-              r2: toFiniteNumber(regime.r2)
+              r2: toFiniteNumber(regime.r2),
             }
           : null,
-        patterns: patterns.map((p) => p?.name).filter(Boolean)
+        patterns: patterns.map((p) => p?.name).filter(Boolean),
       },
       evidence: patterns.map((p) => p?.name).filter(Boolean),
       warnings: candlesSummary ? [] : ['Missing candle series/analysis from broker.'],
-      availability: candlesSummary ? 'available' : 'missing'
+      availability: candlesSummary ? 'available' : 'missing',
     })
   );
 
@@ -534,10 +592,10 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         htf: {
           D1: d1Dir,
           H4: h4Dir,
-          conflictWithSignal: Boolean(htfConflict)
+          conflictWithSignal: Boolean(htfConflict),
         },
         marketMemory,
-        structure
+        structure,
       },
       evidence: structure
         ? [
@@ -545,14 +603,14 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
             `Bias: ${structure.bias}`,
             `Phase: ${phaseLabel.en}`,
             d1Dir ? `D1: ${d1Dir}` : null,
-            h4Dir ? `H4: ${h4Dir}` : null
+            h4Dir ? `H4: ${h4Dir}` : null,
           ].filter(Boolean)
         : [],
       warnings: [
         ...(structure ? [] : ['No BOS/HH-HL proxy (insufficient candles).']),
-        ...(htfConflict ? ['HTF conflict: avoid entries against D1/H4.'] : [])
+        ...(htfConflict ? ['HTF conflict: avoid entries against D1/H4.'] : []),
       ],
-      availability: structure ? 'available' : 'partial'
+      availability: structure ? 'available' : 'partial',
     })
   );
 
@@ -587,7 +645,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     spreadLayer?.status === 'FAIL' ? 'execution_spread' : null,
     liquidityHint && String(liquidityHint).toLowerCase().includes('thin') ? 'thin_liquidity' : null,
     smcVolumeSpike && smcVolumeSpike.isSpike === false ? 'low_volume' : null,
-    isLateSession ? 'late_session' : null
+    isLateSession ? 'late_session' : null,
   ].filter(Boolean);
 
   const fomoRisk = Boolean(rsiExtreme || isLateSession);
@@ -612,7 +670,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         timeframeFocus: pickTf,
         trendPct,
         rsi,
-        regime
+        regime,
       },
       evidence: [
         trendPct != null ? `TrendPct: ${trendPct.toFixed(4)}%` : null,
@@ -620,16 +678,16 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         regime?.state ? `Regime: ${regime.state}` : null,
         `MomentumQuality: ${momentumQualityScore}/100`,
         fomoRisk ? 'FOMO risk detected' : null,
-        falseStrengthFlags.length ? `FalseStrengthFlags: ${falseStrengthFlags.join(',')}` : null
+        falseStrengthFlags.length ? `FalseStrengthFlags: ${falseStrengthFlags.join(',')}` : null,
       ].filter(Boolean),
       warnings: [
         ...(trendPct == null ? ['Missing trend features (no candles).'] : []),
         ...(rsiExtreme ? ['RSI extreme: auto-confidence should be reduced.'] : []),
         ...(falseStrengthFlags.length
           ? ['Possible false strength (thin liquidity/low volume/late expansion).']
-          : [])
+          : []),
       ],
-      availability: trendPct != null ? 'available' : 'partial'
+      availability: trendPct != null ? 'available' : 'partial',
     })
   );
 
@@ -718,7 +776,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     liquidityHint,
     spreadPoints,
     quoteVolume,
-    smcVolumeSpike
+    smcVolumeSpike,
   });
 
   layers.push(
@@ -738,7 +796,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         orderBlock: smcOrderBlock,
         priceImbalance: smcPriceImbalance,
         patterns: patterns.map((p) => p?.name).filter(Boolean),
-        structure
+        structure,
       },
       evidence: [
         smcSweep ? `sweep:${smcSweep.type}` : null,
@@ -747,7 +805,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         liquidityHint ? `liquidityHint:${String(liquidityHint)}` : null,
         spreadPoints != null ? `spreadPts:${spreadPoints}` : null,
         quoteVolume != null ? `tickVol:${quoteVolume}` : null,
-        ...patterns.map((p) => p?.name).filter(Boolean)
+        ...patterns.map((p) => p?.name).filter(Boolean),
       ].filter(Boolean),
       warnings:
         liquidityAvailability === 'missing'
@@ -756,9 +814,9 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
               'Liquidity/SMC is best-effort without full order-book.',
               ...(liquidityQuality.quality === 'thin_or_fake'
                 ? ['Thin/fake liquidity risk: require stronger confirmations.']
-                : [])
+                : []),
             ],
-      availability: liquidityAvailability
+      availability: liquidityAvailability,
     })
   );
 
@@ -847,15 +905,15 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         volume,
         volumeSpike: smcVolumeSpike,
         volumeImbalance: smcVolumeImbalance,
-        accumulationDistribution: smcAccDist
+        accumulationDistribution: smcAccDist,
       },
       evidence: [
         smcVolumeSpike ? `volSpike:${smcVolumeSpike.isSpike ? '1' : '0'}` : null,
         smcVolumeImbalance ? `volImb:${smcVolumeImbalance.state}` : null,
-        smcAccDist ? `accDist:${smcAccDist.state}` : null
+        smcAccDist ? `accDist:${smcAccDist.state}` : null,
       ].filter(Boolean),
       warnings: ['True order-flow requires L2/order-book; this is best-effort from candle volume.'],
-      availability: volumeAvailability
+      availability: volumeAvailability,
     })
   );
 
@@ -876,11 +934,11 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         : 'التذبذب غير متوفر.',
       metrics: {
         timeframeFocus: pickTf,
-        volatility
+        volatility,
       },
       evidence: volatility ? [`ATR%: ${atrPct ?? '—'}`, `State: ${volatility.state || '—'}`] : [],
       warnings: [],
-      availability: volatility ? 'available' : 'partial'
+      availability: volatility ? 'available' : 'partial',
     })
   );
 
@@ -894,11 +952,11 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         ? {
             status: smart.status || null,
             score: toFiniteNumber(smart?.metrics?.score),
-            reason: smart.reason || null
+            reason: smart.reason || null,
           }
         : null,
       session: sess ? { status: sess.status || null, reason: sess.reason || null } : null,
-      hard: hard ? { status: hard.status || null, reason: hard.reason || null } : null
+      hard: hard ? { status: hard.status || null, reason: hard.reason || null } : null,
     };
   })();
 
@@ -916,16 +974,16 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         utcHour,
         utcDayOfWeek: utcDow,
         session: session.session,
-        timeWindowAuthority: timeAuthority
+        timeWindowAuthority: timeAuthority,
       },
       evidence: ['Session is heuristic (UTC-based).'],
       warnings: [
         'Time intelligence improves with broker timezone + session stats.',
         ...(timeAuthority.smart?.status === 'FAIL' || timeAuthority.session?.status === 'FAIL'
           ? ['Time-window authority failed: wait for opening drive or valid re-entry.']
-          : [])
+          : []),
       ],
-      availability: 'best_effort'
+      availability: 'best_effort',
     })
   );
 
@@ -958,15 +1016,15 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       summaryAr: `اقتصاد=${econ?.direction || '—'} · فرق الماكرو=${macroDiff ?? '—'} · شعور نسبي=${relSent ?? '—'}`,
       metrics: {
         economic: econ,
-        macroRelative: macroRelative || null
+        macroRelative: macroRelative || null,
       },
       evidence: [
         macroDiff != null ? `Macro differential: ${macroDiff}` : null,
-        relSent != null ? `Relative sentiment: ${relSent}` : null
+        relSent != null ? `Relative sentiment: ${relSent}` : null,
       ].filter(Boolean),
       warnings:
         macroDiff == null && relSent == null ? ['No relative-strength drivers available.'] : [],
-      availability: macroDiff != null || relSent != null ? 'partial' : 'missing'
+      availability: macroDiff != null || relSent != null ? 'partial' : 'missing',
     })
   );
 
@@ -1028,15 +1086,15 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
           window: windowN,
           breaksCount: breaks.length,
           peers: safeArray(intermarketCorrelation.peers),
-          stability
+          stability,
         },
         evidence: [
           intermarketCorrelation.source ? `Source: ${intermarketCorrelation.source}` : null,
           tf ? `Timeframe: ${tf}` : null,
-          windowN != null ? `Window: ${windowN}` : null
+          windowN != null ? `Window: ${windowN}` : null,
         ].filter(Boolean),
         warnings: warningList,
-        availability: 'available'
+        availability: 'available',
       })
     );
   } else {
@@ -1055,7 +1113,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         metrics: { available: false },
         evidence: [],
         warnings: ['Make sure MT4/MT5 is connected and EA is publishing bars for peer symbols.'],
-        availability: 'missing'
+        availability: 'missing',
       })
     );
   }
@@ -1075,11 +1133,11 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         : 'بيانات الماكرو غير متوفرة.',
       metrics: {
         fundamentals: fundamentals || null,
-        macroRelative: macroRelative || null
+        macroRelative: macroRelative || null,
       },
       evidence: [macroDiff != null ? `Δ macro: ${macroDiff}` : null].filter(Boolean),
       warnings: macroDiff == null ? ['Macro layer depends on fundamentals coverage.'] : [],
-      availability: macroDiff != null ? 'partial' : 'missing'
+      availability: macroDiff != null ? 'partial' : 'missing',
     })
   );
 
@@ -1097,17 +1155,17 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       summaryAr: `الأخبار=${news?.direction || '—'} · التأثير=${news?.impact ?? newsImpactScore ?? '—'} · أحداث قادمة=${newsUpcoming ?? '—'}`,
       metrics: {
         news,
-        realtime: market?.news || null
+        realtime: market?.news || null,
       },
       evidence: [
         newsImpactScore != null ? `EA-news impactScore: ${newsImpactScore}` : null,
-        newsUpcoming != null ? `Upcoming events: ${newsUpcoming}` : null
+        newsUpcoming != null ? `Upcoming events: ${newsUpcoming}` : null,
       ].filter(Boolean),
       warnings:
         newsImpactScore != null && newsImpactScore >= 4
           ? ['High event risk. Consider no-trade.']
           : [],
-      availability: news?.direction || newsImpactScore != null ? 'partial' : 'missing'
+      availability: news?.direction || newsImpactScore != null ? 'partial' : 'missing',
     })
   );
 
@@ -1135,7 +1193,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       metrics: { doji, atrPct, patterns: patterns.map((p) => p?.name).filter(Boolean) },
       evidence: patterns.map((p) => p?.name).filter(Boolean),
       warnings: [],
-      availability: patterns.length ? 'partial' : 'best_effort'
+      availability: patterns.length ? 'partial' : 'best_effort',
     })
   );
 
@@ -1163,7 +1221,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
   const failureCost = estimateFailureCost({
     pair,
     entry: safeObj(primary?.entry) || safeObj(sig?.entry) || null,
-    quoteMidVelocityPerSec
+    quoteMidVelocityPerSec,
   });
 
   layers.push(
@@ -1182,7 +1240,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         spreadPoints,
         newsImpactScore,
         atrPct,
-        failureCostEstimator: failureCost
+        failureCostEstimator: failureCost,
       },
       evidence: [
         spreadPoints != null ? `Spread penalty source: ${spreadPoints} pts` : null,
@@ -1194,11 +1252,11 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
                 ? ` (~${failureCost.timeToInvalidationSec}s @ current velocity)`
                 : ''
             }`
-          : 'FailureCost: unavailable'
+          : 'FailureCost: unavailable',
       ].filter(Boolean),
       warnings:
         riskScore < 55 ? ['Risk environment is unfavorable; tighten rules or no-trade.'] : [],
-      availability: 'best_effort'
+      availability: 'best_effort',
     })
   );
 
@@ -1225,7 +1283,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       evidence: r2 != null ? [`R²=${r2}%`] : [],
       warnings:
         r2 != null && r2 < 55 ? ['Low trend-fit; prefer range tactics or reduce size.'] : [],
-      availability: r2 != null ? 'available' : 'partial'
+      availability: r2 != null ? 'available' : 'partial',
     })
   );
 
@@ -1248,11 +1306,11 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       metrics: {
         verdict: isTradeValid ? 'PASS' : 'FAIL',
         isTradeValid,
-        failedChecks: failedChecks.map(([key]) => key)
+        failedChecks: failedChecks.map(([key]) => key),
       },
       evidence: failedChecks.map(([key]) => `FAILED:${key}`),
       warnings: !isTradeValid ? ['Do not trade until constraints are satisfied.'] : [],
-      availability: 'available'
+      availability: 'available',
     })
   );
 
@@ -1262,7 +1320,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     normalizeDirection(candlesSummary?.direction),
     normalizeDirection(econ?.direction),
     normalizeDirection(news?.direction),
-    normalizeDirection(macroRelative?.direction)
+    normalizeDirection(macroRelative?.direction),
   ].filter(Boolean);
 
   const buyVotes = votes.filter((v) => v === 'BUY').length;
@@ -1294,13 +1352,13 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
           candles: normalizeDirection(candlesSummary?.direction),
           economic: normalizeDirection(econ?.direction),
           news: normalizeDirection(news?.direction),
-          macro: normalizeDirection(macroRelative?.direction)
+          macro: normalizeDirection(macroRelative?.direction),
         },
         htfPriority: {
           D1: d1Dir,
           H4: h4Dir,
           blockedIfOpposed: true,
-          conflictWithSignal: Boolean(htfConflict)
+          conflictWithSignal: Boolean(htfConflict),
         },
         premiumDiscount: (() => {
           const loc = confluenceById.get('smart_price_location') || null;
@@ -1308,7 +1366,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
             ? {
                 status: loc.status || null,
                 reason: loc.reason || null,
-                metrics: safeObj(loc.metrics)
+                metrics: safeObj(loc.metrics),
               }
             : null;
         })(),
@@ -1324,22 +1382,22 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
                 .slice()
                 .sort((a, b) => (Number(b?.weight) || 0) - (Number(a?.weight) || 0))
                 .slice(0, 6)
-                .map((l) => ({ id: l.id, weight: l.weight, reason: l.reason, label: l.label }))
+                .map((l) => ({ id: l.id, weight: l.weight, reason: l.reason, label: l.label })),
             }
-          : null
+          : null,
       },
       evidence: [
         ...votes.map((v) => `vote:${v}`),
         d1Dir ? `D1:${d1Dir}` : null,
         h4Dir ? `H4:${h4Dir}` : null,
         confluence?.score != null ? `ConfluenceWeighted:${confluence.score}/100` : null,
-        confluence?.strictSmartChecklist ? 'StrictSmartChecklist:ON' : null
+        confluence?.strictSmartChecklist ? 'StrictSmartChecklist:ON' : null,
       ].filter(Boolean),
       warnings: [
         ...(alignmentScore < 55 ? ['Low confluence; reduce risk or wait.'] : []),
-        ...(htfConflict ? ['HTF priority rule: do NOT enter against D1/H4.'] : [])
+        ...(htfConflict ? ['HTF priority rule: do NOT enter against D1/H4.'] : []),
       ],
-      availability: votes.length ? 'available' : 'partial'
+      availability: votes.length ? 'available' : 'partial',
     })
   );
 
@@ -1405,7 +1463,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       'smart_execution_edge_filter',
       'smart_signal_validation',
       'smart_context_awareness',
-      'smart_killer_question'
+      'smart_killer_question',
     ];
     const out = [];
     for (const id of keys) {
@@ -1417,7 +1475,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         id,
         status: l.status || null,
         reason: l.reason || null,
-        weight: l.weight || null
+        weight: l.weight || null,
       });
     }
     return out;
@@ -1445,7 +1503,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         ? [
             ...safeArray(evidence.base),
             ...safeArray(evidence.quote),
-            ...safeArray(evidence.external)
+            ...safeArray(evidence.external),
           ]
         : [];
     const headlinesCount = headlinesRaw.filter(
@@ -1456,7 +1514,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       missing.push('news:calendarEvents');
       details.newsCalendarEvents = {
         available: false,
-        reason: 'No EA calendar events received yet.'
+        reason: 'No EA calendar events received yet.',
       };
     } else {
       details.newsCalendarEvents = { available: true, count: calendar.length };
@@ -1466,7 +1524,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       missing.push('news:headlines');
       details.newsHeadlines = {
         available: false,
-        reason: 'No headlines evidence received yet.'
+        reason: 'No headlines evidence received yet.',
       };
     } else {
       details.newsHeadlines = { available: true, count: headlinesCount };
@@ -1481,7 +1539,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       missing.push('intermarket:correlation');
       details.correlation = {
         available: false,
-        reason: 'Correlation snapshot not provided in EA-only payload.'
+        reason: 'Correlation snapshot not provided in EA-only payload.',
       };
     } else {
       details.correlation = { available: true };
@@ -1497,7 +1555,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       missing.push('technical:indicators');
       details.technicalIndicators = {
         available: false,
-        reason: 'Waiting for MT snapshot (RSI/MACD/ATR/levels).'
+        reason: 'Waiting for MT snapshot (RSI/MACD/ATR/levels).',
       };
     } else {
       details.technicalIndicators = { available: true };
@@ -1508,7 +1566,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       missing.push('market:eaQuote');
       details.eaQuote = {
         available: false,
-        reason: 'EA quote missing (bid/ask/spread/volume).'
+        reason: 'EA quote missing (bid/ask/spread/volume).',
       };
     } else {
       details.eaQuote = {
@@ -1517,7 +1575,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         spreadPoints: Number.isFinite(Number(eaQuote.spreadPoints))
           ? Number(eaQuote.spreadPoints)
           : null,
-        volume: Number.isFinite(Number(eaQuote.volume)) ? Number(eaQuote.volume) : null
+        volume: Number.isFinite(Number(eaQuote.volume)) ? Number(eaQuote.volume) : null,
       };
     }
 
@@ -1647,9 +1705,9 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
                 enabled: Boolean(killSwitch.enabled),
                 blocked: Boolean(killSwitch.blocked),
                 ids: killSwitchIds,
-                items: killSwitchItems
+                items: killSwitchItems,
               }
-            : null
+            : null,
         },
         confluence: confluence
           ? {
@@ -1658,26 +1716,26 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
               passed: Boolean(confluence.passed),
               strictSmartChecklist: Boolean(confluence.strictSmartChecklist),
               hardFails: safeArray(confluence.hardFails),
-              keyGates
+              keyGates,
             }
           : null,
         entry: {
           price: toFiniteNumber(entry?.price ?? sig?.entryPrice),
           stopLoss: toFiniteNumber(entry?.stopLoss ?? sig?.stopLoss),
           takeProfit: toFiniteNumber(entry?.takeProfit ?? sig?.takeProfit),
-          riskReward: rr
+          riskReward: rr,
         },
         risk: {
           riskScore: Math.round(riskScore),
-          sizingHint
-        }
+          sizingHint,
+        },
       },
       evidence: [
         rr != null ? `R:R=${rr}` : null,
         `Alignment=${alignmentScore}%`,
         `RiskScore=${Math.round(riskScore)}`,
         adaptiveConfidence != null ? `AdaptiveConfidence=${adaptiveConfidence}%` : null,
-        decisionScore != null ? `DecisionScore=${decisionScore}/100` : null
+        decisionScore != null ? `DecisionScore=${decisionScore}/100` : null,
       ].filter(Boolean),
       warnings: [
         ...(killSwitchItems.length
@@ -1694,9 +1752,9 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
         ...(missingInputs?.missing?.length
           ? [`MISSING INPUTS: ${missingInputs.missing.slice(0, 6).join(', ')}`]
           : []),
-        ...(riskScore < 55 ? ['Consider smaller size or wait.'] : [])
+        ...(riskScore < 55 ? ['Consider smaller size or wait.'] : []),
       ],
-      availability: 'available'
+      availability: 'available',
     })
   );
 

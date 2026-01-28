@@ -7,7 +7,7 @@ export const SESSION_BLUEPRINT = [
     windowLabel: '22:00 - 07:00 UTC',
     openMinutes: 22 * 60,
     closeMinutes: 7 * 60,
-    theme: 'aqua'
+    theme: 'aqua',
   },
   {
     id: 'tokyo',
@@ -17,7 +17,7 @@ export const SESSION_BLUEPRINT = [
     windowLabel: '00:00 - 09:00 UTC',
     openMinutes: 0,
     closeMinutes: 9 * 60,
-    theme: 'violet'
+    theme: 'violet',
   },
   {
     id: 'london',
@@ -27,7 +27,7 @@ export const SESSION_BLUEPRINT = [
     windowLabel: '08:00 - 17:00 UTC',
     openMinutes: 8 * 60,
     closeMinutes: 17 * 60,
-    theme: 'magenta'
+    theme: 'magenta',
   },
   {
     id: 'new-york',
@@ -37,8 +37,8 @@ export const SESSION_BLUEPRINT = [
     windowLabel: '13:00 - 22:00 UTC',
     openMinutes: 13 * 60,
     closeMinutes: 22 * 60,
-    theme: 'amber'
-  }
+    theme: 'amber',
+  },
 ];
 
 export const formatDuration = (totalMinutes) => {
@@ -72,6 +72,118 @@ export const MAX_HISTORY_TRADES = 40;
 export const TICKER_WINDOW_SIZE = 220;
 export const TICKER_ADVANCE_STEP = 110;
 export const MAX_TICKER_SEARCH_RESULTS = 60;
+
+const FX_CATALOG_CURRENCIES = [
+  'USD',
+  'EUR',
+  'GBP',
+  'JPY',
+  'AUD',
+  'NZD',
+  'CAD',
+  'CHF',
+  'SEK',
+  'NOK',
+  'DKK',
+  'SGD',
+  'HKD',
+  'ZAR',
+  'TRY',
+  'MXN',
+  'PLN',
+  'CZK',
+  'HUF',
+  'RON',
+];
+
+const FX_CATALOG_PAIRS = (() => {
+  const pairs = new Set();
+  for (const base of FX_CATALOG_CURRENCIES) {
+    for (const quote of FX_CATALOG_CURRENCIES) {
+      if (base === quote) {
+        continue;
+      }
+      pairs.add(`${base}${quote}`);
+    }
+  }
+  return [...pairs];
+})();
+
+const METAL_CATALOG_PAIRS = [
+  'XAUUSD',
+  'XAGUSD',
+  'XPTUSD',
+  'XPDUSD',
+  'XAUEUR',
+  'XAGEUR',
+  'XAUJPY',
+  'XAGJPY',
+  'XAUGBP',
+  'XAGGBP',
+];
+
+const CRYPTO_CATALOG_BASES = [
+  'BTC',
+  'ETH',
+  'XRP',
+  'SOL',
+  'ADA',
+  'DOGE',
+  'LTC',
+  'BNB',
+  'DOT',
+  'LINK',
+  'AVAX',
+  'MATIC',
+  'TRX',
+  'BCH',
+  'ATOM',
+  'XLM',
+  'ETC',
+  'UNI',
+  'FIL',
+  'AAVE',
+  'NEAR',
+  'ALGO',
+  'ICP',
+  'INJ',
+  'APT',
+  'SUI',
+  'ARB',
+  'OP',
+  'PEPE',
+  'SHIB',
+  'TON',
+  'HBAR',
+];
+
+const CRYPTO_CATALOG_PAIRS = (() => {
+  const quotes = ['USD', 'USDT'];
+  const pairs = new Set();
+  for (const base of CRYPTO_CATALOG_BASES) {
+    for (const quote of quotes) {
+      if (base === quote) {
+        continue;
+      }
+      pairs.add(`${base}${quote}`);
+    }
+  }
+  return [...pairs];
+})();
+
+export const TICKER_CATALOG_SYMBOLS = (() => {
+  const all = [...FX_CATALOG_PAIRS, ...METAL_CATALOG_PAIRS, ...CRYPTO_CATALOG_PAIRS];
+  const unique = new Set(
+    all
+      .map((s) =>
+        String(s || '')
+          .trim()
+          .toUpperCase()
+      )
+      .filter(Boolean)
+  );
+  return [...unique].sort();
+})();
 
 export const ACTIVE_SYMBOLS_SYNC_MAX = (() => {
   const raw = Number(import.meta?.env?.VITE_ACTIVE_SYMBOLS_SYNC_MAX);
@@ -133,6 +245,26 @@ export const toNumber = (value) => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
+export const normalizeBrokerId = (value) => {
+  const raw = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (!raw) {
+    return '';
+  }
+  const cleaned = raw.replace(/["']/g, '').replace(/[\\/]+/g, '');
+  if (cleaned === 'metatrader4') {
+    return 'mt4';
+  }
+  if (cleaned === 'metatrader5') {
+    return 'mt5';
+  }
+  if (cleaned === 'mt4' || cleaned === 'mt5') {
+    return cleaned;
+  }
+  return cleaned;
+};
+
 export const normalizeTickerSymbol = (value) => {
   const raw = String(value ?? '').trim();
   if (!raw) {
@@ -145,6 +277,15 @@ export const normalizeTickerSymbol = (value) => {
   if (normalized.startsWith('#')) {
     normalized = normalized.slice(1);
   }
+
+  // Handle UI decorations like "EURUSD · MT5".
+  if (normalized.includes('·')) {
+    normalized = normalized.split('·')[0];
+  }
+
+  normalized = normalized.replace(/\s+/g, '');
+  normalized = normalized.replace(/[^A-Za-z0-9.]/g, '');
+
   return normalized.toUpperCase();
 };
 
@@ -162,7 +303,7 @@ export const TICKER_CATEGORIES = [
   { id: 'ALL', label: 'FX + Metals + Crypto' },
   { id: 'FX', label: 'FX' },
   { id: 'METALS', label: 'Metals' },
-  { id: 'CRYPTO', label: 'Crypto' }
+  { id: 'CRYPTO', label: 'Crypto' },
 ];
 
 export const isFxSymbol = (symbolUpper) => {

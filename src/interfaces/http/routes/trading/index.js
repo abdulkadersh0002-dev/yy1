@@ -1,16 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { ok, badRequest, notFound, serverError } from '../../../utils/http-response.js';
-import { parseRequestBody } from '../../../utils/validation.js';
+import { ok, badRequest, notFound, serverError } from '../../../../utils/http-response.js';
+import { parseRequestBody } from '../../../../utils/validation.js';
 import {
   createTradingSignalDTO,
   createTradeDTO,
   validateTradingSignalDTO,
-  validateTradeDTO
+  validateTradeDTO,
 } from '../../../../contracts/dtos.js';
-import { eaOnlyMode } from '../../../config/runtime-flags.js';
-import { attachLayeredAnalysisToSignal } from '../../../infrastructure/services/ea-signal-pipeline.js';
-import { buildEaNotConnectedResponse } from '../../../utils/ea-bridge-diagnostics.js';
+import { eaOnlyMode } from '../../../../config/runtime-flags.js';
+import { attachLayeredAnalysisToSignal } from '../../../../infrastructure/services/ea-signal-pipeline.js';
+import { buildEaNotConnectedResponse } from '../../../../utils/ea-bridge-diagnostics.js';
 
 const durationSecondsFrom = (start) => Number(process.hrtime.bigint() - start) / 1e9;
 
@@ -25,7 +25,7 @@ export default function tradingRoutes({
   requireSignalsGenerate,
   requireTradeExecute,
   requireTradeRead,
-  requireTradeClose
+  requireTradeClose,
 }) {
   const router = Router();
 
@@ -37,13 +37,13 @@ export default function tradingRoutes({
     broadcast: z.boolean().optional(),
     // Manual override for execution gates (news/session/liquidity/data-quality).
     // Defaults to false; meant for controlled operator interventions.
-    force: z.boolean().optional()
+    force: z.boolean().optional(),
   });
   const pairsSchema = z.object({
     pairs: z.array(z.string().min(3).max(20)).min(1),
     broker: z.string().min(2).max(20).optional(),
     eaOnly: z.boolean().optional(),
-    analysisMode: z.string().min(1).max(20).optional()
+    analysisMode: z.string().min(1).max(20).optional(),
   });
 
   router.get('/status', requireBasicRead, (req, res) => {
@@ -108,7 +108,7 @@ export default function tradingRoutes({
               symbol: pair,
               eaBridgeService,
               maxAgeMs: 2 * 60 * 1000,
-              now: Date.now()
+              now: Date.now(),
             })
           );
         }
@@ -125,7 +125,7 @@ export default function tradingRoutes({
         ? { broker: effectiveBroker, eaOnly: true, analysisMode: 'ea' }
         : {
             ...(broker ? { broker } : null),
-            ...(analysisMode ? { analysisMode } : null)
+            ...(analysisMode ? { analysisMode } : null),
           };
       const signalRaw = await tradingEngine.generateSignal(pair, options);
 
@@ -137,7 +137,7 @@ export default function tradingRoutes({
         symbol: pair,
         eaBridgeService,
         quoteMaxAgeMs: 2 * 60 * 1000,
-        now: Date.now()
+        now: Date.now(),
       });
 
       const signal = validateTradingSignalDTO(createTradingSignalDTO(signalRaw));
@@ -145,7 +145,7 @@ export default function tradingRoutes({
       tradingEngine.observeSignalGeneration?.({
         pair: signal?.pair || pair,
         durationSeconds,
-        status: 'success'
+        status: 'success',
       });
 
       if (wantsBroadcast === true) {
@@ -157,7 +157,7 @@ export default function tradingRoutes({
       tradingEngine.observeSignalGeneration?.({
         pair: pair || 'UNKNOWN',
         durationSeconds,
-        status: 'error'
+        status: 'error',
       });
       logger.error({ err: error, pair }, 'Failed to generate signal');
       return serverError(res, error);
@@ -167,7 +167,7 @@ export default function tradingRoutes({
   router.post('/signal/batch', requireSignalsGenerate, async (req, res) => {
     try {
       const parsed = parseRequestBody(pairsSchema, req, res, {
-        errorMessage: 'Invalid pairs payload'
+        errorMessage: 'Invalid pairs payload',
       });
       if (!parsed) {
         return null;
@@ -201,7 +201,7 @@ export default function tradingRoutes({
               symbol: pairs?.[0] || null,
               eaBridgeService,
               maxAgeMs: 2 * 60 * 1000,
-              now: Date.now()
+              now: Date.now(),
             })
           );
         }
@@ -218,7 +218,7 @@ export default function tradingRoutes({
         ? { broker: effectiveBroker, eaOnly: true, analysisMode: 'ea' }
         : {
             ...(broker ? { broker } : null),
-            ...(analysisMode ? { analysisMode } : null)
+            ...(analysisMode ? { analysisMode } : null),
           };
 
       const signals = await Promise.all(
@@ -234,7 +234,7 @@ export default function tradingRoutes({
               symbol: pair,
               eaBridgeService,
               quoteMaxAgeMs: 2 * 60 * 1000,
-              now: Date.now()
+              now: Date.now(),
             });
 
             const signal = validateTradingSignalDTO(createTradingSignalDTO(signalRaw));
@@ -242,7 +242,7 @@ export default function tradingRoutes({
             tradingEngine.observeSignalGeneration?.({
               pair: signal?.pair || pair,
               durationSeconds,
-              status: 'success'
+              status: 'success',
             });
             return signal;
           } catch (error) {
@@ -250,7 +250,7 @@ export default function tradingRoutes({
             tradingEngine.observeSignalGeneration?.({
               pair: pair || 'UNKNOWN',
               durationSeconds,
-              status: 'error'
+              status: 'error',
             });
             logger.error({ err: error, pair }, 'Failed to generate batch signal');
             throw error;
@@ -304,7 +304,7 @@ export default function tradingRoutes({
               symbol: pair,
               eaBridgeService,
               maxAgeMs: 2 * 60 * 1000,
-              now: Date.now()
+              now: Date.now(),
             })
           );
         }
@@ -318,7 +318,7 @@ export default function tradingRoutes({
       if (brokerIsEa && typeof eaBridgeService?.getSignalForExecution === 'function') {
         execution = await eaBridgeService.getSignalForExecution({
           broker: effectiveBroker,
-          symbol: pair
+          symbol: pair,
         });
 
         if (!execution?.success) {
@@ -327,7 +327,7 @@ export default function tradingRoutes({
             broker: effectiveBroker,
             pair,
             shouldExecute: false,
-            execution: execution?.execution || null
+            execution: execution?.execution || null,
           });
         }
 
@@ -338,7 +338,7 @@ export default function tradingRoutes({
             broker: effectiveBroker,
             pair,
             shouldExecute: false,
-            execution: execution?.execution || null
+            execution: execution?.execution || null,
           });
         }
 
@@ -351,7 +351,7 @@ export default function tradingRoutes({
             pair,
             shouldExecute: false,
             execution: execution?.execution || null,
-            signal: dto
+            signal: dto,
           });
         }
       } else {
@@ -359,7 +359,7 @@ export default function tradingRoutes({
           ? await tradingEngine.generateSignal(pair, {
               broker: effectiveBroker,
               eaOnly: true,
-              analysisMode: 'ea'
+              analysisMode: 'ea',
             })
           : await tradingEngine.generateSignal(pair);
       }
@@ -369,7 +369,7 @@ export default function tradingRoutes({
       tradingEngine.observeSignalGeneration?.({
         pair: signal?.pair || pair,
         durationSeconds: signalDuration,
-        status: 'success'
+        status: 'success',
       });
       signalRecorded = true;
 
@@ -383,7 +383,7 @@ export default function tradingRoutes({
       void auditLogger.record('trade.execute', {
         actor: req.identity?.id || 'unknown',
         pair,
-        success: Boolean(result.success)
+        success: Boolean(result.success),
       });
 
       const trade = result.trade ? validateTradeDTO(createTradeDTO(result.trade)) : null;
@@ -391,7 +391,7 @@ export default function tradingRoutes({
       return ok(res, {
         trade,
         reason: result.reason,
-        signal: result.signal
+        signal: result.signal,
       });
     } catch (error) {
       if (!signalRecorded) {
@@ -399,7 +399,7 @@ export default function tradingRoutes({
         tradingEngine.observeSignalGeneration?.({
           pair,
           durationSeconds: failureDuration,
-          status: 'error'
+          status: 'error',
         });
       }
       tradingEngine.recordTradeExecution?.('error');
@@ -429,7 +429,7 @@ export default function tradingRoutes({
       return ok(res, {
         count: history.length,
         total: tradingEngine.tradingHistory.length,
-        trades: history
+        trades: history,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to fetch trade history');
@@ -447,7 +447,7 @@ export default function tradingRoutes({
       }
 
       const currentPrice = await tradingEngine.getCurrentPriceForPair(trade.pair, {
-        broker: trade.broker || trade.brokerRoute || null
+        broker: trade.broker || trade.brokerRoute || null,
       });
       const closedRaw = await tradingEngine.closeTrade(tradeId, currentPrice, 'manual_close');
       const closed = validateTradeDTO(createTradeDTO(closedRaw));
@@ -458,7 +458,7 @@ export default function tradingRoutes({
         actor: req.identity?.id || 'unknown',
         tradeId,
         pair: trade.pair,
-        success: true
+        success: true,
       });
 
       return ok(res, { trade: closed });
@@ -476,7 +476,7 @@ export default function tradingRoutes({
 
       void auditLogger.record('trade.close_all', {
         actor: req.identity?.id || 'unknown',
-        closed: result.closed || 0
+        closed: result.closed || 0,
       });
 
       return ok(res, { result });

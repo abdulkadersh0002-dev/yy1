@@ -2,8 +2,13 @@ import { spawn } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
+import { fileURLToPath } from 'node:url';
+
+import dotenv from 'dotenv';
 
 import { applyPresetEnv, formatPresetList } from './presets.mjs';
+
+dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
 const BACKEND_PORT = Number(process.env.PORT || 4101);
 const DASHBOARD_PORT = Number(process.env.DASHBOARD_PORT || 4173);
@@ -85,8 +90,8 @@ function isReachable(url, timeoutMs = 1500) {
         path: `${parsed.pathname}${parsed.search}`,
         method: 'GET',
         headers: {
-          Connection: 'close'
-        }
+          Connection: 'close',
+        },
       },
       (res) => {
         res.resume();
@@ -175,12 +180,12 @@ function spawnBackend() {
     EA_DASHBOARD_QUOTE_MAX_AGE_MS:
       process.env.EA_DASHBOARD_QUOTE_MAX_AGE_MS ?? String(10 * 60 * 1000),
     PORT: String(BACKEND_PORT),
-    ENABLE_PORT_FALLBACK: process.env.ENABLE_PORT_FALLBACK ?? 'false'
+    ENABLE_PORT_FALLBACK: process.env.ENABLE_PORT_FALLBACK ?? 'false',
   };
 
   return spawn(process.execPath, ['src/server.js'], {
     stdio: 'inherit',
-    env
+    env,
   });
 }
 
@@ -188,7 +193,7 @@ function spawnDashboard() {
   const env = {
     ...process.env,
     VITE_DEV_PROXY_TARGET: `http://127.0.0.1:${BACKEND_PORT}`,
-    VITE_API_BASE_URL: `http://127.0.0.1:${BACKEND_PORT}`
+    VITE_API_BASE_URL: `http://127.0.0.1:${BACKEND_PORT}`,
   };
 
   // On Windows, run through cmd.exe to avoid direct .cmd spawn issues.
@@ -208,7 +213,7 @@ function spawnDashboard() {
       '--host',
       '127.0.0.1',
       '--port',
-      String(DASHBOARD_PORT)
+      String(DASHBOARD_PORT),
     ],
     { stdio: 'inherit', env }
   );

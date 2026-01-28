@@ -69,7 +69,7 @@ function buildChildEnv(port, optionsEnv = {}) {
     ENABLE_BROKER_OANDA: 'false',
     ENABLE_BROKER_MT5: 'false',
     ENABLE_BROKER_IBKR: 'false',
-    ...optionsEnv
+    ...optionsEnv,
   };
 }
 
@@ -80,14 +80,14 @@ export async function startTestServer(options = {}) {
   const inheritLogs = options.inheritLogs ?? false;
   const envOverrides = {
     ENABLE_WEBSOCKETS: options.enableWebSockets ? 'true' : 'false',
-    ...options.env
+    ...options.env,
   };
 
   const stdio = inheritLogs ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'pipe', 'pipe'];
   const child = spawn(process.execPath, ['src/server.js'], {
     cwd: repoRoot,
     env: buildChildEnv(port, envOverrides),
-    stdio
+    stdio,
   });
 
   const collected = { stdout: [], stderr: [] };
@@ -116,7 +116,7 @@ export async function startTestServer(options = {}) {
         throw new Error(
           `Test server exited before readiness check (code=${code} signal=${signal})${hint}`
         );
-      })
+      }),
     ]);
   } catch (error) {
     child.kill('SIGTERM');
@@ -134,14 +134,24 @@ export async function startTestServer(options = {}) {
       child.kill('SIGTERM');
     }
 
+    const abortController = new AbortController();
     const timeout = (async () => {
-      await delay(shutdownTimeoutMs);
+      try {
+        await delay(shutdownTimeoutMs, null, { signal: abortController.signal });
+      } catch (error) {
+        if (error && error.name === 'AbortError') {
+          return;
+        }
+        throw error;
+      }
       if (child.exitCode === null) {
         child.kill('SIGKILL');
       }
     })();
 
     await Promise.race([exitPromise, timeout]);
+    abortController.abort();
+    await Promise.allSettled([timeout]);
     return exitPromise;
   };
 
@@ -152,6 +162,6 @@ export async function startTestServer(options = {}) {
     baseUrl,
     url: (pathname = '/') => new URL(pathname, baseUrl).toString(),
     stop,
-    output: collected
+    output: collected,
   };
 }

@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { ok, badRequest, serverError, serviceUnavailable } from '../../../utils/http-response.js';
-import { parseRequestQuery } from '../../../utils/validation.js';
+import {
+  ok,
+  badRequest,
+  serverError,
+  serviceUnavailable,
+} from '../../../../utils/http-response.js';
+import { parseRequestQuery } from '../../../../utils/validation.js';
 
 export default function featureRoutes({ tradingEngine, logger, requireBasicRead }) {
   const router = Router();
@@ -9,7 +14,7 @@ export default function featureRoutes({ tradingEngine, logger, requireBasicRead 
   const featuresQuerySchema = z
     .object({
       limit: z.coerce.number().int().min(1).max(500).optional(),
-      snapshots: z.coerce.number().int().min(0).max(500).optional()
+      snapshots: z.coerce.number().int().min(0).max(500).optional(),
     })
     .passthrough();
 
@@ -19,20 +24,20 @@ export default function featureRoutes({ tradingEngine, logger, requireBasicRead 
       since: z.coerce.number().int().min(0).optional(),
       limit: z.coerce.number().int().min(1).max(500).optional(),
       history: z.coerce.number().int().min(0).max(500).optional(),
-      snapshot: z.string().optional()
+      snapshot: z.string().optional(),
     })
     .passthrough();
 
   const snapshotsQuerySchema = z
     .object({
-      limit: z.coerce.number().int().min(1).max(1000).optional()
+      limit: z.coerce.number().int().min(1).max(1000).optional(),
     })
     .passthrough();
 
   router.get('/features', requireBasicRead, (req, res) => {
     try {
       const parsed = parseRequestQuery(featuresQuerySchema, req, res, {
-        errorMessage: 'Invalid feature query'
+        errorMessage: 'Invalid feature query',
       });
       if (!parsed) {
         return null;
@@ -42,7 +47,7 @@ export default function featureRoutes({ tradingEngine, logger, requireBasicRead 
       const stats = tradingEngine.featureStore?.getStats?.(limit) || {
         totalKeys: 0,
         totalEntries: 0,
-        recent: []
+        recent: [],
       };
       const snapshotsLimit = parsed.snapshots ?? 0;
       const recentSnapshots =
@@ -62,7 +67,7 @@ export default function featureRoutes({ tradingEngine, logger, requireBasicRead 
       }
 
       const parsed = parseRequestQuery(featuresByPairQuerySchema, req, res, {
-        errorMessage: 'Invalid feature query'
+        errorMessage: 'Invalid feature query',
       });
       if (!parsed) {
         return null;
@@ -79,7 +84,7 @@ export default function featureRoutes({ tradingEngine, logger, requireBasicRead 
       const snapshot = includeSnapshot
         ? tradingEngine.getFeatureSnapshot(pair, {
             limitPerTimeframe: snapshotLimit || limit,
-            sinceTs
+            sinceTs,
           })
         : undefined;
 
@@ -88,7 +93,7 @@ export default function featureRoutes({ tradingEngine, logger, requireBasicRead 
         timeframe,
         latest,
         range,
-        snapshot
+        snapshot,
       });
     } catch (error) {
       logger.error({ err: error, pair: req.params?.pair }, 'Failed to fetch feature timeline');
@@ -99,7 +104,7 @@ export default function featureRoutes({ tradingEngine, logger, requireBasicRead 
   router.get('/features-snapshots', requireBasicRead, (req, res) => {
     try {
       const parsed = parseRequestQuery(snapshotsQuerySchema, req, res, {
-        errorMessage: 'Invalid feature snapshot query'
+        errorMessage: 'Invalid feature snapshot query',
       });
       if (!parsed) {
         return null;

@@ -5,10 +5,10 @@ import {
   notFound,
   ok,
   serverError,
-  serviceUnavailable
-} from '../../../utils/http-response.js';
+  serviceUnavailable,
+} from '../../../../utils/http-response.js';
 import { validateModifyPositionDTO } from '../../../../contracts/dtos.js';
-import { parseRequestBody, parseRequestBodyWithValidator } from '../../../utils/validation.js';
+import { parseRequestBody, parseRequestBodyWithValidator } from '../../../../utils/validation.js';
 
 export default function brokerRoutes({
   tradingEngine,
@@ -17,13 +17,13 @@ export default function brokerRoutes({
   logger,
   config,
   requireBrokerRead,
-  requireBrokerWrite
+  requireBrokerWrite,
 }) {
   const router = Router();
 
   const killSwitchSchema = z.object({
     enabled: z.coerce.boolean(),
-    reason: z.string().max(300).optional()
+    reason: z.string().max(300).optional(),
   });
 
   router.get('/broker/status', requireBrokerRead, async (req, res) => {
@@ -46,7 +46,7 @@ export default function brokerRoutes({
     }
     try {
       const parsed = parseRequestBody(killSwitchSchema, req, res, {
-        errorMessage: 'Invalid kill-switch payload'
+        errorMessage: 'Invalid kill-switch payload',
       });
       if (!parsed) {
         return null;
@@ -56,7 +56,7 @@ export default function brokerRoutes({
       void auditLogger.record('broker.kill_switch', {
         enabled: Boolean(enabled),
         reason: reason || null,
-        actor: req.identity?.id || 'unknown'
+        actor: req.identity?.id || 'unknown',
       });
       return ok(res, { state });
     } catch (error) {
@@ -75,7 +75,7 @@ export default function brokerRoutes({
       const payload = {
         ...req.body,
         ...(idempotencyKey ? { idempotencyKey } : null),
-        source: 'manual-override'
+        source: 'manual-override',
       };
       const result = await brokerRouter.manualOrder(payload);
       void auditLogger.record('broker.manual_order', {
@@ -83,9 +83,9 @@ export default function brokerRoutes({
         payload: {
           pair: payload.pair,
           direction: payload.direction,
-          broker: payload.broker || brokerRouter.defaultBroker
+          broker: payload.broker || brokerRouter.defaultBroker,
         },
-        success: Boolean(result.success)
+        success: Boolean(result.success),
       });
       return ok(res, { result });
     } catch (error) {
@@ -101,7 +101,7 @@ export default function brokerRoutes({
     try {
       const payload = {
         ...req.body,
-        source: 'manual-override'
+        source: 'manual-override',
       };
       const result = await brokerRouter.closePosition(payload);
       if (result.success && payload.tradeId && tradingEngine.activeTrades?.has(payload.tradeId)) {
@@ -117,7 +117,7 @@ export default function brokerRoutes({
         actor: req.identity?.id || 'unknown',
         tradeId: payload.tradeId || null,
         broker: payload.broker || brokerRouter.defaultBroker,
-        success: Boolean(result.success)
+        success: Boolean(result.success),
       });
       return ok(res, { result });
     } catch (error) {
@@ -136,7 +136,7 @@ export default function brokerRoutes({
 
     try {
       const parsed = parseRequestBodyWithValidator(validateModifyPositionDTO, req, res, {
-        errorMessage: 'Invalid modify payload'
+        errorMessage: 'Invalid modify payload',
       });
       if (!parsed) {
         return null;
@@ -145,7 +145,7 @@ export default function brokerRoutes({
       const payload = {
         ...parsed,
         broker: parsed.broker || brokerRouter.defaultBroker,
-        source: parsed.source || 'manual-override'
+        source: parsed.source || 'manual-override',
       };
 
       const result = await brokerRouter.modifyPosition(payload);
@@ -157,7 +157,7 @@ export default function brokerRoutes({
         stopLoss: payload.stopLoss ?? null,
         takeProfit: payload.takeProfit ?? null,
         reason: payload.reason || null,
-        success: Boolean(result?.success)
+        success: Boolean(result?.success),
       });
 
       return ok(res, { result });
@@ -180,7 +180,7 @@ export default function brokerRoutes({
     try {
       const result = await brokerRouter.probeConnector(connectorId, {
         action: req.body?.action || 'connect',
-        params: req.body?.params || {}
+        params: req.body?.params || {},
       });
       return ok(res, { connector: result });
     } catch (error) {
@@ -204,7 +204,7 @@ export default function brokerRoutes({
         let health = {
           broker: connectorId,
           connected: false,
-          error: error.message
+          error: error.message,
         };
 
         try {
@@ -217,7 +217,7 @@ export default function brokerRoutes({
             health = {
               ...snapshot,
               connected: Boolean(snapshot?.connected),
-              error: snapshot?.error || health.error
+              error: snapshot?.error || health.error,
             };
           }
         } catch (_ignored) {
@@ -228,8 +228,8 @@ export default function brokerRoutes({
           connector: {
             broker: connectorId,
             action: (req.body?.action || 'connect').toLowerCase(),
-            health
-          }
+            health,
+          },
         });
       }
 

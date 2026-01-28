@@ -3,9 +3,9 @@ import {
   buildHealthzPayload,
   buildModuleHealthSummary,
   classifyProviderAvailabilitySnapshot,
-  summarizeProviderAvailabilityHistory
-} from '../../../infrastructure/services/health-summary.js';
-import { ok, serverError } from '../../../utils/http-response.js';
+  summarizeProviderAvailabilityHistory,
+} from '../../../../infrastructure/services/health-summary.js';
+import { ok, serverError } from '../../../../utils/http-response.js';
 
 export default function healthRoutes({
   tradingEngine,
@@ -15,7 +15,7 @@ export default function healthRoutes({
   metricsRegistry,
   logger,
   providerAvailabilityState,
-  runtimeSummary
+  runtimeSummary,
 }) {
   const router = Router();
 
@@ -24,7 +24,7 @@ export default function healthRoutes({
       tradingEngine,
       tradeManager,
       heartbeatMonitor,
-      eaBridgeService
+      eaBridgeService,
     });
 
     const statusCode = payload.status === 'critical' ? 503 : 200;
@@ -36,13 +36,13 @@ export default function healthRoutes({
       tradingEngine,
       tradeManager,
       heartbeatMonitor,
-      eaBridgeService
+      eaBridgeService,
     });
 
     return ok(res, {
       overall: summary.overall,
       modules: summary.modules,
-      heartbeat: summary.heartbeat
+      heartbeat: summary.heartbeat,
     });
   });
 
@@ -58,7 +58,7 @@ export default function healthRoutes({
 
   router.get('/health/runtime', (req, res) => {
     return ok(res, {
-      runtime: runtimeSummary || null
+      runtime: runtimeSummary || null,
     });
   });
 
@@ -68,7 +68,7 @@ export default function healthRoutes({
       providerAvailabilityAlertConfig,
       history,
       historyLimit,
-      loadProviderAvailabilityHistory
+      loadProviderAvailabilityHistory,
     } = providerAvailabilityState;
 
     try {
@@ -88,7 +88,7 @@ export default function healthRoutes({
       const snapshot = buildSnapshot({
         timeframes,
         requireHealthyQuality: req.query.requireHealthyQuality === 'false' ? false : true,
-        qualityThreshold: Number.isFinite(qualityThresholdRaw) ? qualityThresholdRaw : undefined
+        qualityThreshold: Number.isFinite(qualityThresholdRaw) ? qualityThresholdRaw : undefined,
       });
 
       const classification = classifyProviderAvailabilitySnapshot(
@@ -103,7 +103,7 @@ export default function healthRoutes({
         breakerProviders: Array.isArray(entry.breakerProviders) ? [...entry.breakerProviders] : [],
         blockedTimeframes: Array.isArray(entry.blockedTimeframes)
           ? [...entry.blockedTimeframes]
-          : []
+          : [],
       }));
       const historyStats = summarizeProviderAvailabilityHistory(history);
 
@@ -123,8 +123,8 @@ export default function healthRoutes({
         historyLimit,
         historyStorage: {
           inMemorySamples: history.length,
-          persistenceEnabled: Boolean(loadProviderAvailabilityHistory)
-        }
+          persistenceEnabled: Boolean(loadProviderAvailabilityHistory),
+        },
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to build provider availability snapshot');

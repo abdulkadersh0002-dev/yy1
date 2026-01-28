@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Ajv from 'ajv';
+import Ajv2020 from 'ajv/dist/2020.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,21 +13,21 @@ const configs = [
   {
     name: 'backtest.config.json',
     file: path.join(configDir, 'backtest.config.json'),
-    schema: path.join(schemaDir, 'backtest.schema.json')
+    schema: path.join(schemaDir, 'backtest.schema.json'),
   },
   {
     name: 'data-refresh.config.json',
     file: path.join(configDir, 'data-refresh.config.json'),
-    schema: path.join(schemaDir, 'data-refresh.schema.json')
+    schema: path.join(schemaDir, 'data-refresh.schema.json'),
   },
   {
     name: 'historical-warehouse.config.json',
     file: path.join(configDir, 'historical-warehouse.config.json'),
-    schema: path.join(schemaDir, 'historical-warehouse.schema.json')
-  }
+    schema: path.join(schemaDir, 'historical-warehouse.schema.json'),
+  },
 ];
 
-const ajv = new Ajv({ allErrors: true, allowUnionTypes: true });
+const ajv = new Ajv2020({ allErrors: true, allowUnionTypes: true });
 
 const loadJson = async (filePath) => {
   const raw = await fs.readFile(filePath, 'utf8');
@@ -38,7 +38,11 @@ const formatErrors = (errors = []) =>
   errors
     .map((err) => {
       const dataPath = err.instancePath || '/';
-      const detail = err.message || 'invalid';
+      const extraProp =
+        err.keyword === 'additionalProperties' && err.params && err.params.additionalProperty
+          ? ` (${err.params.additionalProperty})`
+          : '';
+      const detail = `${err.message || 'invalid'}${extraProp}`;
       return `- ${dataPath} ${detail}`;
     })
     .join('\n');
@@ -47,10 +51,7 @@ async function main() {
   let failures = 0;
 
   for (const entry of configs) {
-    const [schema, data] = await Promise.all([
-      loadJson(entry.schema),
-      loadJson(entry.file)
-    ]);
+    const [schema, data] = await Promise.all([loadJson(entry.schema), loadJson(entry.file)]);
 
     const validate = ajv.compile(schema);
     const valid = validate(data);

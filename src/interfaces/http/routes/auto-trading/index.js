@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ok, serverError } from '../../../utils/http-response.js';
+import { ok, serverError } from '../../../../utils/http-response.js';
 
 export default function autoTradingRoutes({
   tradeManager,
@@ -8,7 +8,7 @@ export default function autoTradingRoutes({
   logger,
   broadcast,
   requireAutomationControl,
-  requireBasicRead
+  requireBasicRead,
 }) {
   const router = Router();
 
@@ -61,7 +61,7 @@ export default function autoTradingRoutes({
                 : 5 * 60 * 1000;
               const recentQuotes = eaBridgeService.getQuotes({
                 broker,
-                maxAgeMs: inferMaxAgeMs
+                maxAgeMs: inferMaxAgeMs,
               });
               if (Array.isArray(recentQuotes) && recentQuotes.length > 0) {
                 observedSymbols = recentQuotes
@@ -109,7 +109,7 @@ export default function autoTradingRoutes({
                   symbol,
                   timeframe,
                   limit: 120,
-                  maxAgeMs: 0
+                  maxAgeMs: 0,
                 });
                 return Array.isArray(series) ? series.length : 0;
               } catch (_error) {
@@ -119,7 +119,7 @@ export default function autoTradingRoutes({
             bars = {
               M1: getCount('M1'),
               M15: getCount('M15'),
-              H1: getCount('H1')
+              H1: getCount('H1'),
             };
           }
 
@@ -143,9 +143,9 @@ export default function autoTradingRoutes({
                       confidence: signal.confidence ?? null,
                       strength: signal.strength ?? null,
                       valid: Boolean(signal?.isValid?.isValid),
-                      validReason: signal?.isValid?.reason || null
+                      validReason: signal?.isValid?.reason || null,
                     }
-                  : null
+                  : null,
               };
             } catch (error) {
               execution = {
@@ -154,7 +154,7 @@ export default function autoTradingRoutes({
                 snapshotPending: false,
                 shouldExecute: false,
                 execution: null,
-                signalSummary: null
+                signalSummary: null,
               };
             }
           }
@@ -214,11 +214,11 @@ export default function autoTradingRoutes({
             smartStrong: tradeManager?.autoTradingSmartStrong ?? null,
             smartMinConfidence: tradeManager?.smartMinConfidence ?? null,
             smartMinStrength: tradeManager?.smartMinStrength ?? null,
-            smartMinDecisionScore: tradeManager?.smartMinDecisionScore ?? null
+            smartMinDecisionScore: tradeManager?.smartMinDecisionScore ?? null,
           },
           sessions: {
             count: sessions.length,
-            sessions
+            sessions,
           },
           observedSymbols: observedSymbols.length > 0 ? observedSymbols : null,
           quote: quote
@@ -231,12 +231,12 @@ export default function autoTradingRoutes({
                 last: quote.last,
                 mid: quote.mid,
                 spreadPoints: quote.spreadPoints,
-                source: quote.source
+                source: quote.source,
               }
             : null,
           bars,
           execution,
-          nextSteps
+          nextSteps,
         });
       } catch (error) {
         logger.error({ err: error }, 'Auto-trading readiness check failed');
@@ -256,12 +256,12 @@ export default function autoTradingRoutes({
       void auditLogger.record('autotrading.start', {
         actor: req.identity?.id || 'unknown',
         broker: result?.broker ?? broker ?? null,
-        success: Boolean(result.success)
+        success: Boolean(result.success),
       });
 
       return ok(res, {
         message: result.message,
-        details: result
+        details: result,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to start auto trading');
@@ -280,12 +280,12 @@ export default function autoTradingRoutes({
       void auditLogger.record('autotrading.stop', {
         actor: req.identity?.id || 'unknown',
         broker: result?.broker ?? broker ?? null,
-        success: Boolean(result.success)
+        success: Boolean(result.success),
       });
 
       return ok(res, {
         message: result.message,
-        details: result
+        details: result,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to stop auto trading');

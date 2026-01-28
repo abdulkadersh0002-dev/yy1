@@ -1,8 +1,8 @@
 import express from 'express';
-import ClientUserService from '../../../infrastructure/services/client-auth/user-service.js';
-import ClientTokenService from '../../../infrastructure/services/client-auth/token-service.js';
-import ClientDeviceService from '../../../infrastructure/services/client-auth/device-service.js';
-import { createClientSessionMiddleware } from '../middleware/client-session.js';
+import ClientUserService from '../../../../infrastructure/services/client-auth/user-service.js';
+import ClientTokenService from '../../../../infrastructure/services/client-auth/token-service.js';
+import ClientDeviceService from '../../../../infrastructure/services/client-auth/device-service.js';
+import { createClientSessionMiddleware } from '../../middleware/client-session.js';
 
 const ACCESS_EXPIRES_IN_SECONDS = 15 * 60;
 
@@ -17,12 +17,12 @@ const sanitizeUser = (user) => {
     status: user.status || 'inactive',
     mfa: {
       enabled: Boolean(user.mfaEnabled),
-      configured: Boolean(user.mfaConfigured)
+      configured: Boolean(user.mfaConfigured),
     },
     lastLoginAt: user.lastLoginAt || null,
     createdAt: user.createdAt || null,
     updatedAt: user.updatedAt || null,
-    tokenVersion: user.tokenVersion ?? 0
+    tokenVersion: user.tokenVersion ?? 0,
   };
 };
 
@@ -35,19 +35,19 @@ const issueSessionTokens = async ({ user, tokenService }) => {
       sub: user.id,
       username: user.username,
       roles,
-      ver: version
+      ver: version,
     }),
     tokenService.signRefreshToken({
       type: 'refresh',
       sub: user.id,
-      ver: version
-    })
+      ver: version,
+    }),
   ]);
 
   return {
     accessToken,
     refreshToken,
-    expiresIn: ACCESS_EXPIRES_IN_SECONDS
+    expiresIn: ACCESS_EXPIRES_IN_SECONDS,
   };
 };
 
@@ -56,7 +56,7 @@ const createMfaChallenge = async ({ user, tokenService }) =>
     type: 'mfa-challenge',
     sub: user.id,
     username: user.username,
-    ver: user.tokenVersion ?? 0
+    ver: user.tokenVersion ?? 0,
   });
 
 export const createClientExperienceModule = ({
@@ -65,7 +65,7 @@ export const createClientExperienceModule = ({
   logger = console,
   tradingEngine,
   tradeManager,
-  brokerRouter
+  brokerRouter,
 }) => {
   if (!tradingEngine || !tradeManager) {
     throw new Error('Client experience module requires tradingEngine and tradeManager');
@@ -108,7 +108,7 @@ export const createClientExperienceModule = ({
           success: true,
           mfaRequired: true,
           challengeToken,
-          methods: ['totp']
+          methods: ['totp'],
         });
       }
 
@@ -118,7 +118,7 @@ export const createClientExperienceModule = ({
       return res.json({
         success: true,
         ...sessionPayload,
-        user: sanitizeUser(user)
+        user: sanitizeUser(user),
       });
     } catch (error) {
       logger?.error?.({ err: error }, 'Client login failed');
@@ -144,7 +144,7 @@ export const createClientExperienceModule = ({
       if (!user || user.status !== 'active') {
         auditLogger?.record?.('client.login.failed', {
           userId: challenge.sub,
-          reason: 'unknown-or-inactive'
+          reason: 'unknown-or-inactive',
         });
         return res.status(401).json({ success: false, error: 'Invalid challenge' });
       }
@@ -161,7 +161,7 @@ export const createClientExperienceModule = ({
       return res.json({
         success: true,
         ...sessionPayload,
-        user: sanitizeUser(user)
+        user: sanitizeUser(user),
       });
     } catch (error) {
       logger?.warn?.({ err: error }, 'Client MFA completion failed');
@@ -293,7 +293,7 @@ export const createClientExperienceModule = ({
             volatilityState:
               signal.entry?.volatilityState ||
               signal.components?.technical?.volatilitySummary?.state ||
-              null
+              null,
           };
 
           const validation =
@@ -316,12 +316,12 @@ export const createClientExperienceModule = ({
                   type: primaryTechnical.type || null,
                   timeframe: primaryTechnical.timeframe || null,
                   confidence: safeNumber(primaryTechnical.confidence),
-                  strength: safeNumber(primaryTechnical.strength)
+                  strength: safeNumber(primaryTechnical.strength),
                 }
               : null,
             regime: signal.components?.technical?.regimeSummary?.state || null,
             broker: trade.broker || trade.brokerRoute || null,
-            status: trade.status || 'open'
+            status: trade.status || 'open',
           };
         })
         .filter(Boolean);
@@ -334,7 +334,7 @@ export const createClientExperienceModule = ({
         killSwitchReason: brokerRoutingEnabled ? brokerRouter?.killSwitchReason || null : null,
         lastSyncAt: brokerRoutingEnabled ? brokerRouter?.lastSyncAt || null : null,
         recentOrders: [],
-        health: []
+        health: [],
       };
 
       if (brokerRoutingEnabled && brokerRouter) {
@@ -348,7 +348,7 @@ export const createClientExperienceModule = ({
             killSwitchEnabled: statusSnapshot?.killSwitchEnabled ?? brokers.killSwitchEnabled,
             killSwitchReason: statusSnapshot?.killSwitchReason ?? brokers.killSwitchReason,
             recentOrders: statusSnapshot?.recentOrders || brokers.recentOrders,
-            health: Array.isArray(healthSnapshots) ? healthSnapshots : brokers.health
+            health: Array.isArray(healthSnapshots) ? healthSnapshots : brokers.health,
           };
         } catch (brokerError) {
           logger?.warn?.(
@@ -367,8 +367,8 @@ export const createClientExperienceModule = ({
           breakdown,
           activeTrades,
           signals,
-          brokers
-        }
+          brokers,
+        },
       });
     } catch (error) {
       logger?.error?.({ err: error }, 'Failed to fetch dashboard status');
@@ -399,7 +399,7 @@ export const createClientExperienceModule = ({
         buildNumber,
         locale,
         timezone,
-        userAgent
+        userAgent,
       } = req.body || {};
       if (!platform) {
         return res.status(400).json({ success: false, error: 'Platform required' });
@@ -416,12 +416,12 @@ export const createClientExperienceModule = ({
         buildNumber,
         locale,
         timezone,
-        userAgent: userAgent || req.get('user-agent')
+        userAgent: userAgent || req.get('user-agent'),
       });
       auditLogger?.record?.('client.device.register', {
         userId: req.clientUser.id,
         platform: device?.platform,
-        deviceId: device?.id
+        deviceId: device?.id,
       });
       return res.json({ success: true, device });
     } catch (error) {
@@ -465,7 +465,7 @@ export const createClientExperienceModule = ({
         auditLogger?.record?.('client.control.auto-trading', {
           userId: req.clientUser.id,
           enabled: shouldEnable,
-          success: result?.success
+          success: result?.success,
         });
         return res.json({ success: true, result });
       } catch (error) {
@@ -485,7 +485,7 @@ export const createClientExperienceModule = ({
         auditLogger?.record?.('client.control.close-all', {
           userId: req.clientUser.id,
           closed: result?.closed,
-          failed: result?.failed
+          failed: result?.failed,
         });
         return res.json({ success: true, result });
       } catch (error) {
@@ -500,6 +500,6 @@ export const createClientExperienceModule = ({
     userService,
     tokenService,
     deviceService,
-    session
+    session,
   };
 };

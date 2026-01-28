@@ -117,7 +117,7 @@ const jobQueue =
         retryBaseMs: jobQueueConfig.retryBaseMs,
         retryMaxMs: jobQueueConfig.retryMaxMs,
         maxQueueSize: jobQueueConfig.maxQueueSize,
-        deadLetterMax: jobQueueConfig.deadLetterMax
+        deadLetterMax: jobQueueConfig.deadLetterMax,
       })
     : null;
 
@@ -134,43 +134,43 @@ const runtimeSummary = {
   server: {
     port: serverConfig.port,
     enableWebSockets: serverConfig.enableWebSockets,
-    websocketPath: serverConfig.websocketPath
+    websocketPath: serverConfig.websocketPath,
   },
   apiAuthEnabled: appConfig.apiAuth?.enabled === true,
   tradingScope: {
     mode: appConfig.tradingScope?.mode,
-    allowExecution: appConfig.tradingScope?.allowExecution === true
+    allowExecution: appConfig.tradingScope?.allowExecution === true,
   },
   eaOnlyMode: eaOnlyMode(rawEnv),
   autoTrading: {
-    autostart: autoTradingConfig?.autostart === true
+    autostart: autoTradingConfig?.autostart === true,
   },
   brokerRouting: {
     enabled: brokerRoutingConfig?.enabled === true,
-    defaultBroker: brokerRoutingConfig?.defaultBroker
+    defaultBroker: brokerRoutingConfig?.defaultBroker,
   },
   brokers: {
     oanda: brokerConfig?.oanda?.enabled === true,
     mt4: brokerConfig?.mt4?.enabled === true,
     mt5: brokerConfig?.mt5?.enabled === true,
-    ibkr: brokerConfig?.ibkr?.enabled === true
+    ibkr: brokerConfig?.ibkr?.enabled === true,
   },
   services: {
     riskReports: serviceToggles?.riskReports?.enabled !== false,
     performanceDigests: serviceToggles?.performanceDigests?.enabled !== false,
     brokerReconciliation: brokerRoutingConfig?.enabled === true,
     pairPrefetch: pairPrefetchSettings?.enabled !== false,
-    jobQueue: Boolean(jobQueue)
+    jobQueue: Boolean(jobQueue),
   },
   persistence: {
     enabled: persistenceEnabled,
-    ssl: databaseConfig?.ssl === true
+    ssl: databaseConfig?.ssl === true,
   },
   endpoints: {
     health: '/api/healthz',
     metrics: '/metrics',
-    websocket: serverConfig.websocketPath
-  }
+    websocket: serverConfig.websocketPath,
+  },
 };
 
 logger.info({ runtime: runtimeSummary }, 'Startup configuration summary');
@@ -181,7 +181,7 @@ const alertBus = new AlertBus({
   webhookUrls: alertingConfig.webhookUrls,
   email: alertingConfig.email,
   dedupeMs: alertingConfig.dedupeMs,
-  logger
+  logger,
 });
 
 // Initialize broker router
@@ -199,7 +199,7 @@ const brokerRouter = new BrokerRouter({
     ? {
         accountMode: brokerConfig.oanda.accountMode || 'demo',
         accessToken: brokerConfig.oanda.accessToken,
-        accountId: brokerConfig.oanda.accountId
+        accountId: brokerConfig.oanda.accountId,
       }
     : false,
   mt4: brokerConfig.mt4?.enabled
@@ -207,7 +207,7 @@ const brokerRouter = new BrokerRouter({
         accountMode: brokerConfig.mt4.accountMode || 'demo',
         baseUrl: brokerConfig.mt4.baseUrl,
         apiKey: brokerConfig.mt4.apiKey,
-        accountNumber: brokerConfig.mt4.accountNumber
+        accountNumber: brokerConfig.mt4.accountNumber,
       }
     : false,
   mt5: brokerConfig.mt5?.enabled
@@ -215,7 +215,7 @@ const brokerRouter = new BrokerRouter({
         accountMode: brokerConfig.mt5.accountMode || 'demo',
         baseUrl: brokerConfig.mt5.baseUrl,
         apiKey: brokerConfig.mt5.apiKey,
-        accountNumber: brokerConfig.mt5.accountNumber
+        accountNumber: brokerConfig.mt5.accountNumber,
       }
     : false,
   ibkr: brokerConfig.ibkr?.enabled
@@ -223,9 +223,9 @@ const brokerRouter = new BrokerRouter({
         accountMode: brokerConfig.ibkr.accountMode || 'demo',
         baseUrl: brokerConfig.ibkr.baseUrl,
         accountId: brokerConfig.ibkr.accountId,
-        allowSelfSigned: brokerConfig.ibkr.allowSelfSigned
+        allowSelfSigned: brokerConfig.ibkr.allowSelfSigned,
       }
-    : false
+    : false,
 });
 
 // Build trading engine config
@@ -236,7 +236,7 @@ config.jobQueue = jobQueue;
 config.dependencies = {
   ...(config.dependencies || {}),
   alertBus,
-  brokerRouter: config.brokerRouting?.enabled ? brokerRouter : null
+  brokerRouter: config.brokerRouting?.enabled ? brokerRouter : null,
 };
 
 // Enforce real-time provider readiness
@@ -274,8 +274,8 @@ if (!isEaOnlyMode) {
         alphaVantage: Boolean(config.apiKeys.alphaVantage),
         finnhub: Boolean(config.apiKeys.finnhub),
         polygon: Boolean(config.apiKeys.polygon),
-        newsApi: Boolean(config.apiKeys.newsApi)
-      }
+        newsApi: Boolean(config.apiKeys.newsApi),
+      },
     },
     'Provider credentials configuration status'
   );
@@ -305,7 +305,9 @@ if (!databaseConfig.host || !databaseConfig.user || !databaseConfig.password) {
 }
 
 const resolveBoolean = (value) => {
-  const raw = String(value || '').trim().toLowerCase();
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
   if (!raw) {
     return false;
   }
@@ -371,7 +373,7 @@ const liveBacktestEnabled = resolveBoolean(process.env.LIVE_BACKTEST_ENABLED);
 if (liveBacktestEnabled) {
   tradingEngine.liveBacktestValidator = new LiveBacktestValidator({
     priceDataFetcher: tradingEngine.priceDataFetcher,
-    logger
+    logger,
   });
   logger.info('Live backtest validator enabled');
 }
@@ -386,7 +388,7 @@ const eaBridgeService = new EaBridgeService({
   tradingEngine,
   brokerRouter,
   logger,
-  brokerMeta: appConfig.brokerMeta
+  brokerMeta: appConfig.brokerMeta,
 });
 logger.info('EA Bridge Service initialized for intelligent MT4/MT5 integration');
 
@@ -403,7 +405,7 @@ try {
     eaBridgeService,
     brokers: ['mt5', 'mt4'],
     logger,
-    calendarService: economicCalendarService
+    calendarService: economicCalendarService,
   });
   if (rssStatus?.started) {
     logger.info(
@@ -423,12 +425,21 @@ tradeManager.eaBridgeService = eaBridgeService;
 // Allow EA-delivered quotes/news to enrich signal generation.
 tradingEngine.setExternalMarketContextProvider?.(async ({ pair, broker }) => {
   const brokerId = broker ? String(broker).toLowerCase() : null;
+  const isRealBidAskQuote = (q) => {
+    if (!q || typeof q !== 'object') {
+      return false;
+    }
+    const bid = Number(q.bid);
+    const ask = Number(q.ask);
+    return Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0 && ask > bid;
+  };
+
   const quotes = eaBridgeService.getQuotes({
     broker: brokerId,
     symbols: [pair],
-    maxAgeMs: 30 * 1000
+    maxAgeMs: 30 * 1000,
   });
-  const quote = Array.isArray(quotes) && quotes.length ? quotes[0] : null;
+  let quote = Array.isArray(quotes) && quotes.length ? quotes[0] : null;
 
   // Snapshots are used to hydrate the dashboard analyzer (RSI/MACD/ATR/levels).
   // If we treat snapshots as stale too aggressively, the UI will sit on "Waiting for MT snapshot..."
@@ -440,7 +451,7 @@ tradingEngine.setExternalMarketContextProvider?.(async ({ pair, broker }) => {
     ? eaBridgeService.getMarketSnapshot({
         broker: brokerId,
         symbol: pair,
-        maxAgeMs: SNAPSHOT_FRESH_MAX_AGE_MS
+        maxAgeMs: SNAPSHOT_FRESH_MAX_AGE_MS,
       })
     : null;
 
@@ -449,7 +460,7 @@ tradingEngine.setExternalMarketContextProvider?.(async ({ pair, broker }) => {
     const fallback = eaBridgeService.getMarketSnapshot({
       broker: brokerId,
       symbol: pair,
-      maxAgeMs: SNAPSHOT_DISPLAY_MAX_AGE_MS
+      maxAgeMs: SNAPSHOT_DISPLAY_MAX_AGE_MS,
     });
     if (fallback) {
       snapshot = { ...fallback, stale: true };
@@ -460,11 +471,35 @@ tradingEngine.setExternalMarketContextProvider?.(async ({ pair, broker }) => {
       eaBridgeService.requestMarketSnapshot({
         broker: brokerId,
         symbol: pair,
-        ttlMs: 2 * 60 * 1000
+        ttlMs: 2 * 60 * 1000,
       });
     } catch (_error) {
       // Best-effort; analysis can still proceed without a snapshot.
     }
+  }
+
+  // Prefer a real bid/ask quote for execution + spread gates.
+  // If tick quotes are missing/stale, fall back to snapshot.quote (EA posts it frequently).
+  // Do NOT treat bars-derived bid==ask prices as a "real" quote.
+  if (!isRealBidAskQuote(quote) && snapshot?.quote && typeof snapshot.quote === 'object') {
+    const sq = snapshot.quote;
+    const normalized = {
+      ...sq,
+      broker: sq.broker ?? brokerId,
+      symbol: sq.symbol ?? pair,
+      source: sq.source ?? snapshot.source ?? 'ea_snapshot',
+      receivedAt: sq.receivedAt ?? snapshot.receivedAt ?? null,
+      timestamp: sq.timestamp ?? snapshot.timestamp ?? null,
+    };
+
+    if (isRealBidAskQuote(normalized)) {
+      quote = normalized;
+    }
+  }
+
+  // If we still don't have a real bid/ask quote, leave it null and let the engine block/flag.
+  if (!isRealBidAskQuote(quote)) {
+    quote = null;
   }
 
   const rawNews = eaBridgeService.getNews({ broker: brokerId, limit: 50 });
@@ -589,8 +624,8 @@ tradingEngine.setExternalMarketContextProvider?.(async ({ pair, broker }) => {
               providerRaw,
               impact: evt?.impact ?? null,
               baseImpact: baseImpact,
-              isoDate: evt?.isoDate ?? null
-            }
+              isoDate: evt?.isoDate ?? null,
+            },
           };
         })
         .filter(Boolean);
@@ -672,7 +707,7 @@ tradingEngine.setExternalMarketContextProvider?.(async ({ pair, broker }) => {
         previous: item.previous ?? null,
         source: item.source || 'ea',
         receivedAt: item.receivedAt ?? null,
-        raw: item.raw || null
+        raw: item.raw || null,
       };
     });
 
@@ -733,7 +768,7 @@ tradingEngine.setExternalMarketContextProvider?.(async ({ pair, broker }) => {
       currency: item.currency || null,
       symbol: item.symbol || null,
       receivedAt: item.receivedAt ?? null,
-      raw: item.raw || null
+      raw: item.raw || null,
     };
   });
 
@@ -746,36 +781,36 @@ tradingEngine.setExternalMarketContextProvider?.(async ({ pair, broker }) => {
           symbol: pair,
           timeframe: 'M1',
           limit: 90,
-          maxAgeMs: 0
+          maxAgeMs: 0,
         }),
         M15: eaBridgeService.getMarketCandles({
           broker: brokerId,
           symbol: pair,
           timeframe: 'M15',
           limit: 240,
-          maxAgeMs: 0
+          maxAgeMs: 0,
         }),
         H1: eaBridgeService.getMarketCandles({
           broker: brokerId,
           symbol: pair,
           timeframe: 'H1',
           limit: 240,
-          maxAgeMs: 0
+          maxAgeMs: 0,
         }),
         H4: eaBridgeService.getMarketCandles({
           broker: brokerId,
           symbol: pair,
           timeframe: 'H4',
           limit: 180,
-          maxAgeMs: 0
+          maxAgeMs: 0,
         }),
         D1: eaBridgeService.getMarketCandles({
           broker: brokerId,
           symbol: pair,
           timeframe: 'D1',
           limit: 180,
-          maxAgeMs: 0
-        })
+          maxAgeMs: 0,
+        }),
       }
     : { M1: [], M15: [], H1: [], H4: [], D1: [] };
 
@@ -788,7 +823,7 @@ tradingEngine.setExternalMarketContextProvider?.(async ({ pair, broker }) => {
     events,
     bars,
     barsTimeframe: 'M1',
-    barsByTimeframe
+    barsByTimeframe,
   };
 });
 
@@ -822,7 +857,7 @@ const pairPrefetchScheduler = new PairPrefetchScheduler({
   priceDataFetcher: tradingEngine.priceDataFetcher,
   catalog: pairCatalog.filter((instrument) => instrument.enabled !== false),
   logger,
-  options: schedulerOptions
+  options: schedulerOptions,
 });
 
 // Start optional services
@@ -831,7 +866,7 @@ if (serviceToggles.riskReports?.enabled) {
     tradingEngine,
     alertBus,
     logger,
-    reportHourUtc: serviceToggles.riskReports.reportHourUtc
+    reportHourUtc: serviceToggles.riskReports.reportHourUtc,
   });
   riskReportService.start();
   logger.info('Daily risk report service started');
@@ -846,7 +881,7 @@ if (serviceToggles.performanceDigests?.enabled) {
     logger,
     reportHourUtc: serviceToggles.performanceDigests.reportHourUtc,
     outputDir: serviceToggles.performanceDigests.outputDir,
-    includePdf: serviceToggles.performanceDigests.includePdf
+    includePdf: serviceToggles.performanceDigests.includePdf,
   });
   performanceDigestService.start();
   logger.info(
@@ -862,7 +897,7 @@ if (config.brokerRouting?.enabled) {
     brokerRouter,
     tradingEngine,
     logger,
-    intervalMs: serviceToggles.brokerReconciliation?.intervalMs || 60000
+    intervalMs: serviceToggles.brokerReconciliation?.intervalMs || 60000,
   });
   brokerReconciliationService.start();
 }
@@ -922,14 +957,14 @@ if (autoTradingAutostart) {
       if (!enabled) {
         const result = await tradeManager.startAutoTrading({
           broker: autostartBroker,
-          allowDisconnected: true
+          allowDisconnected: true,
         });
         logger.info(
           {
             broker: result?.broker || autostartBroker,
             connected: result?.connected,
             pairs: result?.pairs,
-            interval: result?.checkIntervalMs
+            interval: result?.checkIntervalMs,
           },
           'Auto trading autostart enabled (waiting for EA connection)'
         );
@@ -977,19 +1012,19 @@ const providerAvailabilityState = {
       priceDataFetcher: tradingEngine.priceDataFetcher,
       timeframes,
       requireHealthyQuality,
-      qualityThreshold
+      qualityThreshold,
     }),
   providerAvailabilityAlertConfig,
   history: providerAvailabilityHistory,
   historyLimit: providerAvailabilityHistoryLimit,
-  loadProviderAvailabilityHistory
+  loadProviderAvailabilityHistory,
 };
 
 // Start the server - all routes are mounted via route modules in `src/app/http.js`
 const {
   app,
   server,
-  websocketLayer: _websocketLayer
+  websocketLayer: _websocketLayer,
 } = startServer({
   serverConfig,
   tradingEngine,
@@ -1010,7 +1045,7 @@ const {
     pairPrefetchScheduler.stop();
     riskReportService?.stop?.();
     brokerReconciliationService?.stop?.();
-  }
+  },
 });
 
 // Feed auto-trading execution outcomes into the WebSocket event stream.

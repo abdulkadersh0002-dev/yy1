@@ -1,9 +1,67 @@
 #property copyright "Neon Trading Stack"
-#property version   "1.02"
+#property version   "1.04"
 #property strict
 
 input string BridgeUrl          = "http://127.0.0.1:4101/api/broker/bridge/mt5";
 input string ApiToken           = "";
+
+string JsonNumOrNull(const double v, const int digits, const bool allowZero)
+{
+   if(!MathIsValidNumber(v))
+      return "null";
+   if(!allowZero && v <= 0.0)
+      return "null";
+   if(allowZero && v < 0.0)
+      return "null";
+   return DoubleToString(v, digits);
+}
+
+string JsonLongOrNull(const long v, const bool allowZero)
+{
+   if(!allowZero && v <= 0)
+      return "null";
+   if(allowZero && v < 0)
+      return "null";
+   return (string)v;
+}
+
+string BuildQuoteJson(
+   const string sym,
+   const double bid,
+   const double ask,
+   const double last,
+   const int digits,
+   const double point,
+   const double spreadPoints,
+   const double tickSize,
+   const double tickValue,
+   const double contractSize,
+   const long volume,
+   const long tsToSend
+)
+{
+   string spreadStr = (spreadPoints > 0.0) ? DoubleToString(spreadPoints, 2) : "null";
+   string tickSizeStr = JsonNumOrNull(tickSize, 10, false);
+   string tickValueStr = JsonNumOrNull(tickValue, 10, false);
+   string contractSizeStr = JsonNumOrNull(contractSize, 2, false);
+   string volumeStr = JsonLongOrNull(volume, true);
+
+   return StringFormat(
+      "{\"symbol\":\"%s\",\"bid\":%.10f,\"ask\":%.10f,\"last\":%.10f,\"digits\":%d,\"point\":%.10f,\"spreadPoints\":%s,\"tickSize\":%s,\"tickValue\":%s,\"contractSize\":%s,\"volume\":%s,\"timestamp\":%I64d}",
+      sym,
+      bid,
+      ask,
+      last,
+      digits,
+      point,
+      spreadStr,
+      tickSizeStr,
+      tickValueStr,
+      contractSizeStr,
+      volumeStr,
+      tsToSend
+   );
+}
 input bool   ForceReconnect     = true;
 input int    HeartbeatInterval  = 30;
 input int    RequestTimeoutMs   = 7000;
@@ -904,6 +962,25 @@ bool ShouldSendQuote(const string sym, const long tickMsc)
    g_quoteStateLastTickMsc[n] = tickMsc;
    g_quoteStateLastSentAt[n] = now;
    return true;
+}
+
+double GetLastCloseM1Safe(const string sym)
+{
+   if(StringLen(sym) <= 0)
+      return 0.0;
+
+   MqlRates rates[];
+   ArraySetAsSeries(rates, true);
+   int copied = CopyRates(sym, PERIOD_M1, 0, 1, rates);
+   if(copied > 0)
+   {
+      double c = rates[0].close;
+      if(c > 0.0)
+         return c;
+   }
+
+   double ic = iClose(sym, PERIOD_M1, 0);
+   return (ic > 0.0 ? ic : 0.0);
 }
 
 bool PrepareMarketWatchAllSymbols()
@@ -2311,6 +2388,50 @@ bool PostMarketSnapshotForSymbol(string sym, bool force)
       return false;
 
    int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+   double point = SymbolInfoDouble(sym, SYMBOL_POINT);
+
+   MqlTick tick;
+   bool hasTick = SymbolInfoTick(sym, tick);
+   double bid = hasTick ? tick.bid : SymbolInfoDouble(sym, SYMBOL_BID);
+   double ask = hasTick ? tick.ask : SymbolInfoDouble(sym, SYMBOL_ASK);
+   double last = hasTick ? tick.last : SymbolInfoDouble(sym, SYMBOL_LAST);
+   if(last <= 0.0 && bid > 0.0 && ask > 0.0)
+      last = (bid + ask) / 2.0;
+   if(last <= 0.0 && bid > 0.0)
+      last = bid;
+   if(last <= 0.0 && ask > 0.0)
+      last = ask;
+
+   double spreadPoints = -1.0;
+   if(point > 0.0 && bid > 0.0 && ask > 0.0 && ask > bid)
+      spreadPoints = (ask - bid) / point;
+
+   double tickSize = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_SIZE);
+   double tickValue = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_VALUE);
+   double contractSize = SymbolInfoDouble(sym, SYMBOL_TRADE_CONTRACT_SIZE);
+   long volume = hasTick ? (long)tick.volume : -1;
+   if(volume <= 0)
+   {
+      long m1Vol = (long)iVolume(sym, PERIOD_M1, 0);
+      if(m1Vol > 0)
+         volume = m1Vol;
+   }
+   long quoteTs = (hasTick && (long)tick.time_msc > 0) ? (long)tick.time_msc : (long)TimeCurrent() * 1000;
+
+   string quoteJson = BuildQuoteJson(
+      sym,
+      bid,
+      ask,
+      last,
+      digits,
+      point,
+      spreadPoints,
+      tickSize,
+      tickValue,
+      contractSize,
+      volume,
+      quoteTs
+   );
 
    // Ranges
    double todayHigh = iHigh(sym, PERIOD_D1, 0);
@@ -2339,9 +2460,10 @@ bool PostMarketSnapshotForSymbol(string sym, bool force)
    tfs[3] = "D1";
 
    string payload = StringFormat(
-      "{\"symbol\":\"%s\",\"timestamp\":%I64d,\"timeframes\":{",
+      "{\"symbol\":\"%s\",\"timestamp\":%I64d,\"quote\":%s,\"timeframes\":{",
       sym,
-      (long)TimeCurrent()
+      (long)TimeCurrent(),
+      quoteJson
    );
 
    for(int i = 0; i < 4; i++)
@@ -2767,31 +2889,49 @@ bool PostMarketQuotes()
             continue;
 
          MqlTick tick;
-         if(!SymbolInfoTick(sym, tick))
+         bool hasTick = SymbolInfoTick(sym, tick);
+         long tickKeyMsc = (hasTick && (long)tick.time_msc > 0) ? (long)tick.time_msc : 0;
+         long tsToSend = (hasTick && (long)tick.time_msc > 0) ? (long)tick.time_msc : (long)TimeCurrent() * 1000;
+
+         if(!ShouldSendQuote(sym, tickKeyMsc))
             continue;
 
-         if(!ShouldSendQuote(sym, (long)tick.time_msc))
-            continue;
+         double bid = hasTick ? tick.bid : SymbolInfoDouble(sym, SYMBOL_BID);
+         double ask = hasTick ? tick.ask : SymbolInfoDouble(sym, SYMBOL_ASK);
+         double last = hasTick ? tick.last : SymbolInfoDouble(sym, SYMBOL_LAST);
 
          int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
          double point = SymbolInfoDouble(sym, SYMBOL_POINT);
          double spreadPoints = -1.0;
-         if(point > 0.0 && tick.bid > 0.0 && tick.ask > 0.0)
-            spreadPoints = (tick.ask - tick.bid) / point;
+         if(point > 0.0 && bid > 0.0 && ask > 0.0 && ask > bid)
+            spreadPoints = (ask - bid) / point;
+         double tickSize = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_SIZE);
+         double tickValue = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_VALUE);
+         double contractSize = SymbolInfoDouble(sym, SYMBOL_TRADE_CONTRACT_SIZE);
+         long volume = hasTick ? (long)tick.volume : -1;
+         if(volume <= 0)
+         {
+            long m1Vol = (long)iVolume(sym, PERIOD_M1, 0);
+            if(m1Vol > 0)
+               volume = m1Vol;
+         }
 
          if(added > 0)
             payload += ",";
 
-         payload += StringFormat(
-            "{\"symbol\":\"%s\",\"bid\":%.10f,\"ask\":%.10f,\"last\":%.10f,\"digits\":%d,\"point\":%.10f,\"spreadPoints\":%.2f,\"timestamp\":%I64d}",
+         payload += BuildQuoteJson(
             sym,
-            tick.bid,
-            tick.ask,
-            tick.last,
+            bid,
+            ask,
+            last,
             digits,
             point,
             spreadPoints,
-            (long)tick.time_msc
+            tickSize,
+            tickValue,
+            contractSize,
+            volume,
+            tsToSend
          );
          added++;
       }
@@ -2817,27 +2957,48 @@ bool PostMarketQuotes()
          if(!already && SymbolSelect(chartSym, true))
          {
             MqlTick tick;
-            if(SymbolInfoTick(chartSym, tick) && ShouldSendQuote(chartSym, (long)tick.time_msc))
+            bool hasTick = SymbolInfoTick(chartSym, tick);
+            long tickKeyMsc = (hasTick && (long)tick.time_msc > 0) ? (long)tick.time_msc : 0;
+            long tsToSend = (hasTick && (long)tick.time_msc > 0) ? (long)tick.time_msc : (long)TimeCurrent() * 1000;
+
+            if(ShouldSendQuote(chartSym, tickKeyMsc))
             {
+               double bid = hasTick ? tick.bid : SymbolInfoDouble(chartSym, SYMBOL_BID);
+               double ask = hasTick ? tick.ask : SymbolInfoDouble(chartSym, SYMBOL_ASK);
+               double last = hasTick ? tick.last : SymbolInfoDouble(chartSym, SYMBOL_LAST);
+
                int digits = (int)SymbolInfoInteger(chartSym, SYMBOL_DIGITS);
                double point = SymbolInfoDouble(chartSym, SYMBOL_POINT);
                double spreadPoints = -1.0;
-               if(point > 0.0 && tick.bid > 0.0 && tick.ask > 0.0)
-                  spreadPoints = (tick.ask - tick.bid) / point;
+               if(point > 0.0 && bid > 0.0 && ask > 0.0 && ask > bid)
+                  spreadPoints = (ask - bid) / point;
+               double tickSize = SymbolInfoDouble(chartSym, SYMBOL_TRADE_TICK_SIZE);
+               double tickValue = SymbolInfoDouble(chartSym, SYMBOL_TRADE_TICK_VALUE);
+               double contractSize = SymbolInfoDouble(chartSym, SYMBOL_TRADE_CONTRACT_SIZE);
+               long volume = hasTick ? (long)tick.volume : -1;
+               if(volume <= 0)
+               {
+                  long m1Vol = (long)iVolume(chartSym, PERIOD_M1, 0);
+                  if(m1Vol > 0)
+                     volume = m1Vol;
+               }
 
                if(added > 0)
                   payload += ",";
 
-               payload += StringFormat(
-                  "{\"symbol\":\"%s\",\"bid\":%.10f,\"ask\":%.10f,\"last\":%.10f,\"digits\":%d,\"point\":%.10f,\"spreadPoints\":%.2f,\"timestamp\":%I64d}",
+               payload += BuildQuoteJson(
                   chartSym,
-                  tick.bid,
-                  tick.ask,
-                  tick.last,
+                  bid,
+                  ask,
+                  last,
                   digits,
                   point,
                   spreadPoints,
-                  (long)tick.time_msc
+                  tickSize,
+                  tickValue,
+                  contractSize,
+                  volume,
+                  tsToSend
                );
                added++;
             }
@@ -2875,33 +3036,119 @@ bool PostMarketQuotes()
          continue;
 
       MqlTick tick;
-      if(!SymbolInfoTick(sym, tick))
+      bool hasTick = SymbolInfoTick(sym, tick);
+      long tickKeyMsc = (hasTick && (long)tick.time_msc > 0) ? (long)tick.time_msc : 0;
+      long tsToSend = (hasTick && (long)tick.time_msc > 0) ? (long)tick.time_msc : (long)TimeCurrent() * 1000;
+
+      if(!ShouldSendQuote(sym, tickKeyMsc))
          continue;
 
-      if(!ShouldSendQuote(sym, (long)tick.time_msc))
-         continue;
+      double bid = hasTick ? tick.bid : SymbolInfoDouble(sym, SYMBOL_BID);
+      double ask = hasTick ? tick.ask : SymbolInfoDouble(sym, SYMBOL_ASK);
+      double last = hasTick ? tick.last : SymbolInfoDouble(sym, SYMBOL_LAST);
 
       int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
       double point = SymbolInfoDouble(sym, SYMBOL_POINT);
       double spreadPoints = -1.0;
-      if(point > 0.0 && tick.bid > 0.0 && tick.ask > 0.0)
-         spreadPoints = (tick.ask - tick.bid) / point;
+      if(point > 0.0 && bid > 0.0 && ask > 0.0 && ask > bid)
+         spreadPoints = (ask - bid) / point;
+      double tickSize = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_SIZE);
+      double tickValue = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_VALUE);
+      double contractSize = SymbolInfoDouble(sym, SYMBOL_TRADE_CONTRACT_SIZE);
+      long volume = hasTick ? (long)tick.volume : -1;
+      if(volume <= 0)
+      {
+         long m1Vol = (long)iVolume(sym, PERIOD_M1, 0);
+         if(m1Vol > 0)
+            volume = m1Vol;
+      }
 
       if(added > 0)
          payload += ",";
 
-      payload += StringFormat(
-         "{\"symbol\":\"%s\",\"bid\":%.10f,\"ask\":%.10f,\"last\":%.10f,\"digits\":%d,\"point\":%.10f,\"spreadPoints\":%.2f,\"timestamp\":%I64d}",
+      payload += BuildQuoteJson(
          sym,
-         tick.bid,
-         tick.ask,
-         tick.last,
+         bid,
+         ask,
+         last,
          digits,
          point,
          spreadPoints,
-         (long)tick.time_msc
+         tickSize,
+         tickValue,
+         contractSize,
+         volume,
+         tsToSend
       );
       added++;
+   }
+
+   // Hard fallback: ensure we always publish at least one usable quote (chart symbol).
+   // This prevents the dashboard from staying stuck on "Missing inputs: market:eaQuote"
+   // when the terminal isn't providing SymbolInfoTick for some symbols.
+   if(added <= 0)
+   {
+      string chartSymFallback = Symbol();
+      if(StringLen(chartSymFallback) > 0)
+      {
+         MqlTick tick;
+         bool hasTick = SymbolInfoTick(chartSymFallback, tick);
+
+         double bid = hasTick ? tick.bid : SymbolInfoDouble(chartSymFallback, SYMBOL_BID);
+         double ask = hasTick ? tick.ask : SymbolInfoDouble(chartSymFallback, SYMBOL_ASK);
+         double last = hasTick ? tick.last : SymbolInfoDouble(chartSymFallback, SYMBOL_LAST);
+         if(last <= 0.0 && bid > 0.0 && ask > 0.0)
+            last = (bid + ask) / 2.0;
+         if(last <= 0.0 && bid > 0.0)
+            last = bid;
+         if(last <= 0.0 && ask > 0.0)
+            last = ask;
+         if(last <= 0.0)
+            last = GetLastCloseM1Safe(chartSymFallback);
+
+         // If bid/ask are missing but last exists, populate them so the backend has a usable eaQuote.
+         if(bid <= 0.0 && last > 0.0)
+            bid = last;
+         if(ask <= 0.0 && last > 0.0)
+            ask = last;
+
+         if(last > 0.0)
+         {
+            int digits = (int)SymbolInfoInteger(chartSymFallback, SYMBOL_DIGITS);
+            double point = SymbolInfoDouble(chartSymFallback, SYMBOL_POINT);
+            double spreadPoints = -1.0;
+            if(point > 0.0 && bid > 0.0 && ask > 0.0 && ask > bid)
+               spreadPoints = (ask - bid) / point;
+            double tickSize = SymbolInfoDouble(chartSymFallback, SYMBOL_TRADE_TICK_SIZE);
+            double tickValue = SymbolInfoDouble(chartSymFallback, SYMBOL_TRADE_TICK_VALUE);
+            double contractSize = SymbolInfoDouble(chartSymFallback, SYMBOL_TRADE_CONTRACT_SIZE);
+            long volume = hasTick ? (long)tick.volume : -1;
+            if(volume <= 0)
+            {
+               long m1Vol = (long)iVolume(chartSymFallback, PERIOD_M1, 0);
+               if(m1Vol > 0)
+                  volume = m1Vol;
+            }
+
+            long tsToSend = (hasTick && (long)tick.time_msc > 0) ? (long)tick.time_msc : (long)TimeCurrent() * 1000;
+
+            payload += BuildQuoteJson(
+               chartSymFallback,
+               bid,
+               ask,
+               last,
+               digits,
+               point,
+               spreadPoints,
+               tickSize,
+               tickValue,
+               contractSize,
+               volume,
+               tsToSend
+            );
+            added = 1;
+         }
+      }
    }
 
    if(symbolCount > 0)
@@ -2911,7 +3158,16 @@ bool PostMarketQuotes()
 
    string response = "";
    if(added <= 0)
-      return true;
+   {
+      static datetime lastWarn = 0;
+      datetime now = TimeCurrent();
+      if(lastWarn == 0 || (now - lastWarn) >= 30)
+      {
+         Print("Market quotes: no symbols produced a usable price yet (will retry)");
+         lastWarn = now;
+      }
+      return false;
+   }
    return BridgeRequest("POST", "/market/quotes", payload, response, true);
 }
 
@@ -4184,7 +4440,7 @@ double ExtractJsonNumber(const string src, const string key, int startPos)
    }
    if(e <= s)
       return 0.0;
-   return StrToDouble(StringSubstr(src, s, e - s));
+   return StringToDouble(StringSubstr(src, s, e - s));
 }
 
 void ExecuteManagementCommand(const string type, const string symbol, const double price, const double percent, const double distancePips)
@@ -4550,6 +4806,7 @@ bool SendHeartbeat()
 
 int OnInit()
 {
+   Print("SignalBridge-MT5 v1.04 starting (market quotes + snapshot + bars)");
    // Don't fail init if the bridge is down; keep the EA alive and auto-reconnect.
    if(!SendSessionConnect())
       Print("Bridge not connected yet. EA will keep trying (check URL/token/WebRequest allowlist)." );

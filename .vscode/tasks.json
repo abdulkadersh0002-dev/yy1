@@ -3,15 +3,9 @@
   "tasks": [
     {
       "label": "🧰 Check Node.js + npm",
-      "type": "shell",
-      "command": "powershell",
-      "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        "$ErrorActionPreference='Stop'; $node=(Get-Command node -ErrorAction SilentlyContinue); $npm=(Get-Command npm -ErrorAction SilentlyContinue); if(-not $node){Write-Error 'Node.js is not on PATH. Install Node.js 20+ (LTS) and restart VS Code.'; exit 1}; if(-not $npm){Write-Error 'npm is not on PATH. Reinstall Node.js and ensure npm is included.'; exit 1}; node -v; npm -v"
-      ],
+      "type": "process",
+      "command": "node",
+      "args": ["scripts/ci/check-node-npm.mjs"],
       "group": "test",
       "presentation": {
         "reveal": "always",
@@ -20,8 +14,9 @@
     },
     {
       "label": "📦 Install Dependencies",
-      "type": "shell",
-      "command": "npm ci",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["ci"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "build",
@@ -32,8 +27,9 @@
     },
     {
       "label": "🚀 Start Server + Dashboard",
-      "type": "shell",
-      "command": "npm run start:all",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "start:all"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": {
@@ -60,8 +56,9 @@
     },
     {
       "label": "🚀 Start Server + Dashboard (NO DB/NO KEYS - synthetic dev)",
-      "type": "shell",
-      "command": "npm run start:all -- --preset synthetic",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "start:all", "--", "--preset", "synthetic"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "build",
@@ -73,8 +70,9 @@
     },
     {
       "label": "🚀 Start Server + Dashboard (ALL symbols)",
-      "type": "shell",
-      "command": "npm run start:all -- --preset all_symbols",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "start:all", "--", "--preset", "all_symbols"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "build",
@@ -86,8 +84,9 @@
     },
     {
       "label": "🚀 Start Server + Dashboard (ALL symbols + Full Scan)",
-      "type": "shell",
-      "command": "npm run start:all -- --preset all_symbols_full_scan",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "start:all", "--", "--preset", "all_symbols_full_scan"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "build",
@@ -99,8 +98,9 @@
     },
     {
       "label": "🚀 Start Server + Dashboard (ALL symbols + AUTO trading)",
-      "type": "shell",
-      "command": "npm run start:all -- --preset all_symbols_auto_trading",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "start:all", "--", "--preset", "all_symbols_auto_trading"],
       "dependsOn": ["🧰 Check Node.js + npm", "🛰️ Watch Auto-Trading Events (ws)"],
       "dependsOrder": "parallel",
       "group": "build",
@@ -112,8 +112,9 @@
     },
     {
       "label": "🚀 Start Server + Dashboard (SMART STRONG MT5 auto)",
-      "type": "shell",
-      "command": "npm run start:all -- --preset smart_strong_mt5_auto",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "start:all", "--", "--preset", "smart_strong_mt5_auto"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "build",
@@ -125,8 +126,9 @@
     },
     {
       "label": "🚀 Start Server + Dashboard (SMART STRONG MT5 auto + more entries)",
-      "type": "shell",
-      "command": "npm run start:all -- --preset smart_strong_mt5_more_entries",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "start:all", "--", "--preset", "smart_strong_mt5_more_entries"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "build",
@@ -138,8 +140,9 @@
     },
     {
       "label": "🚀 Start Server + Dashboard (FX+Metals STRONG AUTO v2)",
-      "type": "shell",
-      "command": "npm run start:all -- --preset fx_metals_strong_auto_v2",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "start:all", "--", "--preset", "fx_metals_strong_auto_v2"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "build",
@@ -151,8 +154,9 @@
     },
     {
       "label": "🚀 Start Server + Dashboard (FX+Metals ACTIVE AUTO - more trades)",
-      "type": "shell",
-      "command": "npm run start:all -- --preset fx_metals_active_auto_more_trades",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "start:all", "--", "--preset", "fx_metals_active_auto_more_trades"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "build",
@@ -164,8 +168,9 @@
     },
     {
       "label": "🚀 Start Server + Dashboard (FX+Metals SMART AUTO - strong trades)",
-      "type": "shell",
-      "command": "npm run start:all -- --preset fx_metals_smart_auto_strong_trades",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "start:all", "--", "--preset", "fx_metals_smart_auto_strong_trades"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "build",
@@ -177,8 +182,9 @@
     },
     {
       "label": "🧪 Run Tests",
-      "type": "shell",
-      "command": "npm test",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["test"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "test",
@@ -200,8 +206,9 @@
     },
     {
       "label": "🔍 Run Linter",
-      "type": "shell",
-      "command": "npm run lint",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "lint"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "test",
@@ -213,8 +220,9 @@
     },
     {
       "label": "🔧 Fix Linting Issues",
-      "type": "shell",
-      "command": "npm run lint:fix",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "lint:fix"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "build",
@@ -225,8 +233,9 @@
     },
     {
       "label": "✨ Format Code",
-      "type": "shell",
-      "command": "npm run format:write",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "format:write"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "build",
@@ -237,8 +246,9 @@
     },
     {
       "label": "🔒 Security Audit",
-      "type": "shell",
-      "command": "npm audit",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["audit"],
       "dependsOn": ["🧰 Check Node.js + npm"],
       "dependsOrder": "sequence",
       "group": "test",
@@ -483,6 +493,415 @@
         "panel": "dedicated"
       },
       "group": "build"
+    },
+    {
+      "label": "🧪 Temp Start Backend 4101 (synthetic)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set PORT=4101&& set ALLOW_SYNTHETIC_DATA=true&& set REQUIRE_REALTIME_DATA=false&& set NEWS_RSS_ONLY=true&& npm.cmd start"
+      ],
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "🧹 Temp Free Port 4101",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/free-ports.ps1",
+        "-Ports",
+        "4101"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "🧪 Temp Who Uses 4101",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "netstat -ano | findstr \":4101\""],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp 4101 LISTEN",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "netstat -ano | findstr \":4101\" | findstr LISTEN"],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp 4101 LISTEN (DE)",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "netstat -ano | findstr \":4101\" | findstr \"ABH\""],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp Start Backend 4102 (synthetic)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set PORT=4102&& set ALLOW_SYNTHETIC_DATA=true&& set REQUIRE_REALTIME_DATA=false&& set NEWS_RSS_ONLY=true&& npm.cmd start"
+      ],
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "🧪 Temp Healthz 4102",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "curl -s -o NUL -w \"http:%{http_code}\\n\" http://127.0.0.1:4102/api/healthz"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST EA Bars (4102)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "curl -s -i -X POST \"http://127.0.0.1:4102/api/broker/bridge/mt5/market/bars\" -H \"Content-Type: application/json\" -d \"{\\\"broker\\\":\\\"mt5\\\",\\\"symbol\\\":\\\"EURUSD\\\",\\\"timeframe\\\":\\\"M1\\\",\\\"bars\\\":[{\\\"time\\\":1700000000000,\\\"open\\\":1.2340,\\\"high\\\":1.2350,\\\"low\\\":1.2330,\\\"close\\\":1.2345,\\\"volume\\\":123}]}\""
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST EA Bars (4102) PS",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$body = @{ broker='mt5'; symbol='EURUSD'; timeframe='M1'; bars=@(@{ time=1700000000000; open=1.2340; high=1.2350; low=1.2330; close=1.2345; volume=123 }) } | ConvertTo-Json -Depth 6; Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:4102/api/broker/bridge/mt5/market/bars' -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 6"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST EA Bars (4102) PS2",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$body = @{ broker=\"mt5\"; symbol=\"EURUSD\"; timeframe=\"M1\"; bars=@(@{ time=1700000000000; open=1.2340; high=1.2350; low=1.2330; close=1.2345; volume=123 }) } | ConvertTo-Json -Depth 6; Invoke-RestMethod -Method Post -Uri \"http://127.0.0.1:4102/api/broker/bridge/mt5/market/bars\" -ContentType \"application/json\" -Body $body | ConvertTo-Json -Depth 6"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST EA Bars (4102) node-fetch",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "-e",
+        "fetch('http://127.0.0.1:4102/api/broker/bridge/mt5/market/bars',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:'EURUSD',timeframe:'M1',bars:[{time:1700000000000,open:1.2340,high:1.2350,low:1.2330,close:1.2345,volume:123}]})}).then(async r=>{const t=await r.text();console.log(r.status);console.log(t);}).catch(e=>{console.error(e);process.exitCode=1;});"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST EA Bars (4102) node-fetch2",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "-e",
+        "fetch(\"http://127.0.0.1:4102/api/broker/bridge/mt5/market/bars\",{method:\"POST\",headers:{\"Content-Type\":\"application/json\"},body:JSON.stringify({symbol:\"EURUSD\",timeframe:\"M1\",bars:[{time:1700000000000,open:1.2340,high:1.2350,low:1.2330,close:1.2345,volume:123}]})}).then(async (r)=>{const t=await r.text();console.log(r.status);console.log(t);}).catch((e)=>{console.error(e);process.exitCode=1;});"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp Node fetch exists",
+      "type": "shell",
+      "command": "node",
+      "args": ["-e", "console.log('fetchType='+typeof fetch)"],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp Node fetch exists2",
+      "type": "shell",
+      "command": "node",
+      "args": ["-e", "console.log(\"fetchType=\"+typeof fetch)"],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp Node sanity",
+      "type": "shell",
+      "command": "node",
+      "args": ["-p", "1+2"],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST EA Bars (4102) file",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "curl -s -i -X POST \"http://127.0.0.1:4102/api/broker/bridge/mt5/market/bars\" -H \"Content-Type: application/json\" --data-binary \"@c:\\Users\\wesam\\yy\\.tmp-ea-bars.json\""
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST EA Bars (4102) file2",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "curl -s -i -X POST http://127.0.0.1:4102/api/broker/bridge/mt5/market/bars -H \"Content-Type: application/json\" --data-binary @c:\\Users\\wesam\\yy\\.tmp-ea-bars.json"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST signal/generate 4102",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "curl -s -i -X POST http://127.0.0.1:4102/api/signal/generate -H \"Content-Type: application/json\" -d \"{\\\"pair\\\":\\\"EURUSD\\\"}\""
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST EA Bars (4102) PS InFile",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "(Invoke-WebRequest -Method Post -Uri \"http://127.0.0.1:4102/api/broker/bridge/mt5/market/bars\" -ContentType \"application/json\" -InFile \"c:\\Users\\wesam\\yy\\.tmp-ea-bars.json\").Content"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST signal/generate (4102) PS InFile",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "(Invoke-WebRequest -Method Post -Uri \"http://127.0.0.1:4102/api/signal/generate\" -ContentType \"application/json\" -InFile \"c:\\Users\\wesam\\yy\\.tmp-signal-generate.json\").Content"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp Inspect eaQuote + missingInputs (4102)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$resp = (Invoke-WebRequest -Method Post -Uri \"http://127.0.0.1:4102/api/signal/generate\" -ContentType \"application/json\" -InFile \"c:\\Users\\wesam\\yy\\.tmp-signal-generate.json\").Content | ConvertFrom-Json; $q = $resp.signal.components.marketData.eaQuote; if($null -eq $q){ Write-Output \"eaQuote: MISSING\" } else { Write-Output (\"eaQuote: source=\" + $q.source + \" bid=\" + $q.bid + \" ask=\" + $q.ask + \" vol=\" + $q.volume) }; $missing = $resp.signal.components.layeredAnalysis.missingInputs; if($missing){ Write-Output (\"missingInputs: \" + ($missing -join \",\")) } else { Write-Output \"missingInputs: (none)\" }"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST session/connect (4102)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "(Invoke-WebRequest -Method Post -Uri \"http://127.0.0.1:4102/api/broker/bridge/mt5/session/connect\" -ContentType \"application/json\" -InFile \"c:\\Users\\wesam\\yy\\.tmp-ea-session-connect.json\").Content"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp Inspect eaQuote + missingInputs (4102) v2",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$resp = (Invoke-WebRequest -Method Post -Uri \"http://127.0.0.1:4102/api/signal/generate\" -ContentType \"application/json\" -InFile \"c:\\Users\\wesam\\yy\\.tmp-signal-generate.json\").Content | ConvertFrom-Json; $q = $resp.signal.components.marketData.eaQuote; if($null -eq $q){ Write-Output \"eaQuote: MISSING\" } else { Write-Output (\"eaQuote: source=\" + $q.source + \" bid=\" + $q.bid + \" ask=\" + $q.ask + \" vol=\" + $q.volume) }; $missing = $resp.signal.components.layeredAnalysis.missingInputs; if($missing){ Write-Output (\"missingInputs: \" + ($missing -join \",\")) } else { Write-Output \"missingInputs: (none)\" }"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp Inspect eaQuote JSON (4102)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$resp = (Invoke-WebRequest -Method Post -Uri \"http://127.0.0.1:4102/api/signal/generate\" -ContentType \"application/json\" -InFile \"c:\\Users\\wesam\\yy\\.tmp-signal-generate.json\").Content | ConvertFrom-Json; $out = [ordered]@{ eaQuote = $resp.signal.components.marketData.eaQuote; missingInputs = $resp.signal.components.layeredAnalysis.missingInputs }; $out | ConvertTo-Json -Depth 6"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp GET /api/status 4102",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "curl -s -i http://127.0.0.1:4102/api/status"],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp Raw signal/generate response (4102)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$uri=\"http://127.0.0.1:4102/api/signal/generate\"; $file=\"c:\\Users\\wesam\\yy\\.tmp-signal-generate.json\"; try { $r = Invoke-WebRequest -Method Post -Uri $uri -ContentType \"application/json\" -InFile $file; $code=$r.StatusCode; $content=$r.Content } catch { $resp=$_.Exception.Response; if($resp -and $resp.GetResponseStream()){ $sr=New-Object System.IO.StreamReader($resp.GetResponseStream()); $content=$sr.ReadToEnd(); $code=[int]$resp.StatusCode } else { $code=\"ERR\"; $content=$_.Exception.Message } }; Write-Output (\"status=\"+$code); Write-Output $content"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp Dump signal/generate content (4102)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$r = Invoke-WebRequest -Method Post -Uri \"http://127.0.0.1:4102/api/signal/generate\" -ContentType \"application/json\" -InFile \"c:\\Users\\wesam\\yy\\.tmp-signal-generate.json\"; Write-Output (\"status=\" + $r.StatusCode); $r.Content"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧹 Temp Free Port 4102",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/free-ports.ps1",
+        "-Ports",
+        "4102"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "🧪 Temp Start Backend 4102 (synthetic no-auth)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set PORT=4102&& set ENABLE_API_AUTH=false&& set ALLOW_SYNTHETIC_DATA=true&& set REQUIRE_REALTIME_DATA=false&& set NEWS_RSS_ONLY=true&& npm.cmd start"
+      ],
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "🧪 Temp Healthz 4102 (no-auth)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "curl -s -o NUL -w \"http:%{http_code}\\n\" http://127.0.0.1:4102/api/healthz"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST session/connect 4102 (no-auth)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "(Invoke-WebRequest -Method Post -Uri \"http://127.0.0.1:4102/api/broker/bridge/mt5/session/connect\" -ContentType \"application/json\" -InFile \"c:\\Users\\wesam\\yy\\.tmp-ea-session-connect.json\").Content"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "🧪 Temp POST bars 4102 (no-auth)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "(Invoke-WebRequest -Method Post -Uri \"http://127.0.0.1:4102/api/broker/bridge/mt5/market/bars\" -ContentType \"application/json\" -InFile \"c:\\Users\\wesam\\yy\\.tmp-ea-bars.json\").Content"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
     }
   ]
 }

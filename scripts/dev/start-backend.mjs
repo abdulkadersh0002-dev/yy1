@@ -2,6 +2,11 @@ import { spawn } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
+import { fileURLToPath } from 'node:url';
+
+import dotenv from 'dotenv';
+
+dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
 const DEFAULT_PORT = 4101;
 const TIMEOUT_MS = 1500;
@@ -34,8 +39,8 @@ function isReachable(url, timeoutMs = TIMEOUT_MS) {
         path: `${parsed.pathname}${parsed.search}`,
         method: 'GET',
         headers: {
-          Connection: 'close'
-        }
+          Connection: 'close',
+        },
       },
       (res) => {
         res.resume();
@@ -119,12 +124,12 @@ const env = {
   EA_DASHBOARD_QUOTE_MAX_AGE_MS:
     process.env.EA_DASHBOARD_QUOTE_MAX_AGE_MS ?? String(10 * 60 * 1000),
   PORT: String(port),
-  ENABLE_PORT_FALLBACK: process.env.ENABLE_PORT_FALLBACK ?? 'false'
+  ENABLE_PORT_FALLBACK: process.env.ENABLE_PORT_FALLBACK ?? 'false',
 };
 
 const child = spawn(process.execPath, ['src/server.js'], {
   stdio: 'inherit',
-  env
+  env,
 });
 
 child.on('exit', (code, signal) => {

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchJson, postJson } from '../utils/api.js';
 import { formatDateTime, formatNumber } from '../utils/format.js';
+import { normalizeBrokerId } from '../app/app-constants.js';
 
 const NA_LABEL = 'N/A';
 
@@ -9,7 +10,8 @@ function MetaTraderBridgePanel({
   brokerHealth = [],
   onRefreshBrokers,
   selectedPlatform: selectedPlatformProp,
-  onSelectedPlatformChange
+  onSelectedPlatformChange,
+  showAutoTradingControls = false
 }) {
   const [bridgeActivity, setBridgeActivity] = useState({});
   const [selectedPlatformState, setSelectedPlatformState] = useState('MT5');
@@ -94,8 +96,9 @@ function MetaTraderBridgePanel({
     setAutoTradingError(null);
     try {
       const payload = await fetchJson('/api/status');
-      const brokerId = String(selectedPlatform || '').toLowerCase();
-      const forced = String(payload?.status?.autoTrading?.forcedBroker || '').toLowerCase() || null;
+      const brokerId = normalizeBrokerId(selectedPlatform || '');
+      const forced =
+        normalizeBrokerId(payload?.status?.autoTrading?.forcedBroker || '') || null;
       setForcedBrokerId(forced);
       const effectiveBrokerId = forced || brokerId;
 
@@ -118,13 +121,20 @@ function MetaTraderBridgePanel({
   }, [selectedPlatform, setSelectedPlatform]);
 
   useEffect(() => {
-    void Promise.allSettled([refreshStats(), refreshStatus(), refreshAutoTradingStatus()]);
-  }, [refreshAutoTradingStatus, refreshStats, refreshStatus]);
+    const tasks = [refreshStats(), refreshStatus()];
+    if (showAutoTradingControls) {
+      tasks.push(refreshAutoTradingStatus());
+    }
+    void Promise.allSettled(tasks);
+  }, [refreshAutoTradingStatus, refreshStats, refreshStatus, showAutoTradingControls]);
 
   useEffect(() => {
+    if (!showAutoTradingControls) {
+      return undefined;
+    }
     const timer = setInterval(refreshAutoTradingStatus, 15000);
     return () => clearInterval(timer);
-  }, [refreshAutoTradingStatus]);
+  }, [refreshAutoTradingStatus, showAutoTradingControls]);
 
   useEffect(() => {
     const timer = setInterval(refreshStatus, 15000);
@@ -286,23 +296,25 @@ function MetaTraderBridgePanel({
               ))}
             </select>
           </label>
-          <button
-            type="button"
-            className="engine-console__bridge-refresh"
-            onClick={toggleAutoTrading}
-            disabled={!selectedIsConnected || autoTradingLoading}
-            title={
-              selectedIsConnected
-                ? 'Start or stop automated trading'
-                : 'Connect the selected MetaTrader account first'
-            }
-          >
-            {autoTradingLoading
-              ? 'Working…'
-              : autoTradingEnabled
-                ? 'Stop Auto Trading'
-                : 'Start Auto Trading'}
-          </button>
+          {showAutoTradingControls && (
+            <button
+              type="button"
+              className="engine-console__bridge-refresh"
+              onClick={toggleAutoTrading}
+              disabled={!selectedIsConnected || autoTradingLoading}
+              title={
+                selectedIsConnected
+                  ? 'Start or stop automated trading'
+                  : 'Connect the selected MetaTrader account first'
+              }
+            >
+              {autoTradingLoading
+                ? 'Working…'
+                : autoTradingEnabled
+                  ? 'Stop Auto Trading'
+                  : 'Start Auto Trading'}
+            </button>
+          )}
           <button
             type="button"
             className="engine-console__bridge-refresh"
@@ -323,7 +335,9 @@ function MetaTraderBridgePanel({
 
       {statsError && <div className="engine-console__warning">{statsError}</div>}
       {statusError && <div className="engine-console__warning">{statusError}</div>}
-      {autoTradingError && <div className="engine-console__warning">{autoTradingError}</div>}
+      {showAutoTradingControls && autoTradingError && (
+        <div className="engine-console__warning">{autoTradingError}</div>
+      )}
 
       <div className="engine-console__bridge-grid">
         {(() => {

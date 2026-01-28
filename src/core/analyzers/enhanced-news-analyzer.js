@@ -8,7 +8,7 @@ import EconomicCalendarService from '../../infrastructure/services/economic-cale
 import SentimentFeedsService from '../../infrastructure/services/sentiment-feeds.js';
 import RssFeedAggregator from '../../infrastructure/services/rss-feed-aggregator.js';
 import LanguageProcessor from '../../infrastructure/services/language-processor.js';
-import { assertSchema } from '../utils/schema-validator.js';
+import { assertSchema } from '../../utils/schema-validator.js';
 import { getPairMetadata } from '../../config/pair-catalog.js';
 
 class EnhancedNewsAnalyzer {
@@ -21,7 +21,7 @@ class EnhancedNewsAnalyzer {
       options.aggregator ||
       new RssFeedAggregator({
         apiKeys,
-        cacheTtlMs: options.aggregatorCacheTtlMs || 2 * 60 * 1000
+        cacheTtlMs: options.aggregatorCacheTtlMs || 2 * 60 * 1000,
       });
     this.languageProcessor =
       options.languageProcessor || new LanguageProcessor(options.languageOptions || {});
@@ -52,7 +52,7 @@ class EnhancedNewsAnalyzer {
         'skyrocket',
         'accelerate',
         'strengthen',
-        'outperform'
+        'outperform',
       ],
       positive: [
         'rise',
@@ -67,7 +67,7 @@ class EnhancedNewsAnalyzer {
         'advance',
         'recovery',
         'expansion',
-        'boost'
+        'boost',
       ],
       neutral: [
         'unchanged',
@@ -78,7 +78,7 @@ class EnhancedNewsAnalyzer {
         'in line with',
         'meets expectations',
         'hold',
-        'flat'
+        'flat',
       ],
       negative: [
         'fall',
@@ -93,7 +93,7 @@ class EnhancedNewsAnalyzer {
         'weaken',
         'concern',
         'struggle',
-        'pressure'
+        'pressure',
       ],
       veryNegative: [
         'crash',
@@ -108,8 +108,8 @@ class EnhancedNewsAnalyzer {
         'catastrophic',
         'tumble',
         'devastate',
-        'plummet'
-      ]
+        'plummet',
+      ],
     };
   }
 
@@ -143,7 +143,7 @@ class EnhancedNewsAnalyzer {
       sentimentFeeds: false,
       newsApi: false,
       investing: false,
-      forexFactory: false
+      forexFactory: false,
     };
 
     let liveArticles = [];
@@ -153,7 +153,7 @@ class EnhancedNewsAnalyzer {
         pair,
         aggregatorKeywords,
         pairTokens,
-        metadata
+        metadata,
       });
       liveArticles = liveResult.articles;
       if (liveArticles.length > 0) {
@@ -173,7 +173,7 @@ class EnhancedNewsAnalyzer {
       storedArticles = await this.fetchStoredArticles({
         keywords: aggregatorKeywords,
         since: Date.now() - this.ingestWindowMs,
-        limit: this.maxArticlesPerSide * 4
+        limit: this.maxArticlesPerSide * 4,
       });
       if (storedArticles.length > 0) {
         sources.persistence = true;
@@ -193,7 +193,7 @@ class EnhancedNewsAnalyzer {
 
     const [economicCalendar, sentimentFeeds] = await Promise.allSettled([
       this.fetchEconomicCalendar(pair),
-      this.sentimentFeeds.getSentimentForPair(pair)
+      this.sentimentFeeds.getSentimentForPair(pair),
     ]);
 
     const calendar = economicCalendar.status === 'fulfilled' ? economicCalendar.value : [];
@@ -217,7 +217,7 @@ class EnhancedNewsAnalyzer {
       direction: 'neutral',
       confidence: 0,
       sources,
-      sentimentFeeds: sentimentData
+      sentimentFeeds: sentimentData,
     };
 
     analysis.sentiment.base = this.calculateSentiment(analysis.baseNews);
@@ -258,7 +258,7 @@ class EnhancedNewsAnalyzer {
       pair.toLowerCase(),
       `${baseCurrency}/${quoteCurrency}`.toLowerCase(),
       `${baseCurrency}-${quoteCurrency}`.toLowerCase(),
-      `${baseCurrency} ${quoteCurrency}`.toLowerCase()
+      `${baseCurrency} ${quoteCurrency}`.toLowerCase(),
     ]);
 
     if (metadata?.aliases) {
@@ -307,9 +307,9 @@ class EnhancedNewsAnalyzer {
           `${baseCurrency}/${quoteCurrency}`.toLowerCase(),
           `${baseCurrency}-${quoteCurrency}`.toLowerCase(),
           `${baseCurrency} ${quoteCurrency}`.toLowerCase(),
-          `${quoteCurrency}/${baseCurrency}`.toLowerCase()
+          `${quoteCurrency}/${baseCurrency}`.toLowerCase(),
         ])
-      )
+      ),
     };
   }
 
@@ -322,7 +322,7 @@ class EnhancedNewsAnalyzer {
       const fetchMaxItems = Math.max(60, this.maxArticlesPerSide * 2);
       const rawItems = await this.aggregator.fetchAll({
         maxItems: fetchMaxItems,
-        keywords: aggregatorKeywords
+        keywords: aggregatorKeywords,
       });
 
       if (!Array.isArray(rawItems) || rawItems.length === 0) {
@@ -340,7 +340,7 @@ class EnhancedNewsAnalyzer {
           const analysisInput = {
             ...normalized,
             headline: languageInfo.headlineForAnalysis || normalized.headline,
-            summary: languageInfo.summaryForAnalysis ?? normalized.summary
+            summary: languageInfo.summaryForAnalysis ?? normalized.summary,
           };
 
           const analyzed = this.analyzeArticle(analysisInput);
@@ -353,7 +353,7 @@ class EnhancedNewsAnalyzer {
           const enrichedArticle = {
             ...analyzed,
             impact: boostedImpact,
-            score: boostedScore
+            score: boostedScore,
           };
           const topics = this.deriveTopics(analysisInput);
           const sentimentLabel = this.deriveSentimentLabel(enrichedArticle.sentiment);
@@ -361,7 +361,7 @@ class EnhancedNewsAnalyzer {
             article: enrichedArticle,
             additional: [normalized.category, normalized.source],
             keywordSet,
-            pairTokens
+            pairTokens,
           });
 
           const tagSet = this.applyStructuredTags(new Set(baseTags), {
@@ -370,7 +370,7 @@ class EnhancedNewsAnalyzer {
             languageCode: languageInfo.language?.code,
             sentimentLabel,
             assetClass: metadata?.assetClass,
-            topics
+            topics,
           });
 
           const tags = Array.from(tagSet);
@@ -386,7 +386,7 @@ class EnhancedNewsAnalyzer {
             originalHeadline: normalized.headline,
             originalSummary: normalized.summary,
             topics,
-            sentimentLabel
+            sentimentLabel,
           };
         })
       );
@@ -417,9 +417,9 @@ class EnhancedNewsAnalyzer {
             sentimentLabel: article.sentimentLabel,
             originals: {
               headline: article.originalHeadline,
-              summary: article.originalSummary
-            }
-          }
+              summary: article.originalSummary,
+            },
+          },
         }));
 
         persisted = await this.persistence.recordNewsItems(payload);
@@ -447,7 +447,7 @@ class EnhancedNewsAnalyzer {
       timestamp: Number.isFinite(timestamp) ? timestamp : fallbackTimestamp,
       feedId: item?.feedId || 'aggregator',
       category: item?.category || null,
-      raw: item?.raw || null
+      raw: item?.raw || null,
     };
   }
 
@@ -474,7 +474,7 @@ class EnhancedNewsAnalyzer {
     const text = `${article.headline} ${article.summary || ''}`.toLowerCase();
 
     const tokenGroups = [
-      ...(pairTokens ? [pairTokens.base, pairTokens.quote, pairTokens.combined] : [])
+      ...(pairTokens ? [pairTokens.base, pairTokens.quote, pairTokens.combined] : []),
     ].filter(Boolean);
 
     for (const group of tokenGroups) {
@@ -529,30 +529,30 @@ class EnhancedNewsAnalyzer {
           code: 'en',
           raw: 'eng',
           confidence: 1,
-          reliability: 'assumed'
+          reliability: 'assumed',
         },
         translation: {
           headline: {
             original: article?.headline || null,
             translated: article?.headline || null,
-            changed: false
+            changed: false,
           },
           summary: {
             original: article?.summary || null,
             translated: article?.summary || null,
-            changed: false
+            changed: false,
           },
-          provider: null
+          provider: null,
         },
         headlineForAnalysis: article?.headline || null,
-        summaryForAnalysis: article?.summary || null
+        summaryForAnalysis: article?.summary || null,
       };
     }
 
     try {
       return await this.languageProcessor.processArticle({
         headline: article?.headline || null,
-        summary: article?.summary || null
+        summary: article?.summary || null,
       });
     } catch (error) {
       console.warn('Language processing failed:', error.message);
@@ -561,23 +561,23 @@ class EnhancedNewsAnalyzer {
           code: 'en',
           raw: 'eng',
           confidence: 0,
-          reliability: 'fallback'
+          reliability: 'fallback',
         },
         translation: {
           headline: {
             original: article?.headline || null,
             translated: article?.headline || null,
-            changed: false
+            changed: false,
           },
           summary: {
             original: article?.summary || null,
             translated: article?.summary || null,
-            changed: false
+            changed: false,
           },
-          provider: null
+          provider: null,
         },
         headlineForAnalysis: article?.headline || null,
-        summaryForAnalysis: article?.summary || null
+        summaryForAnalysis: article?.summary || null,
       };
     }
   }
@@ -601,8 +601,8 @@ class EnhancedNewsAnalyzer {
           'tightening',
           'easing',
           'qe',
-          'policy meeting'
-        ]
+          'policy meeting',
+        ],
       },
       {
         key: 'inflation',
@@ -613,8 +613,8 @@ class EnhancedNewsAnalyzer {
           'consumer price',
           'producer price',
           'price pressure',
-          'cost of living'
-        ]
+          'cost of living',
+        ],
       },
       {
         key: 'employment',
@@ -624,16 +624,16 @@ class EnhancedNewsAnalyzer {
           'payroll',
           'employment',
           'labor market',
-          'jobless'
-        ]
+          'jobless',
+        ],
       },
       {
         key: 'growth',
-        patterns: ['gdp', 'growth', 'recession', 'expansion', 'economic output', 'slowdown']
+        patterns: ['gdp', 'growth', 'recession', 'expansion', 'economic output', 'slowdown'],
       },
       {
         key: 'geopolitics',
-        patterns: ['geopolit', 'sanction', 'conflict', 'tension', 'war', 'military']
+        patterns: ['geopolit', 'sanction', 'conflict', 'tension', 'war', 'military'],
       },
       {
         key: 'risk',
@@ -643,21 +643,21 @@ class EnhancedNewsAnalyzer {
           'volatility',
           'selloff',
           'market rout',
-          'flight to safety'
-        ]
+          'flight to safety',
+        ],
       },
       {
         key: 'commodities',
-        patterns: ['oil', 'crude', 'energy', 'commodity', 'gold', 'metals', 'gas']
+        patterns: ['oil', 'crude', 'energy', 'commodity', 'gold', 'metals', 'gas'],
       },
       {
         key: 'fiscal_policy',
-        patterns: ['budget', 'deficit', 'spending', 'tax', 'stimulus', 'fiscal']
+        patterns: ['budget', 'deficit', 'spending', 'tax', 'stimulus', 'fiscal'],
       },
       {
         key: 'banking',
-        patterns: ['bank', 'liquidity', 'credit', 'loan', 'deposit', 'capital buffer']
-      }
+        patterns: ['bank', 'liquidity', 'credit', 'loan', 'deposit', 'capital buffer'],
+      },
     ];
 
     for (const { key, patterns } of topicDefinitions) {
@@ -690,7 +690,7 @@ class EnhancedNewsAnalyzer {
     const rows = await this.persistence.getRecentNews({
       keywords,
       since,
-      limit
+      limit,
     });
 
     return rows.map((row) => this.normalizeStoredArticle(row));
@@ -712,7 +712,7 @@ class EnhancedNewsAnalyzer {
       timestamp,
       feedId: row?.feed_id || 'aggregator',
       category: row?.category || null,
-      raw: row?.metadata || null
+      raw: row?.metadata || null,
     };
 
     const analyzed = this.analyzeArticle(baseArticle);
@@ -739,7 +739,7 @@ class EnhancedNewsAnalyzer {
         ...storedKeywords,
         ...(Array.isArray(analyzed.keywords)
           ? analyzed.keywords.map((keyword) => keyword.toLowerCase())
-          : [])
+          : []),
       ])
     );
 
@@ -884,7 +884,7 @@ class EnhancedNewsAnalyzer {
       originalSummary: article?.originalSummary || null,
       topics: Array.isArray(article?.topics) ? article.topics : [],
       sentimentLabel: article?.sentimentLabel || this.deriveSentimentLabel(article?.sentiment),
-      translation: article?.translation || null
+      translation: article?.translation || null,
     };
   }
 
@@ -902,7 +902,7 @@ class EnhancedNewsAnalyzer {
 
       return {
         base: baseNews.map((article) => this.analyzeArticle(article)),
-        quote: quoteNews.map((article) => this.analyzeArticle(article))
+        quote: quoteNews.map((article) => this.analyzeArticle(article)),
       };
     } catch (error) {
       console.error('NewsAPI fetch error:', error.message);
@@ -924,7 +924,7 @@ class EnhancedNewsAnalyzer {
         language: 'en',
         sortBy: 'publishedAt',
         pageSize: 10,
-        apiKey: this.apiKeys.newsApi
+        apiKey: this.apiKeys.newsApi,
       };
 
       const response = await axios.get(url, { params, timeout: 10000 });
@@ -935,7 +935,7 @@ class EnhancedNewsAnalyzer {
           description: article.description || '',
           publishedAt: article.publishedAt,
           source: article.source.name,
-          url: article.url
+          url: article.url,
         }));
       }
 
@@ -957,7 +957,7 @@ class EnhancedNewsAnalyzer {
 
       return {
         base: baseNews.map((article) => this.analyzeArticle(article)),
-        quote: quoteNews.map((article) => this.analyzeArticle(article))
+        quote: quoteNews.map((article) => this.analyzeArticle(article)),
       };
     } catch (error) {
       console.error('Investing.com fetch error:', error.message);
@@ -978,15 +978,15 @@ class EnhancedNewsAnalyzer {
         description: `Latest analysis of ${currency} movements in forex markets`,
         publishedAt: new Date(now - 25 * 60 * 1000).toISOString(),
         source: 'Investing.com',
-        url: 'https://www.investing.com'
+        url: 'https://www.investing.com',
       },
       {
         title: `${currency} Forex Outlook: Key Levels to Watch`,
         description: `Technical and fundamental outlook for ${currency}`,
         publishedAt: new Date(now - 85 * 60 * 1000).toISOString(),
         source: 'Investing.com',
-        url: 'https://www.investing.com'
-      }
+        url: 'https://www.investing.com',
+      },
     ];
 
     return mockNews;
@@ -1005,8 +1005,8 @@ class EnhancedNewsAnalyzer {
           description: 'Latest trading ideas from the community',
           publishedAt: new Date(Date.now() - 22 * 60 * 1000).toISOString(),
           source: 'Forex Factory',
-          url: 'https://www.forexfactory.com'
-        }
+          url: 'https://www.forexfactory.com',
+        },
       ];
 
       return mockNews.map((article) => this.analyzeArticle(article));
@@ -1074,7 +1074,7 @@ class EnhancedNewsAnalyzer {
       sentiment,
       impact,
       score: Number((sentiment * impact).toFixed(2)),
-      keywords: uniqueKeywords
+      keywords: uniqueKeywords,
     };
   }
 
@@ -1095,7 +1095,7 @@ class EnhancedNewsAnalyzer {
       summary,
       source,
       timestamp,
-      url
+      url,
     };
   }
 
@@ -1220,7 +1220,7 @@ class EnhancedNewsAnalyzer {
       XAG: ['silver', 'precious metals', 'xag'],
       USOIL: ['wti', 'crude oil', 'oil', 'petroleum'],
       BTC: ['bitcoin', 'crypto', 'btc', 'digital asset'],
-      ETH: ['ethereum', 'crypto', 'eth', 'ether']
+      ETH: ['ethereum', 'crypto', 'eth', 'ether'],
     };
     return keywords[currency] || [currency.toLowerCase()];
   }
@@ -1273,9 +1273,9 @@ class EnhancedNewsAnalyzer {
         sentimentFeeds: false,
         newsApi: false,
         investing: false,
-        forexFactory: false
+        forexFactory: false,
       },
-      sentimentFeeds: null
+      sentimentFeeds: null,
     };
   }
 
@@ -1293,7 +1293,7 @@ class EnhancedNewsAnalyzer {
   setCached(key, data) {
     this.cache.set(key, {
       data,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 }
