@@ -59,7 +59,7 @@ export const formatDuration = (totalMinutes) => {
 
 export const MAX_SIGNAL_ITEMS = 28;
 export const MAX_EVENT_ITEMS = 28;
-export const MAX_TICKER_RENDER = 120;
+export const MAX_TICKER_RENDER = 600;
 export const MAX_CANDIDATE_ITEMS = (() => {
   const raw = Number(import.meta?.env?.VITE_MAX_CANDIDATE_ITEMS);
   if (!Number.isFinite(raw)) {
@@ -69,7 +69,7 @@ export const MAX_CANDIDATE_ITEMS = (() => {
 })();
 export const MAX_ACTIVE_TRADES = 12;
 export const MAX_HISTORY_TRADES = 40;
-export const TICKER_WINDOW_SIZE = 220;
+export const TICKER_WINDOW_SIZE = 600;
 export const TICKER_ADVANCE_STEP = 110;
 export const MAX_TICKER_SEARCH_RESULTS = 60;
 

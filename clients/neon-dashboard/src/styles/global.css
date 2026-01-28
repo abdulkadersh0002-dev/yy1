@@ -1200,6 +1200,7 @@ body::after {
   min-width: 18rem;
   max-width: 40vw;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .market-ticker__search-select {

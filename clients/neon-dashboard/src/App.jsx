@@ -262,7 +262,7 @@ function App() {
   const tickerMeasureRef = useRef({ viewportWidth: 0, trackWidth: 0, duration: 0 });
   const [tickerSearch, setTickerSearch] = useState('');
   const [tickerCategory, setTickerCategory] = useState('ALL');
-  const [tickerOffset, setTickerOffset] = useState(0);
+  const tickerListMode = true;
   const [analyzerOpen, setAnalyzerOpen] = useState(false);
   const [pairAnalysisOpen, setPairAnalysisOpen] = useState(false);
   const [newsEventsScope, setNewsEventsScope] = useState('PAIR');
@@ -290,7 +290,7 @@ function App() {
   const [eaBridgeSessions, setEaBridgeSessions] = useState([]);
   const [eaBridgeStatsError, setEaBridgeStatsError] = useState(null);
   const [autoTradingAction, setAutoTradingAction] = useState({ loading: false, error: null });
-  const [autoTradingPanelOpen, setAutoTradingPanelOpen] = useState(false);
+  const autoTradingPanelOpen = false;
   const [lastAutoTradingChangeAt, setLastAutoTradingChangeAt] = useState(null);
   const [lastAutoTradingMessage, setLastAutoTradingMessage] = useState(null);
   const [signals, setSignals] = useState([]);
@@ -1800,29 +1800,7 @@ function App() {
     )[0];
   }, [selectedEaBridgeSessions]);
 
-  const toggleAutoTrading = useCallback(async () => {
-    setAutoTradingPanelOpen(true);
-    setAutoTradingAction({ loading: true, error: null });
-    try {
-      if (autoTradingEnabled) {
-        const payload = await postJson('/api/auto-trading/stop', { broker: effectivePlatformId });
-        setLastAutoTradingMessage(payload?.message || null);
-      } else {
-        const payload = await postJson('/api/auto-trading/start', { broker: effectivePlatformId });
-        setLastAutoTradingMessage(payload?.message || null);
-      }
-      setLastAutoTradingChangeAt(Date.now());
-      await loadEngineSnapshot();
-      await refreshTradingData();
-    } catch (error) {
-      setAutoTradingAction({
-        loading: false,
-        error: error?.message || 'Failed to toggle auto trading'
-      });
-      return;
-    }
-    setAutoTradingAction({ loading: false, error: null });
-  }, [autoTradingEnabled, effectivePlatformId, loadEngineSnapshot, refreshTradingData]);
+  // Auto trading runs server-side; UI controls remain hidden (SHOW_AUTOTRADING_UI=false).
 
   const autoTradingAutostartRef = useRef({ broker: null, startedAt: 0 });
   useEffect(() => {
@@ -1904,7 +1882,6 @@ function App() {
   useEffect(() => {
     if (!bridgeIsConnected) {
       setMarketFeed({ quotes: [], news: [], loading: false, error: null, updatedAt: null });
-      setTickerOffset(0);
       return;
     }
 
@@ -2102,13 +2079,15 @@ function App() {
       return [];
     }
 
-    return list.map((symbol) => {
-      const normalized = normalizeTickerSymbol(symbol);
-      if (!normalized) {
-        return null;
-      }
-      return bySymbol.get(normalized) || { symbol: normalized };
-    }).filter(Boolean);
+    return list
+      .map((symbol) => {
+        const normalized = normalizeTickerSymbol(symbol);
+        if (!normalized) {
+          return null;
+        }
+        return bySymbol.get(normalized) || { symbol: normalized };
+      })
+      .filter(Boolean);
   }, [marketFeed.updatedAt]);
 
   const tickerFilteredQuotes = useMemo(() => {
@@ -2155,7 +2134,7 @@ function App() {
       }
 
       const exact = symbol === needle;
-      const starts = shortQuery ? symbol.startsWith(needle) : symbol.startsWith(needle);
+      const starts = symbol.startsWith(needle);
       const includes = shortQuery ? symbol.startsWith(needle) : symbol.includes(needle);
       if (!exact && !starts && !includes) {
         continue;
@@ -2217,19 +2196,8 @@ function App() {
     }
 
     const windowSize = Math.min(TICKER_WINDOW_SIZE, list.length);
-    const start = ((tickerOffset % list.length) + list.length) % list.length;
-    const end = start + windowSize;
-    if (end <= list.length) {
-      return list.slice(start, end);
-    }
-    return [...list.slice(start), ...list.slice(0, end - list.length)];
-  }, [
-    tickerFilteredQuotes,
-    tickerOffset,
-    tickerSearchFocused,
-    tickerSearchMatches,
-    tickerSearchNormalized
-  ]);
+    return list.slice(0, windowSize);
+  }, [tickerFilteredQuotes, tickerSearchFocused, tickerSearchMatches, tickerSearchNormalized]);
 
   const tickerLoopQuotes = useMemo(() => {
     if (!Array.isArray(tickerQuotes) || tickerQuotes.length === 0) {
@@ -2378,11 +2346,13 @@ function App() {
   );
 
   const tickerListRows = useMemo(() => {
-    if (!tickerSearchNormalized) {
-      return [];
-    }
-
-    const list = Array.isArray(tickerSearchMatches) ? tickerSearchMatches.slice(0, 60) : [];
+    const list = tickerSearchNormalized
+      ? Array.isArray(tickerSearchMatches)
+        ? tickerSearchMatches.slice(0, 60)
+        : []
+      : Array.isArray(tickerFilteredQuotes)
+        ? tickerFilteredQuotes.slice(0, MAX_TICKER_RENDER)
+        : [];
     const now = Date.now();
 
     return list
@@ -2420,7 +2390,7 @@ function App() {
         };
       })
       .filter(Boolean);
-  }, [tickerSearchMatches, tickerSearchNormalized]);
+  }, [tickerFilteredQuotes, tickerSearchMatches, tickerSearchNormalized]);
 
   useEffect(() => {
     if (!bridgeIsConnected) {
@@ -2605,32 +2575,7 @@ function App() {
     lastMidCleanupRef.current = now;
   }, [bridgeIsConnected, marketFeed.updatedAt, effectivePlatformId, sortedQuotes]);
 
-  const handleTickerCycle = useCallback(() => {
-    if (!bridgeIsConnected) {
-      return;
-    }
-
-    if (analyzerOpen) {
-      return;
-    }
-
-    if (tickerSearchNormalized) {
-      return;
-    }
-
-    const count = tickerFilteredQuotes.length;
-    if (!Number.isFinite(count) || count <= 0) {
-      setTickerOffset(0);
-      return;
-    }
-
-    if (count <= TICKER_WINDOW_SIZE) {
-      setTickerOffset(0);
-      return;
-    }
-
-    setTickerOffset((prev) => (prev + TICKER_ADVANCE_STEP) % count);
-  }, [analyzerOpen, bridgeIsConnected, tickerFilteredQuotes.length, tickerSearchNormalized]);
+  // Ticker offset cycling removed (static list for smooth performance).
 
   useEffect(() => {
     loadEngineSnapshot();
@@ -2933,23 +2878,15 @@ function App() {
                     eaBridgeConnected={bridgeIsConnected}
                     eaQuotes={marketFeed?.quotes || []}
                   />
-                  {SHOW_AUTOTRADING_UI && (
+                  {false && (
                     <button
                       type="button"
                       className="engine-console__bridge-refresh engine-console__bridge-refresh--compact"
-                      onClick={toggleAutoTrading}
+                      onClick={() => {}}
                       disabled={!bridgeIsConnected || autoTradingAction.loading}
-                      title={
-                        bridgeIsConnected
-                          ? 'Start/stop automated trading'
-                          : 'Connect MT4/MT5 via MetaTrader Bridge first'
-                      }
+                      title="Auto trading runs server-side only"
                     >
-                      {autoTradingAction.loading
-                        ? 'Working…'
-                        : autoTradingEnabled
-                          ? `Auto Trading (${selectedPlatform}): On`
-                          : `Auto Trading (${selectedPlatform}): Off`}
+                      Auto Trading
                     </button>
                   )}
                   <button
@@ -5401,7 +5338,7 @@ function App() {
                   <button
                     type="button"
                     className="engine-console__bridge-refresh engine-console__bridge-refresh--compact"
-                    onClick={() => setAutoTradingPanelOpen(false)}
+                    onClick={() => {}}
                   >
                     Hide
                   </button>
@@ -5481,7 +5418,7 @@ function App() {
 
           {bridgeIsConnected && !pairAnalysisOpen && (
             <div
-              className={`market-ticker ${tickerSearchNormalized ? 'market-ticker--list' : 'market-ticker--strip'} ${analysisIsOpen ? 'market-ticker--paused' : ''}`}
+              className={`market-ticker ${tickerListMode ? 'market-ticker--list' : 'market-ticker--strip'} ${analysisIsOpen ? 'market-ticker--paused' : ''}`}
             >
               <div className="market-ticker__search">
                 <select
@@ -5546,10 +5483,10 @@ function App() {
                 ref={tickerViewportRef}
               >
                 <div
-                  className={`market-ticker__track ${tickerSearchNormalized ? 'market-ticker__track--static' : ''}`}
+                  className={`market-ticker__track ${tickerListMode ? 'market-ticker__track--static' : ''}`}
                   ref={tickerTrackRef}
                 >
-                  {tickerSearchNormalized ? (
+                  {tickerListMode ? (
                     tickerListRows.length ? (
                       <>
                         <div className="market-ticker__row market-ticker__row--head">
