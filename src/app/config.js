@@ -425,6 +425,7 @@ export function buildAppConfig(environment = process.env) {
     enableWebSockets: parseBoolSafe(env.ENABLE_WEBSOCKETS, true),
     websocketPath: env.WEBSOCKET_PATH || '/ws/trading',
     websocketPingIntervalMs: parseIntSafe(env.WEBSOCKET_PING_INTERVAL_MS) || 30000,
+    shutdownTimeoutMs: parseIntSafe(env.SHUTDOWN_TIMEOUT_MS) || 15000,
     providerAvailabilityBroadcastIntervalMs:
       parseIntSafe(env.PROVIDER_AVAILABILITY_BROADCAST_INTERVAL_MS) || 20000,
     providerAvailabilityHistoryLimit: parseIntSafe(env.PROVIDER_AVAILABILITY_HISTORY_LIMIT) || 288,

@@ -331,23 +331,24 @@ export const analysisCore = {
           },
           details: economic,
         },
-        news: {
-          score: newsScore,
-          direction: news.direction,
-          confidence: news.confidence,
-          impact: news.impact,
-          upcomingEvents: news.upcomingEvents,
-          calendarEvents: Array.isArray(news.calendarEvents)
-            ? news.calendarEvents.slice(0, 25)
-            : [],
-          newsSources: news.newsSources || null,
-          evidence: news.evidence || null,
-          newsCount: Number.isFinite(news.newsCount) ? news.newsCount : null,
-          weight: Number(componentWeights.weights.news.toFixed(3)),
-          quality: {
-            reliability: Number(newsQuality.reliability.toFixed(3)),
-            source: Number(newsQuality.sourceScore.toFixed(3)),
-            coverage: Number(newsQuality.coverageScore.toFixed(3)),
+          news: {
+            score: newsScore,
+            direction: news.direction,
+            confidence: news.confidence,
+            impact: news.impact,
+            upcomingEvents: news.upcomingEvents,
+            calendarEvents: Array.isArray(news.calendarEvents)
+              ? news.calendarEvents.slice(0, 25)
+              : [],
+            newsSources: news.newsSources || null,
+            evidence: news.evidence || null,
+            newsCount: Number.isFinite(news.newsCount) ? news.newsCount : null,
+            newsContext: news.newsContext || null,
+            weight: Number(componentWeights.weights.news.toFixed(3)),
+            quality: {
+              reliability: Number(newsQuality.reliability.toFixed(3)),
+              source: Number(newsQuality.sourceScore.toFixed(3)),
+              coverage: Number(newsQuality.coverageScore.toFixed(3)),
             sentiment: Number(newsQuality.sentimentFeedScore.toFixed(3)),
             calendar: Number(newsQuality.calendarScore.toFixed(3)),
             syntheticSentimentSources: newsQuality.syntheticSentimentSources,

@@ -31,7 +31,7 @@ class EaBridgeService {
     this.intelligentTradeManager = new IntelligentTradeManager({
       logger: this.logger,
       eaBridgeService: this,
-      newsAggregator: options.newsAggregator
+      newsAggregator: options.newsAggregator,
     });
 
     // Trade performance history for learning
@@ -1366,7 +1366,7 @@ class EaBridgeService {
         timeline.unshift(id);
       }
       ingested += 1;
-      
+
       // Feed high-impact news to intelligent trade manager
       if (this.intelligentTradeManager && item.currency && item.impact >= 70) {
         this.intelligentTradeManager.recordHighImpactNews(item.currency, {
@@ -1374,7 +1374,7 @@ class EaBridgeService {
           title: item.title,
           timestamp: item.time,
           impact: item.impact,
-          kind: item.kind
+          kind: item.kind,
         });
       }
     }
@@ -2544,6 +2544,217 @@ class EaBridgeService {
     };
   }
 
+  extractSymbolCurrencies(symbol) {
+    if (!symbol) {
+      return [];
+    }
+    const metadata = getPairMetadata(symbol);
+    if (metadata?.base && metadata?.quote) {
+      return [metadata.base, metadata.quote];
+    }
+    const canonical = this.canonicalizeSymbol(symbol);
+    if (canonical.length >= 6) {
+      return [canonical.slice(0, 3), canonical.slice(3, 6)];
+    }
+    return [];
+  }
+
+  buildSignalNewsContext({ broker, symbol, now = Date.now() } = {}) {
+    if (!symbol) {
+      return { items: [], summary: null };
+    }
+
+    const brokerId = broker ? this.normalizeBroker(broker) : null;
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+    const canonicalSymbol = this.canonicalizeSymbol(normalizedSymbol);
+
+    const envLookback = Number(process.env.EA_SIGNAL_NEWS_LOOKBACK_MINUTES);
+    const lookbackMinutes = Number.isFinite(envLookback) ? Math.max(5, envLookback) : 120;
+    const envLookahead = Number(process.env.EA_SIGNAL_NEWS_LOOKAHEAD_MINUTES);
+    const lookaheadMinutes = Number.isFinite(envLookahead) ? Math.max(5, envLookahead) : 90;
+    const envLimit = Number(process.env.EA_SIGNAL_NEWS_MAX_ITEMS);
+    const maxItems = Number.isFinite(envLimit) ? Math.max(5, Math.min(200, envLimit)) : 120;
+    const envImpact = Number(process.env.EA_SIGNAL_NEWS_IMPACT_THRESHOLD);
+    const impactThreshold = Number.isFinite(envImpact) ? Math.max(0, Math.min(100, envImpact)) : 70;
+    const envImminent = Number(process.env.EA_SIGNAL_NEWS_IMMINENT_MINUTES);
+    const imminentMinutes = Number.isFinite(envImminent) ? Math.max(1, envImminent) : 20;
+
+    const nowMs = Number.isFinite(Number(now)) ? Number(now) : Date.now();
+    const lookbackMs = lookbackMinutes * 60 * 1000;
+    const lookaheadMs = lookaheadMinutes * 60 * 1000;
+
+    const currencies = new Set(this.extractSymbolCurrencies(normalizedSymbol).filter(Boolean));
+    const newsItems = Array.isArray(this.getNews({ broker: brokerId, limit: maxItems }))
+      ? this.getNews({ broker: brokerId, limit: maxItems })
+      : [];
+
+    const classifier = this.intelligentTradeManager?.newsClassifier || null;
+
+    const relevant = newsItems
+      .map((item) => {
+        if (!item) {
+          return null;
+        }
+        const itemSymbol = this.normalizeSymbol(item.symbol);
+        const canonicalItem = itemSymbol ? this.canonicalizeSymbol(itemSymbol) : null;
+        const currency = item.currency ? String(item.currency).toUpperCase() : null;
+        const matchSymbol =
+          canonicalItem &&
+          canonicalSymbol &&
+          (canonicalItem === canonicalSymbol ||
+            canonicalItem.startsWith(canonicalSymbol) ||
+            canonicalSymbol.startsWith(canonicalItem));
+        const matchCurrency = currency && currencies.size > 0 ? currencies.has(currency) : false;
+        if (!matchSymbol && !matchCurrency) {
+          return null;
+        }
+        const itemTime = Number(item.time || item.timestamp || item.receivedAt || 0);
+        if (!Number.isFinite(itemTime) || itemTime <= 0) {
+          return null;
+        }
+        const deltaMs = itemTime - nowMs;
+        if (deltaMs < -lookbackMs || deltaMs > lookaheadMs) {
+          return null;
+        }
+        const classification =
+          classifier && typeof classifier.classifyNews === 'function'
+            ? classifier.classifyNews(item)
+            : null;
+        return {
+          id: item.id,
+          title: item.title || item.headline || null,
+          currency,
+          symbol: itemSymbol || null,
+          impact: Number.isFinite(Number(item.impact)) ? Number(item.impact) : null,
+          time: itemTime,
+          kind: item.kind || null,
+          source: item.source || null,
+          minutesFromNow: Number(((itemTime - nowMs) / 60000).toFixed(2)),
+          level: classification?.level || null,
+          timing: classification?.timing || null,
+          actions: classification?.actions || null,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => Number(b.time || 0) - Number(a.time || 0));
+
+    const highImpact = relevant.filter(
+      (item) => Number.isFinite(Number(item.impact)) && Number(item.impact) >= impactThreshold
+    );
+    const imminent = highImpact.filter(
+      (item) => Math.abs(Number(item.minutesFromNow || 0)) <= imminentMinutes
+    );
+    const upcoming = highImpact.filter(
+      (item) =>
+        Number(item.minutesFromNow || 0) >= 0 &&
+        Number(item.minutesFromNow || 0) <= lookaheadMinutes
+    );
+
+    const aggregate =
+      classifier && typeof classifier.aggregateNewsImpact === 'function'
+        ? classifier.aggregateNewsImpact(relevant, normalizedSymbol)
+        : null;
+
+    return {
+      items: relevant,
+      summary: {
+        total: relevant.length,
+        highImpactCount: highImpact.length,
+        imminentCount: imminent.length,
+        upcomingCount: upcoming.length,
+        impactThreshold,
+        imminentMinutes,
+        lookbackMinutes,
+        lookaheadMinutes,
+        aggregate: aggregate
+          ? {
+              level: aggregate.level,
+              timing: aggregate.timing,
+              actions: aggregate.actions,
+              volatilityMultiplier: aggregate.volatilityMultiplier,
+              count: aggregate.count,
+            }
+          : null,
+      },
+    };
+  }
+
+  applyNewsContextToSignal(signal, newsContext) {
+    if (!signal || typeof signal !== 'object' || !newsContext?.summary) {
+      return { signal, penalty: 0, strengthPenalty: 0 };
+    }
+
+    const baseConfidence = Number(signal.confidence);
+    const baseStrength = Number(signal.strength);
+    const envPenalty = Number(process.env.EA_SIGNAL_NEWS_CONFIDENCE_PENALTY);
+    const envStrengthPenalty = Number(process.env.EA_SIGNAL_NEWS_STRENGTH_PENALTY);
+    const envMaxPenalty = Number(process.env.EA_SIGNAL_NEWS_MAX_PENALTY);
+    const envImminentExtra = Number(process.env.EA_SIGNAL_NEWS_IMMINENT_EXTRA_PENALTY);
+    const envMediumMultiplier = Number(process.env.EA_SIGNAL_NEWS_MEDIUM_IMMINENT_MULTIPLIER);
+
+    const perImpactPenalty = Number.isFinite(envPenalty) ? Math.max(0, envPenalty) : 12;
+    const perStrengthPenalty = Number.isFinite(envStrengthPenalty)
+      ? Math.max(0, envStrengthPenalty)
+      : 8;
+    const maxPenalty = Number.isFinite(envMaxPenalty) ? Math.max(0, envMaxPenalty) : 45;
+    const imminentExtraPenalty = Number.isFinite(envImminentExtra)
+      ? Math.max(0, envImminentExtra)
+      : 4;
+    const mediumImminentMultiplier = Number.isFinite(envMediumMultiplier)
+      ? Math.max(0, envMediumMultiplier)
+      : 0.6;
+
+    const highImpactCount = Number(newsContext.summary.highImpactCount || 0);
+    const imminentCount = Number(newsContext.summary.imminentCount || 0);
+    const aggregateTiming = newsContext.summary.aggregate?.timing || null;
+    const aggregateLevel = newsContext.summary.aggregate?.level || null;
+
+    let penalty =
+      highImpactCount * perImpactPenalty +
+      imminentCount * (perImpactPenalty + imminentExtraPenalty);
+    if (
+      aggregateLevel === 'high' &&
+      (aggregateTiming === 'imminent' || aggregateTiming === 'during')
+    ) {
+      penalty += perImpactPenalty;
+    } else if (aggregateLevel === 'medium' && aggregateTiming === 'imminent') {
+      penalty += perImpactPenalty * mediumImminentMultiplier;
+    }
+    penalty = Math.min(maxPenalty, penalty);
+
+    let strengthPenalty =
+      highImpactCount * perStrengthPenalty + (imminentCount ? perStrengthPenalty : 0);
+    strengthPenalty = Math.min(maxPenalty, strengthPenalty);
+
+    const confidence = Number.isFinite(baseConfidence)
+      ? Math.max(0, baseConfidence - penalty)
+      : baseConfidence;
+    const strength = Number.isFinite(baseStrength)
+      ? Math.max(0, baseStrength - strengthPenalty)
+      : baseStrength;
+
+    const nextSignal = {
+      ...signal,
+      confidence,
+      strength,
+      newsPenalty: Number(penalty.toFixed(2)),
+      newsStrengthPenalty: Number(strengthPenalty.toFixed(2)),
+    };
+
+    const components =
+      nextSignal.components && typeof nextSignal.components === 'object'
+        ? { ...nextSignal.components }
+        : {};
+    const news =
+      components.news && typeof components.news === 'object' ? { ...components.news } : {};
+    news.eaContext = newsContext.summary;
+    news.eaItems = newsContext.items;
+    components.news = news;
+    nextSignal.components = components;
+
+    return { signal: nextSignal, penalty, strengthPenalty };
+  }
+
   buildSessionGuard({ assetClass = 'forex', now = Date.now() } = {}) {
     const strictEnv = String(process.env.EA_SESSION_STRICT || '')
       .trim()
@@ -2775,6 +2986,7 @@ class EaBridgeService {
     const broker = this.normalizeBroker(payload?.broker) || null;
     const positions = Array.isArray(payload.positions) ? payload.positions : [];
     const now = Date.now();
+    const newsItems = Array.isArray(payload.newsItems) ? payload.newsItems : [];
 
     const guards = {
       news: this.buildNewsGuard({ broker }),
@@ -2784,7 +2996,7 @@ class EaBridgeService {
     };
 
     const actions = positions
-      .map((pos) => this.evaluateSinglePosition(pos, { broker, now, guards }))
+      .map((pos) => this.evaluateSinglePosition(pos, { broker, now, guards, newsItems }))
       .filter(Boolean);
 
     const commands = this.buildManagementCommands(actions, { broker, now });
@@ -2963,11 +3175,20 @@ class EaBridgeService {
       : [];
 
     const actions = [];
+    const pushAction = (action) => {
+      if (!action) {
+        return;
+      }
+      if (actions.some((existing) => existing.type === action.type && existing.reason === action.reason)) {
+        return;
+      }
+      actions.push(action);
+    };
 
     if (plan.trailing.enabled && Number.isFinite(rMultiple)) {
       if (rMultiple >= plan.trailing.breakevenAtR && Number.isFinite(stopLoss)) {
         if (Math.abs(stopLoss - entryPrice) > pipSize * 0.2) {
-          actions.push({
+          pushAction({
             type: 'move_sl',
             reason: 'breakeven',
             price: entryPrice,
@@ -2976,7 +3197,7 @@ class EaBridgeService {
       }
 
       if (rMultiple >= plan.trailing.trailStartR) {
-        actions.push({
+        pushAction({
           type: 'trail',
           reason: 'dynamic_trailing',
           distancePips: plan.trailing.distancePips,
@@ -2991,7 +3212,7 @@ class EaBridgeService {
           continue;
         }
         if (rMultiple >= level.atR) {
-          actions.push({
+          pushAction({
             type: 'partial_close',
             reason: `target_${level.atR}R`,
             percent: level.percent,
@@ -3002,9 +3223,49 @@ class EaBridgeService {
     }
 
     const guards = context.guards || {};
+    const trapScore = Number(position?.liquidityTrap?.confidence);
+    const trapExitThreshold = Number(process.env.EA_LIQUIDITY_TRAP_EXIT_SCORE) || 70;
     if (guards.news?.pauseTrading || guards.dataQuality?.blockTrading) {
       if (Number.isFinite(rMultiple) && rMultiple >= 0.6) {
-        actions.push({ type: 'close', reason: 'guard_exit' });
+        pushAction({ type: 'close', reason: 'guard_exit' });
+      }
+    }
+    if (Number.isFinite(trapScore) && trapScore >= trapExitThreshold) {
+      if (Number.isFinite(rMultiple) && rMultiple >= 0.2) {
+        pushAction({ type: 'close', reason: 'liquidity_trap_exit' });
+      }
+    }
+
+    if (this.intelligentTradeManager?.monitorTrade) {
+      const monitorDecision = this.intelligentTradeManager.monitorTrade({
+        trade: {
+          openPrice: entryPrice,
+          stopLoss,
+          takeProfit,
+          direction: isBuy ? 'BUY' : 'SELL',
+          symbol,
+        },
+        currentPrice,
+        marketData: {
+          newsItems: context?.newsItems || [],
+          liquidityTrap: position?.liquidityTrap || null,
+        },
+      });
+
+      if (monitorDecision?.action === 'CLOSE_NOW') {
+        pushAction({
+          type: 'close',
+          reason: monitorDecision.reason || 'intelligent_exit',
+        });
+      } else if (
+        monitorDecision?.action === 'MODIFY_SL' &&
+        Number.isFinite(monitorDecision?.newStopLoss)
+      ) {
+        pushAction({
+          type: 'move_sl',
+          reason: monitorDecision.reason || 'intelligent_trail',
+          price: monitorDecision.newStopLoss,
+        });
       }
     }
 
@@ -3413,14 +3674,17 @@ class EaBridgeService {
       // Require the canonical 18-layer payload to be present/ready before executing.
       const requireLayers18 = autoTradingConfig.realtimeRequireLayers18 !== false;
 
-      const confidence = Number(signal.confidence) || 0;
-      const strength = Number(signal.strength) || 0;
+      const newsContext = this.buildSignalNewsContext({ broker, symbol: pair });
+      const { signal: adjustedSignalWithNews } = this.applyNewsContextToSignal(signal, newsContext);
+
+      const confidence = Number(adjustedSignalWithNews?.confidence) || 0;
+      const strength = Number(adjustedSignalWithNews?.strength) || 0;
       const direction = String(signal.direction || '').toUpperCase();
       const decisionState = signal?.isValid?.decision?.state || null;
 
       const isEnter = decisionState === 'ENTER' && Boolean(signal?.isValid?.isValid);
 
-      const adjustedSignal = this.adjustSignalWithLearning(signal);
+      const adjustedSignal = this.adjustSignalWithLearning(adjustedSignalWithNews);
       const managementPlan = this.buildTradeManagementPlan(adjustedSignal);
 
       const assetClass =
@@ -3428,7 +3692,8 @@ class EaBridgeService {
           ? this.tradingEngine.classifyAssetClass(pair)
           : 'forex';
 
-      const sessionGuard = this.buildSessionGuard({ assetClass, now: Date.now() });
+      const now = Date.now();
+      const sessionGuard = this.buildSessionGuard({ assetClass, now });
       const liquidityGuard = this.buildLiquidityGuard({ broker });
       const newsGuard = this.buildNewsGuard({ broker });
       const dataQualityGuard = this.buildDataQualityGuard({ broker });
@@ -3460,6 +3725,7 @@ class EaBridgeService {
                 liquidityGuard,
                 newsGuard,
                 dataQualityGuard,
+                newsContext,
                 gates: {
                   tradingEnabled: false,
                   requireLayers18,
@@ -3489,6 +3755,7 @@ class EaBridgeService {
               liquidityGuard,
               newsGuard,
               dataQualityGuard,
+              newsContext,
               gates: {
                 requireLayers18,
                 layersStatus: computedLayersStatus,
@@ -3518,6 +3785,7 @@ class EaBridgeService {
             liquidityGuard,
             newsGuard,
             dataQualityGuard,
+            newsContext,
           },
         };
       }
@@ -3535,25 +3803,26 @@ class EaBridgeService {
       const enablement = this.shouldEnableTradingForExecution({
         broker,
         assetClass,
-        now: Date.now(),
+        now,
       });
       const tradingEnabled = enablement.enabled;
       const passesStrengthFloor = confidence >= minConfidence && strength >= minStrength;
-      
+
       // Use intelligent trade manager for final evaluation
       let intelligentEvaluation = null;
       let intelligentApproved = false;
       let intelligentReasons = [];
-      
+
       if (passesStrengthFloor && isEnter && tradingEnabled) {
         try {
           // Update market phase and volatility from signal
           if (adjustedSignal?.components?.layeredAnalysis?.layers) {
             const layers = adjustedSignal.components.layeredAnalysis.layers;
-            
+
             // Extract market phase - look for specific layer ID first, then name
-            const phaseLayer = layers.find(l => l.id === 'L12') || 
-                              layers.find(l => l.name === 'marketPhase' || l.name === 'phase');
+            const phaseLayer =
+              layers.find((l) => l.id === 'L12') ||
+              layers.find((l) => l.name === 'marketPhase' || l.name === 'phase');
             if (phaseLayer?.phase) {
               this.intelligentTradeManager.updateMarketPhase(
                 pair,
@@ -3561,10 +3830,10 @@ class EaBridgeService {
                 phaseLayer.confidence || 50
               );
             }
-            
+
             // Extract volatility - look for specific layer ID first, then name
-            const volLayer = layers.find(l => l.id === 'L05') ||
-                            layers.find(l => l.name === 'volatility');
+            const volLayer =
+              layers.find((l) => l.id === 'L05') || layers.find((l) => l.name === 'volatility');
             if (volLayer?.state || volLayer?.volatility) {
               this.intelligentTradeManager.updateVolatility(
                 pair,
@@ -3573,18 +3842,19 @@ class EaBridgeService {
               );
             }
           }
-          
+
           // Perform intelligent evaluation
           intelligentEvaluation = this.intelligentTradeManager.evaluateTradeEntry({
             signal: adjustedSignal,
             broker,
             symbol: pair,
-            marketData: { quote, snapshot }
+            marketData: { quote, snapshot },
+            newsItems: newsContext?.items || [],
           });
-          
+
           intelligentApproved = intelligentEvaluation.shouldOpen;
           intelligentReasons = intelligentEvaluation.reasons || [];
-          
+
           // Store quality score for monitoring
           if (intelligentEvaluation.qualityScore) {
             this.intelligentTradeManager.tradeQualityScores.set(
@@ -3592,7 +3862,6 @@ class EaBridgeService {
               intelligentEvaluation.qualityScore
             );
           }
-          
         } catch (error) {
           this.logger.warn({ err: error, symbol: pair }, 'Intelligent trade evaluation failed');
           // Safe fallback: block trades when intelligent evaluation fails
@@ -3604,8 +3873,9 @@ class EaBridgeService {
       } else {
         intelligentApproved = false;
       }
-      
-      const shouldExecuteNow = tradingEnabled && passesStrengthFloor && isEnter && intelligentApproved;
+
+      const shouldExecuteNow =
+        tradingEnabled && passesStrengthFloor && isEnter && intelligentApproved;
 
       if (!passesStrengthFloor) {
         return {
@@ -3624,6 +3894,7 @@ class EaBridgeService {
             newsGuard,
             dataQualityGuard,
             intelligentEvaluation,
+            newsContext,
             gates: {
               tradingEnabled,
               tradingEnableReason: enablement.reason,
@@ -3641,7 +3912,7 @@ class EaBridgeService {
           },
         };
       }
-      
+
       // Add intelligent blocking if evaluation failed
       if (!intelligentApproved && intelligentEvaluation) {
         return {
@@ -3660,6 +3931,7 @@ class EaBridgeService {
             newsGuard,
             dataQualityGuard,
             intelligentEvaluation,
+            newsContext,
             gates: {
               tradingEnabled,
               tradingEnableReason: enablement.reason,
@@ -3693,6 +3965,7 @@ class EaBridgeService {
           newsGuard,
           dataQualityGuard,
           intelligentEvaluation,
+          newsContext,
           gates: {
             tradingEnabled,
             tradingEnableReason: enablement.reason,
@@ -3706,6 +3979,8 @@ class EaBridgeService {
             intelligentApproved,
             intelligentReasons,
             layersStatus,
+            newsImpactPenalty: adjustedSignal?.newsPenalty ?? null,
+            newsStrengthPenalty: adjustedSignal?.newsStrengthPenalty ?? null,
           },
         },
       };

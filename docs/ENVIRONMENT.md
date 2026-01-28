@@ -13,6 +13,7 @@ This document provides a complete reference for all environment variables used b
 | `WEBSOCKET_PATH`             | string  | /ws/trading | WebSocket endpoint path                     |
 | `WEBSOCKET_PING_INTERVAL_MS` | number  | 30000       | WebSocket ping interval                     |
 | `WS_MAX_BUFFERED_BYTES`      | number  | 1000000     | Drop WS broadcasts when client buffer grows |
+| `SHUTDOWN_TIMEOUT_MS`        | number  | 15000       | Graceful shutdown timeout before force exit |
 
 ## Security Configuration
 
@@ -73,11 +74,27 @@ This project defaults to **EA-only + RSS-only** operation.
 
 ## News Configuration
 
-| Variable                  | Type    | Default | Description                     |
-| ------------------------- | ------- | ------- | ------------------------------- |
-| `ENABLE_NEWS_TRANSLATION` | boolean | false   | Enable news translation         |
-| `NEWS_TARGET_LANGUAGE`    | string  | en      | Target language for translation |
-| `NEWS_RSS_ONLY`           | boolean | false   | Use only RSS feeds              |
+| Variable                            | Type    | Default | Description                                                       |
+| ----------------------------------- | ------- | ------- | ----------------------------------------------------------------- |
+| `ENABLE_NEWS_TRANSLATION`           | boolean | false   | Enable news translation                                           |
+| `NEWS_TARGET_LANGUAGE`              | string  | en      | Target language for translation                                   |
+| `NEWS_RSS_ONLY`                     | boolean | false   | Use only RSS feeds                                                |
+| `EA_SIGNAL_NEWS_LOOKBACK_MINUTES`   | number  | 120     | Lookback window for EA news-aware signal adjustments (minutes)    |
+| `EA_SIGNAL_NEWS_LOOKAHEAD_MINUTES`  | number  | 90      | Lookahead window for EA news-aware signal adjustments (minutes)   |
+| `EA_SIGNAL_NEWS_IMPACT_THRESHOLD`   | number  | 70      | Minimum impact score to flag news as high-impact for EA execution |
+| `EA_SIGNAL_NEWS_IMMINENT_MINUTES`   | number  | 20      | Imminent window for EA news impact scoring (minutes)              |
+| `EA_SIGNAL_NEWS_MAX_ITEMS`          | number  | 120     | Max news items to consider for EA signal context                  |
+| `EA_SIGNAL_NEWS_CONFIDENCE_PENALTY` | number  | 12      | Confidence penalty per high-impact news item                      |
+| `EA_SIGNAL_NEWS_STRENGTH_PENALTY`   | number  | 8       | Strength penalty per high-impact news item                        |
+| `EA_SIGNAL_NEWS_MAX_PENALTY`        | number  | 45      | Maximum combined news penalty applied to confidence/strength      |
+| `EA_SIGNAL_NEWS_IMMINENT_EXTRA_PENALTY` | number | 4 | Extra penalty applied per imminent high-impact news event |
+| `EA_SIGNAL_NEWS_MEDIUM_IMMINENT_MULTIPLIER` | number | 0.6 | Multiplier applied for medium-impact imminent news penalty |
+| `EA_SIGNAL_NEWS_VOLATILITY_MULTIPLIER_THRESHOLD` | number | 2.2 | News volatility multiplier threshold treated as extreme |
+| `EA_EARLY_EXIT_LOSS_R` | number | 0.35 | Close losing trades early when reversal/trap/news risks appear |
+| `EA_LIQUIDITY_TRAP_EXIT_SCORE` | number | 70 | Trap confidence threshold to force protective exit |
+| `SMC_TRAP_FOLLOW_THROUGH_MAX_PCT` | number | 0.12 | Max follow-through move (pct) to classify trap |
+| `SMC_TRAP_CONFIDENCE_MIN` | number | 62 | Minimum trap confidence to emit trap signal |
+| `SMC_TRAP_VOLUME_RATIO_MAX` | number | 1.1 | Max volume ratio before trap signal is suppressed |
 
 ## Trading Configuration
 
