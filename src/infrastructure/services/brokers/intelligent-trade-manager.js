@@ -27,6 +27,14 @@ class IntelligentTradeManager {
       logger: this.logger
     });
     
+    // Validate critical dependencies
+    if (!this.scoringModel) {
+      throw new Error('DecisionScoringModel failed to initialize');
+    }
+    if (!this.newsClassifier) {
+      throw new Error('NewsClassificationService failed to initialize');
+    }
+    
     // Execution threshold (percentage confidence required)
     this.minExecutionConfidence = options.minExecutionConfidence || 80;
     
@@ -124,12 +132,17 @@ class IntelligentTradeManager {
    * Build signal data for scoring
    */
   buildSignalDataForScoring(signal) {
+    // Use timestamp if available, otherwise treat as potentially stale
+    const age = signal.timestamp 
+      ? Date.now() - signal.timestamp
+      : 600000; // Default to 10 minutes (stale) if no timestamp
+    
     return {
       confidence: signal.confidence || 0,
       strength: signal.strength || 0,
       multiTimeframeAlignment: signal.mtfAlignment || signal.multiTimeframeAlignment || 0,
       confluence: signal.confluence || signal.layers18Confluence || 0,
-      age: signal.age || (Date.now() - (signal.timestamp || Date.now())),
+      age: age,
       trendAlignment: signal.trendAlignment || null
     };
   }

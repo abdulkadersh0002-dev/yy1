@@ -163,16 +163,16 @@ class NewsClassificationService {
     const diff = newsTimestamp - now;
     
     if (diff > 0 && diff <= this.timingWindows.imminent) {
-      return 'imminent'; // News coming soon
-    } else if (diff > -this.timingWindows.during && diff <= 0) {
-      return 'during'; // News just happened
-    } else if (diff > -this.timingWindows.aftermath && diff <= -this.timingWindows.during) {
-      return 'aftermath'; // Recent news
+      return 'imminent'; // News coming soon (within 15 min)
+    } else if (diff <= 0 && diff > -this.timingWindows.during) {
+      return 'during'; // News just happened (within 30 min after)
+    } else if (diff <= -this.timingWindows.during && diff > -this.timingWindows.aftermath) {
+      return 'aftermath'; // Recent news (30-60 min after)
     } else if (diff > 0) {
-      return 'scheduled'; // Future news
+      return 'scheduled'; // Future news (>15 min away)
     }
     
-    return 'past'; // Old news
+    return 'past'; // Old news (>60 min ago)
   }
 
   /**
@@ -255,6 +255,11 @@ class NewsClassificationService {
    * Record historical behavior for learning
    */
   recordHistoricalBehavior(newsType, behavior) {
+    // Validate behavior object
+    if (!behavior || typeof behavior !== 'object') {
+      return;
+    }
+    
     if (!this.historicalBehavior.has(newsType)) {
       this.historicalBehavior.set(newsType, {
         samples: [],
@@ -265,21 +270,28 @@ class NewsClassificationService {
     }
     
     const history = this.historicalBehavior.get(newsType);
-    history.samples.push(behavior);
     
-    // Keep last 50 samples
-    if (history.samples.length > 50) {
+    // Keep last 50 samples (enforce immediately)
+    if (history.samples.length >= 50) {
       history.samples.shift();
     }
     
-    // Recalculate averages
-    const moves = history.samples.map(s => s.move || 0);
-    const durations = history.samples.map(s => s.duration || 0);
+    history.samples.push(behavior);
     
-    history.avgMove = moves.reduce((a, b) => a + b, 0) / moves.length;
-    history.avgDuration = durations.reduce((a, b) => a + b, 0) / durations.length;
+    // Recalculate averages
+    const moves = history.samples.map(s => s.move || 0).filter(m => typeof m === 'number');
+    const durations = history.samples.map(s => s.duration || 0).filter(d => typeof d === 'number');
+    
+    // Avoid division by zero
+    history.avgMove = moves.length > 0 ? moves.reduce((a, b) => a + b, 0) / moves.length : 0;
+    history.avgDuration = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
     
     // Determine pattern
+    if (moves.length === 0) {
+      history.pattern = 'unknown';
+      return;
+    }
+    
     const upMoves = moves.filter(m => m > 0).length;
     const downMoves = moves.filter(m => m < 0).length;
     
