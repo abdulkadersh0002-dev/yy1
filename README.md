@@ -28,37 +28,35 @@ npm run up
 - **Real-time WebSocket Updates** - Live trade and signal broadcasting
 ## 🚀 Quick Start
 
+**One command to start everything:**
+
 ```bash
-# Clone the repository
-git clone https://github.com/abdulkadersh0002-dev/my-app1.git
-cd my-app1
-
-# Install dependencies
-npm ci
-
-# Copy environment configuration
-
-# Edit .env with your configuration
-
-# Start backend + dashboard (recommended dev workflow)
 npm run dev
-
-# Start backend + dashboard with a preset (recommended)
-npm run start:all -- --preset synthetic
-
-# List available presets
-npm run start:all -- --list-presets
 ```
 
-What you get:
+For detailed setup instructions in **English and Arabic**, see **[QUICK_START.md](./QUICK_START.md)** 📖
 
+### First Time Setup (Quick)
+
+```bash
+# 1. Install dependencies
+npm ci
+
+# 2. Copy environment file
+cp .env.example .env
+
+# 3. Start backend + dashboard
+npm run dev
+```
+
+**Access Points:**
 - Backend API: `http://127.0.0.1:4101`
-- Dashboard (dev): `http://127.0.0.1:4173`
+- Dashboard: `http://127.0.0.1:4173`
+- Health Check: `http://127.0.0.1:4101/api/healthz`
 - WebSocket: `ws://127.0.0.1:4101/ws/trading`
 
-For the EA-driven realtime workflow (signals stream automatically; no manual “Analyze Pair”), see `docs/REALTIME_EA_MODE.md`.
-
-For MetaTrader 5 setup (EA + WebRequest allowlist + verification), see `docs/MT5_SETUP.md`.
+For the EA-driven realtime workflow, see `docs/REALTIME_EA_MODE.md`.  
+For MetaTrader 5 setup, see `docs/MT5_SETUP.md`.
 
 ## 🏫 No Admin / No Node.js on This PC?
 

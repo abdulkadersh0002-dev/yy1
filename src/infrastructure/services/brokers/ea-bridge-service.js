@@ -15,6 +15,7 @@ import {
   resolveLiquidityGuardThresholds,
   resolveNewsGuardThresholds,
 } from '../../../core/policy/trading-policy.js';
+import IntelligentTradeManager from './intelligent-trade-manager.js';
 
 class EaBridgeService {
   constructor(options = {}) {
@@ -25,6 +26,13 @@ class EaBridgeService {
 
     // Active EA sessions
     this.sessions = new Map();
+
+    // Intelligent Trade Manager for advanced decision-making
+    this.intelligentTradeManager = new IntelligentTradeManager({
+      logger: this.logger,
+      eaBridgeService: this,
+      newsAggregator: options.newsAggregator
+    });
 
     // Trade performance history for learning
     this.tradeHistory = [];
@@ -1358,6 +1366,17 @@ class EaBridgeService {
         timeline.unshift(id);
       }
       ingested += 1;
+      
+      // Feed high-impact news to intelligent trade manager
+      if (this.intelligentTradeManager && item.currency && item.impact >= 70) {
+        this.intelligentTradeManager.recordHighImpactNews(item.currency, {
+          id: item.id,
+          title: item.title,
+          timestamp: item.time,
+          impact: item.impact,
+          kind: item.kind
+        });
+      }
     }
 
     // bound memory per broker
@@ -3070,7 +3089,7 @@ class EaBridgeService {
    * Learn from trade results
    */
   learnFromTrade(transaction) {
-    const { profit, volume } = transaction;
+    const { profit, volume, symbol } = transaction;
 
     // Add to history
     this.tradeHistory.push({
@@ -3092,6 +3111,11 @@ class EaBridgeService {
     } else if (profit < 0) {
       this.consecutiveLosses += 1;
       this.consecutiveWins = 0;
+    }
+
+    // Update intelligent trade manager with symbol performance
+    if (this.intelligentTradeManager && symbol) {
+      this.intelligentTradeManager.updateSymbolPerformance(symbol, profit);
     }
 
     // Recalculate statistics
@@ -3515,7 +3539,73 @@ class EaBridgeService {
       });
       const tradingEnabled = enablement.enabled;
       const passesStrengthFloor = confidence >= minConfidence && strength >= minStrength;
-      const shouldExecuteNow = tradingEnabled && passesStrengthFloor && isEnter;
+      
+      // Use intelligent trade manager for final evaluation
+      let intelligentEvaluation = null;
+      let intelligentApproved = false;
+      let intelligentReasons = [];
+      
+      if (passesStrengthFloor && isEnter && tradingEnabled) {
+        try {
+          // Update market phase and volatility from signal
+          if (adjustedSignal?.components?.layeredAnalysis?.layers) {
+            const layers = adjustedSignal.components.layeredAnalysis.layers;
+            
+            // Extract market phase - look for specific layer ID first, then name
+            const phaseLayer = layers.find(l => l.id === 'L12') || 
+                              layers.find(l => l.name === 'marketPhase' || l.name === 'phase');
+            if (phaseLayer?.phase) {
+              this.intelligentTradeManager.updateMarketPhase(
+                pair,
+                phaseLayer.phase,
+                phaseLayer.confidence || 50
+              );
+            }
+            
+            // Extract volatility - look for specific layer ID first, then name
+            const volLayer = layers.find(l => l.id === 'L05') ||
+                            layers.find(l => l.name === 'volatility');
+            if (volLayer?.state || volLayer?.volatility) {
+              this.intelligentTradeManager.updateVolatility(
+                pair,
+                volLayer.state || volLayer.volatility,
+                volLayer.value || volLayer.atr || 0
+              );
+            }
+          }
+          
+          // Perform intelligent evaluation
+          intelligentEvaluation = this.intelligentTradeManager.evaluateTradeEntry({
+            signal: adjustedSignal,
+            broker,
+            symbol: pair,
+            marketData: { quote, snapshot }
+          });
+          
+          intelligentApproved = intelligentEvaluation.shouldOpen;
+          intelligentReasons = intelligentEvaluation.reasons || [];
+          
+          // Store quality score for monitoring
+          if (intelligentEvaluation.qualityScore) {
+            this.intelligentTradeManager.tradeQualityScores.set(
+              `${broker}:${pair}:${Date.now()}`,
+              intelligentEvaluation.qualityScore
+            );
+          }
+          
+        } catch (error) {
+          this.logger.warn({ err: error, symbol: pair }, 'Intelligent trade evaluation failed');
+          // Safe fallback: block trades when intelligent evaluation fails
+          // This can be made configurable via env var if needed
+          const allowFallbackExecution = process.env.INTELLIGENT_EVAL_ALLOW_FALLBACK === 'true';
+          intelligentApproved = allowFallbackExecution;
+          intelligentReasons = [`Evaluation error: ${error.message}`];
+        }
+      } else {
+        intelligentApproved = false;
+      }
+      
+      const shouldExecuteNow = tradingEnabled && passesStrengthFloor && isEnter && intelligentApproved;
 
       if (!passesStrengthFloor) {
         return {
@@ -3533,6 +3623,7 @@ class EaBridgeService {
             liquidityGuard,
             newsGuard,
             dataQualityGuard,
+            intelligentEvaluation,
             gates: {
               tradingEnabled,
               tradingEnableReason: enablement.reason,
@@ -3543,6 +3634,44 @@ class EaBridgeService {
               confidence,
               strength,
               passesStrengthFloor,
+              intelligentApproved,
+              intelligentReasons,
+              layersStatus,
+            },
+          },
+        };
+      }
+      
+      // Add intelligent blocking if evaluation failed
+      if (!intelligentApproved && intelligentEvaluation) {
+        return {
+          success: true,
+          message: `Intelligent filter blocked: ${intelligentEvaluation.blocked || 'Quality threshold not met'}`,
+          signal: adjustedSignal,
+          snapshotPending,
+          shouldExecute: false,
+          execution: {
+            shouldExecute: false,
+            riskMultiplier: this.riskAdjustmentFactor,
+            stopLossMultiplier: this.stopLossAdjustmentFactor,
+            managementPlan,
+            sessionGuard,
+            liquidityGuard,
+            newsGuard,
+            dataQualityGuard,
+            intelligentEvaluation,
+            gates: {
+              tradingEnabled,
+              tradingEnableReason: enablement.reason,
+              decisionState,
+              isEnter,
+              minConfidence,
+              minStrength,
+              confidence,
+              strength,
+              passesStrengthFloor,
+              intelligentApproved,
+              intelligentReasons,
               layersStatus,
             },
           },
@@ -3563,6 +3692,7 @@ class EaBridgeService {
           liquidityGuard,
           newsGuard,
           dataQualityGuard,
+          intelligentEvaluation,
           gates: {
             tradingEnabled,
             tradingEnableReason: enablement.reason,
@@ -3573,6 +3703,8 @@ class EaBridgeService {
             confidence,
             strength,
             passesStrengthFloor,
+            intelligentApproved,
+            intelligentReasons,
             layersStatus,
           },
         },

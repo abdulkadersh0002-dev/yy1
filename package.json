@@ -11,34 +11,21 @@
   "packageManager": "npm@10",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "npm run start:all",
-    "up": "npm run dev",
-    "run": "npm run dev",
+    "dev": "node scripts/start.mjs",
     "dev:backend": "node --watch src/server.js",
-    "start:server": "node scripts/dev/start-backend.mjs",
-    "start:dashboard": "node scripts/dev/start-dashboard.mjs",
-    "start:all": "node scripts/dev/start-all.mjs",
-    "start:all:presets": "node scripts/dev/start-all.mjs --list-presets",
-    "restart:server": "powershell -ExecutionPolicy Bypass -File scripts/restart-server.ps1",
-    "restart:dashboard": "powershell -ExecutionPolicy Bypass -File scripts/restart-dashboard.ps1",
-    "restart:all": "powershell -ExecutionPolicy Bypass -File scripts/restart-all.ps1",
-
-    "dashboard:dev": "npm --prefix clients/neon-dashboard run dev",
+    "dev:dashboard": "npm --prefix clients/neon-dashboard run dev",
     "dashboard:build": "npm --prefix clients/neon-dashboard run build",
     "dashboard:preview": "npm --prefix clients/neon-dashboard run preview",
-
     "lint": "eslint . --ext .js --ignore-pattern \"clients/neon-dashboard/**\"",
     "lint:fix": "eslint . --ext .js --fix --ignore-pattern \"clients/neon-dashboard/**\"",
     "format:check": "prettier --check \"**/*.{js,json,md}\"",
     "format:write": "prettier --write \"**/*.{js,json,md}\"",
-
     "test": "node --test \"tests/**/*.test.js\"",
     "test:watch": "node --test --watch \"tests/**/*.test.js\"",
     "test:unit": "node --test \"tests/unit/**/*.test.js\"",
     "test:integration": "node --test \"tests/integration/**/*.test.js\"",
     "test:ci": "npm run test:unit && npm run test:integration",
     "test:coverage": "node --experimental-test-coverage --test tests/unit/**/*.test.js",
-
     "ci:audit": "npm audit --audit-level=high",
     "ci:coverage": "node scripts/ci/coverage-gate.js",
     "ci:quality-gates": "node scripts/ci/quality-gates.js",
@@ -53,7 +40,6 @@
     "validate:providers": "node scripts/validate-providers.js",
     "diagnostics:unused-src": "node scripts/diagnostics/find-unused-src.mjs",
     "diagnostics:unused-dashboard": "node scripts/diagnostics/find-unused-dashboard.mjs",
-
     "prepare": "npx simple-git-hooks"
   },
   "keywords": [
@@ -77,12 +63,12 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "franc": "^6.1.0",
-    "helmet": "^8.2.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^7.0.11",
     "otplib": "^12.0.1",
     "pg": "^8.13.1",
-    "pino": "^8.15.1",
+    "pino": "^8.21.0",
     "pino-pretty": "^10.3.0",
     "prom-client": "^14.2.0",
     "rss-parser": "^3.13.0",
@@ -121,7 +107,9 @@
       "build/",
       "clients/neon-dashboard/**"
     ],
-    "extends": ["eslint:recommended"],
+    "extends": [
+      "eslint:recommended"
+    ],
     "rules": {
       "no-unused-vars": [
         "warn",
@@ -135,8 +123,17 @@
       "no-control-regex": "off",
       "prefer-const": "error",
       "no-var": "error",
-      "eqeqeq": ["error", "always", { "null": "ignore" }],
-      "curly": ["error", "all"],
+      "eqeqeq": [
+        "error",
+        "always",
+        {
+          "null": "ignore"
+        }
+      ],
+      "curly": [
+        "error",
+        "all"
+      ],
       "no-throw-literal": "error",
       "prefer-arrow-callback": "warn",
       "prefer-template": "warn",
@@ -145,7 +142,10 @@
     },
     "overrides": [
       {
-        "files": ["tests/**/*.test.js", "tests/**/*.spec.js"],
+        "files": [
+          "tests/**/*.test.js",
+          "tests/**/*.spec.js"
+        ],
         "env": {
           "node": true
         },
