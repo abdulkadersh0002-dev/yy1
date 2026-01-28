@@ -13,6 +13,7 @@ This document provides a complete reference for all environment variables used b
 | `WEBSOCKET_PATH`             | string  | /ws/trading | WebSocket endpoint path                     |
 | `WEBSOCKET_PING_INTERVAL_MS` | number  | 30000       | WebSocket ping interval                     |
 | `WS_MAX_BUFFERED_BYTES`      | number  | 1000000     | Drop WS broadcasts when client buffer grows |
+| `SHUTDOWN_TIMEOUT_MS`        | number  | 15000       | Graceful shutdown timeout before force exit |
 
 ## Security Configuration
 
