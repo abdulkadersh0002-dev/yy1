@@ -73,11 +73,19 @@ This project defaults to **EA-only + RSS-only** operation.
 
 ## News Configuration
 
-| Variable                  | Type    | Default | Description                     |
-| ------------------------- | ------- | ------- | ------------------------------- |
-| `ENABLE_NEWS_TRANSLATION` | boolean | false   | Enable news translation         |
-| `NEWS_TARGET_LANGUAGE`    | string  | en      | Target language for translation |
-| `NEWS_RSS_ONLY`           | boolean | false   | Use only RSS feeds              |
+| Variable                            | Type    | Default | Description                                                       |
+| ----------------------------------- | ------- | ------- | ----------------------------------------------------------------- |
+| `ENABLE_NEWS_TRANSLATION`           | boolean | false   | Enable news translation                                           |
+| `NEWS_TARGET_LANGUAGE`              | string  | en      | Target language for translation                                   |
+| `NEWS_RSS_ONLY`                     | boolean | false   | Use only RSS feeds                                                |
+| `EA_SIGNAL_NEWS_LOOKBACK_MINUTES`   | number  | 120     | Lookback window for EA news-aware signal adjustments (minutes)    |
+| `EA_SIGNAL_NEWS_LOOKAHEAD_MINUTES`  | number  | 90      | Lookahead window for EA news-aware signal adjustments (minutes)   |
+| `EA_SIGNAL_NEWS_IMPACT_THRESHOLD`   | number  | 70      | Minimum impact score to flag news as high-impact for EA execution |
+| `EA_SIGNAL_NEWS_IMMINENT_MINUTES`   | number  | 20      | Imminent window for EA news impact scoring (minutes)              |
+| `EA_SIGNAL_NEWS_MAX_ITEMS`          | number  | 120     | Max news items to consider for EA signal context                  |
+| `EA_SIGNAL_NEWS_CONFIDENCE_PENALTY` | number  | 12      | Confidence penalty per high-impact news item                      |
+| `EA_SIGNAL_NEWS_STRENGTH_PENALTY`   | number  | 8       | Strength penalty per high-impact news item                        |
+| `EA_SIGNAL_NEWS_MAX_PENALTY`        | number  | 45      | Maximum combined news penalty applied to confidence/strength      |
 
 ## Trading Configuration
 
