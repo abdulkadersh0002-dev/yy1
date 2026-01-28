@@ -3115,7 +3115,7 @@ class EaBridgeService {
 
     // Update intelligent trade manager with symbol performance
     if (this.intelligentTradeManager && symbol) {
-      this.intelligentTradeManager.updateSymbolPerformance(symbol, profit, 0);
+      this.intelligentTradeManager.updateSymbolPerformance(symbol, profit);
     }
 
     // Recalculate statistics
@@ -3551,8 +3551,9 @@ class EaBridgeService {
           if (adjustedSignal?.components?.layeredAnalysis?.layers) {
             const layers = adjustedSignal.components.layeredAnalysis.layers;
             
-            // Extract market phase (Layer 12 or similar)
-            const phaseLayer = layers.find(l => l.id === 'L12' || l.name?.includes('phase'));
+            // Extract market phase - look for specific layer ID first, then name
+            const phaseLayer = layers.find(l => l.id === 'L12') || 
+                              layers.find(l => l.name === 'marketPhase' || l.name === 'phase');
             if (phaseLayer?.phase) {
               this.intelligentTradeManager.updateMarketPhase(
                 pair,
@@ -3561,8 +3562,9 @@ class EaBridgeService {
               );
             }
             
-            // Extract volatility (Layer 5 or similar)
-            const volLayer = layers.find(l => l.id === 'L05' || l.name?.includes('volatility'));
+            // Extract volatility - look for specific layer ID first, then name
+            const volLayer = layers.find(l => l.id === 'L05') ||
+                            layers.find(l => l.name === 'volatility');
             if (volLayer?.state || volLayer?.volatility) {
               this.intelligentTradeManager.updateVolatility(
                 pair,
@@ -3592,8 +3594,12 @@ class EaBridgeService {
           }
           
         } catch (error) {
-          this.logger.warn({ err: error, symbol: pair }, 'Intelligent trade evaluation failed, falling back to standard logic');
-          intelligentApproved = true; // Fallback to standard logic on error
+          this.logger.warn({ err: error, symbol: pair }, 'Intelligent trade evaluation failed');
+          // Safe fallback: block trades when intelligent evaluation fails
+          // This can be made configurable via env var if needed
+          const allowFallbackExecution = process.env.INTELLIGENT_EVAL_ALLOW_FALLBACK === 'true';
+          intelligentApproved = allowFallbackExecution;
+          intelligentReasons = [`Evaluation error: ${error.message}`];
         }
       } else {
         intelligentApproved = false;

@@ -12,9 +12,16 @@ class IntelligentTradeManager {
     this.eaBridgeService = options.eaBridgeService;
     this.newsAggregator = options.newsAggregator;
     
+    // Execution threshold (percentage confidence required)
+    this.minExecutionConfidence = options.minExecutionConfidence || 80;
+    
     // Market condition awareness
     this.marketPhaseCache = new Map(); // symbol -> { phase, confidence, lastUpdate }
     this.volatilityCache = new Map(); // symbol -> { state, value, lastUpdate }
+    
+    // Cache cleanup interval (24 hours)
+    this.cacheCleanupInterval = 24 * 60 * 60 * 1000;
+    this.lastCacheCleanup = Date.now();
     
     // News impact tracking
     this.recentHighImpactNews = new Map(); // currency -> { items: [], lastUpdate }
@@ -23,13 +30,14 @@ class IntelligentTradeManager {
     // Profit protection settings
     this.profitProtectionThreshold = 0.6; // 60% of TP reached
     this.trailingStopActivation = 0.4; // 40% of TP reached
-    this.emergencyExitThreshold = -0.8; // -80% of SL (emergency exit)
+    this.emergencyExitThreshold = 0.8; // 80% adverse movement (stored as positive for clarity)
     
-    // Trade quality scoring cache
+    // Trade quality scoring cache (bounded)
     this.tradeQualityScores = new Map(); // tradeId -> quality score
+    this.maxQualityScores = 1000;
     
     // Performance tracking per symbol
-    this.symbolPerformance = new Map(); // symbol -> { wins, losses, avgProfit, avgLoss }
+    this.symbolPerformance = new Map(); // symbol -> { wins, losses, breakeven, avgProfit, avgLoss }
     
     // Market regime awareness
     this.currentRegime = new Map(); // symbol -> 'trending' | 'ranging' | 'volatile'
@@ -42,6 +50,17 @@ class IntelligentTradeManager {
   evaluateTradeEntry({ signal, broker, symbol, marketData = {} }) {
     const reasons = [];
     let confidence = signal.confidence || 0;
+    const direction = signal.direction || 'NEUTRAL';
+    
+    // Validate direction
+    if (direction !== 'BUY' && direction !== 'SELL') {
+      return {
+        shouldOpen: false,
+        confidence: 0,
+        reasons: [`Invalid or neutral direction: ${direction}`],
+        blocked: 'INVALID_DIRECTION'
+      };
+    }
     
     // 1. Check news impact
     const newsCheck = this.checkNewsImpact(symbol);
@@ -88,8 +107,11 @@ class IntelligentTradeManager {
     confidence = confidence * mtfCheck.alignmentFactor;
     reasons.push(...mtfCheck.insights);
     
-    // Final decision: require 80% confidence for execution
-    const shouldOpen = confidence >= 80;
+    // Configurable execution threshold (default 80%)
+    const executionThreshold = this.minExecutionConfidence || 80;
+    
+    // Final decision: require configured confidence threshold for execution
+    const shouldOpen = confidence >= executionThreshold;
     
     return {
       shouldOpen,
@@ -104,6 +126,11 @@ class IntelligentTradeManager {
    */
   checkNewsImpact(symbol) {
     const currencies = this.extractCurrencies(symbol);
+    if (currencies.length === 0) {
+      this.logger?.warn?.({ symbol }, 'Could not extract currencies from symbol for news check');
+      return { safe: true, details: ['Symbol format not recognized, skipping news check'] };
+    }
+    
     const now = Date.now();
     const details = [];
     
@@ -120,8 +147,12 @@ class IntelligentTradeManager {
       
       if (recentNews.length > 0) {
         details.push(`${currency}: ${recentNews.length} high-impact event(s) in progress`);
-        return { safe: false, details };
       }
+    }
+    
+    // If any currency has high-impact news, block the trade
+    if (details.length > 0) {
+      return { safe: false, details };
     }
     
     return { safe: true, details: ['No major news conflicts'] };
@@ -177,8 +208,17 @@ class IntelligentTradeManager {
       return { adjustmentFactor: 1.0, insights: ['Insufficient history for symbol'] };
     }
     
-    const winRate = perf.wins / (perf.wins + perf.losses);
-    const profitFactor = perf.avgProfit / Math.max(perf.avgLoss, 0.01);
+    const totalTrades = perf.wins + perf.losses;
+    const winRate = perf.wins / totalTrades;
+    
+    // Calculate profit factor - handle zero loss case
+    let profitFactor = 1.0;
+    if (perf.avgLoss > 0) {
+      profitFactor = perf.avgProfit / perf.avgLoss;
+    } else if (perf.wins > 0) {
+      // All wins, no losses - exceptional performance
+      profitFactor = 10.0; // Cap at 10x to avoid infinity
+    }
     
     let factor = 1.0;
     const insights = [];
@@ -364,10 +404,11 @@ class IntelligentTradeManager {
       : stopLoss - openPrice;
     
     const profitRatio = priceDelta / tpDistance;
+    // Note: lossRatio is positive when in loss (negative priceDelta)
     const lossRatio = -priceDelta / slDistance;
     
-    // Emergency exit on severe adverse movement
-    if (lossRatio > Math.abs(this.emergencyExitThreshold)) {
+    // Emergency exit on severe adverse movement (threshold stored as positive)
+    if (lossRatio > this.emergencyExitThreshold) {
       return {
         action: 'CLOSE_NOW',
         reason: 'Emergency exit: severe adverse movement',
@@ -499,11 +540,13 @@ class IntelligentTradeManager {
 
   /**
    * Update symbol performance
+   * Tracks wins, losses, and break-even trades separately
    */
-  updateSymbolPerformance(symbol, profit, loss) {
+  updateSymbolPerformance(symbol, profit) {
     const perf = this.symbolPerformance.get(symbol) || {
       wins: 0,
       losses: 0,
+      breakeven: 0,
       avgProfit: 0,
       avgLoss: 0
     };
@@ -515,20 +558,70 @@ class IntelligentTradeManager {
       const absLoss = Math.abs(profit);
       perf.avgLoss = (perf.avgLoss * perf.losses + absLoss) / (perf.losses + 1);
       perf.losses++;
+    } else {
+      // Track break-even trades separately
+      perf.breakeven++;
     }
     
     this.symbolPerformance.set(symbol, perf);
+    
+    // Cleanup old symbols if cache grows too large
+    this.cleanupCachesIfNeeded();
   }
 
   /**
    * Extract currencies from symbol (e.g., EURUSD -> ['EUR', 'USD'])
+   * Supports standard 6-character FX pairs
    */
   extractCurrencies(symbol) {
     const clean = symbol.replace(/[^A-Z]/g, '');
     if (clean.length >= 6) {
       return [clean.substring(0, 3), clean.substring(3, 6)];
     }
+    // Non-standard symbol format
     return [];
+  }
+  
+  /**
+   * Clean up stale cache entries to prevent memory leaks
+   */
+  cleanupCachesIfNeeded() {
+    const now = Date.now();
+    if (now - this.lastCacheCleanup < this.cacheCleanupInterval) {
+      return; // Not time yet
+    }
+    
+    this.lastCacheCleanup = now;
+    const staleThreshold = now - this.cacheCleanupInterval;
+    
+    // Cleanup market phase cache
+    for (const [symbol, data] of this.marketPhaseCache.entries()) {
+      if (data.lastUpdate < staleThreshold) {
+        this.marketPhaseCache.delete(symbol);
+      }
+    }
+    
+    // Cleanup volatility cache
+    for (const [symbol, data] of this.volatilityCache.entries()) {
+      if (data.lastUpdate < staleThreshold) {
+        this.volatilityCache.delete(symbol);
+      }
+    }
+    
+    // Cleanup trade quality scores (keep only most recent)
+    if (this.tradeQualityScores.size > this.maxQualityScores) {
+      const entries = Array.from(this.tradeQualityScores.entries());
+      // Extract timestamp from key format: "${broker}:${symbol}:${timestamp}"
+      entries.sort((a, b) => {
+        const tsA = parseInt(a[0].split(':')[2] || '0');
+        const tsB = parseInt(b[0].split(':')[2] || '0');
+        return tsB - tsA; // Descending
+      });
+      // Keep only the most recent entries
+      this.tradeQualityScores = new Map(entries.slice(0, this.maxQualityScores));
+    }
+    
+    this.logger?.info?.('Intelligent Trade Manager: cache cleanup completed');
   }
 
   /**
