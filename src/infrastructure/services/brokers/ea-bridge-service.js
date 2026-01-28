@@ -2689,26 +2689,36 @@ class EaBridgeService {
     const envPenalty = Number(process.env.EA_SIGNAL_NEWS_CONFIDENCE_PENALTY);
     const envStrengthPenalty = Number(process.env.EA_SIGNAL_NEWS_STRENGTH_PENALTY);
     const envMaxPenalty = Number(process.env.EA_SIGNAL_NEWS_MAX_PENALTY);
+    const envImminentExtra = Number(process.env.EA_SIGNAL_NEWS_IMMINENT_EXTRA_PENALTY);
+    const envMediumMultiplier = Number(process.env.EA_SIGNAL_NEWS_MEDIUM_IMMINENT_MULTIPLIER);
 
     const perImpactPenalty = Number.isFinite(envPenalty) ? Math.max(0, envPenalty) : 12;
     const perStrengthPenalty = Number.isFinite(envStrengthPenalty)
       ? Math.max(0, envStrengthPenalty)
       : 8;
     const maxPenalty = Number.isFinite(envMaxPenalty) ? Math.max(0, envMaxPenalty) : 45;
+    const imminentExtraPenalty = Number.isFinite(envImminentExtra)
+      ? Math.max(0, envImminentExtra)
+      : 4;
+    const mediumImminentMultiplier = Number.isFinite(envMediumMultiplier)
+      ? Math.max(0, envMediumMultiplier)
+      : 0.6;
 
     const highImpactCount = Number(newsContext.summary.highImpactCount || 0);
     const imminentCount = Number(newsContext.summary.imminentCount || 0);
     const aggregateTiming = newsContext.summary.aggregate?.timing || null;
     const aggregateLevel = newsContext.summary.aggregate?.level || null;
 
-    let penalty = highImpactCount * perImpactPenalty + imminentCount * (perImpactPenalty + 4);
+    let penalty =
+      highImpactCount * perImpactPenalty +
+      imminentCount * (perImpactPenalty + imminentExtraPenalty);
     if (
       aggregateLevel === 'high' &&
       (aggregateTiming === 'imminent' || aggregateTiming === 'during')
     ) {
       penalty += perImpactPenalty;
     } else if (aggregateLevel === 'medium' && aggregateTiming === 'imminent') {
-      penalty += perImpactPenalty * 0.6;
+      penalty += perImpactPenalty * mediumImminentMultiplier;
     }
     penalty = Math.min(maxPenalty, penalty);
 

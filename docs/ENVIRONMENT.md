@@ -86,6 +86,9 @@ This project defaults to **EA-only + RSS-only** operation.
 | `EA_SIGNAL_NEWS_CONFIDENCE_PENALTY` | number  | 12      | Confidence penalty per high-impact news item                      |
 | `EA_SIGNAL_NEWS_STRENGTH_PENALTY`   | number  | 8       | Strength penalty per high-impact news item                        |
 | `EA_SIGNAL_NEWS_MAX_PENALTY`        | number  | 45      | Maximum combined news penalty applied to confidence/strength      |
+| `EA_SIGNAL_NEWS_IMMINENT_EXTRA_PENALTY` | number | 4 | Extra penalty applied per imminent high-impact news event |
+| `EA_SIGNAL_NEWS_MEDIUM_IMMINENT_MULTIPLIER` | number | 0.6 | Multiplier applied for medium-impact imminent news penalty |
+| `EA_SIGNAL_NEWS_VOLATILITY_MULTIPLIER_THRESHOLD` | number | 2.2 | News volatility multiplier threshold treated as extreme |
 
 ## Trading Configuration
 

@@ -423,9 +423,11 @@ class IntelligentTradeManager {
     const { state } = volData;
     const signalStrength = signal.strength || 0;
     const newsVolMultiplier = newsCheck?.summary?.volatilityMultiplier || 1.0;
+    const envVolatility = Number(process.env.EA_SIGNAL_NEWS_VOLATILITY_MULTIPLIER_THRESHOLD);
+    const volatilityThreshold = Number.isFinite(envVolatility) ? envVolatility : 2.2;
 
     // Volatility matching logic
-    if (state === 'extreme' || newsVolMultiplier >= 2.2) {
+    if (state === 'extreme' || newsVolMultiplier >= volatilityThreshold) {
       // Only accept extremely strong signals in extreme volatility
       if (signalStrength < 70) {
         return {
