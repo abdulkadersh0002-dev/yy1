@@ -5,12 +5,27 @@
  */
 
 import logger from '../../services/logging/logger.js';
+import DecisionScoringModel from '../decision/decision-scoring-model.js';
+import NewsClassificationService from '../decision/news-classification-service.js';
 
 class IntelligentTradeManager {
   constructor(options = {}) {
     this.logger = options.logger || logger;
     this.eaBridgeService = options.eaBridgeService;
     this.newsAggregator = options.newsAggregator;
+    
+    // Decision scoring model
+    this.scoringModel = new DecisionScoringModel({
+      logger: this.logger,
+      minEntryScore: options.minEntryScore || 65,
+      minHoldScore: options.minHoldScore || 45,
+      emergencyExitScore: options.emergencyExitScore || 25
+    });
+    
+    // News classification service
+    this.newsClassifier = new NewsClassificationService({
+      logger: this.logger
+    });
     
     // Execution threshold (percentage confidence required)
     this.minExecutionConfidence = options.minExecutionConfidence || 80;
@@ -41,6 +56,134 @@ class IntelligentTradeManager {
     
     // Market regime awareness
     this.currentRegime = new Map(); // symbol -> 'trending' | 'ranging' | 'volatile'
+    
+    // Active trades with re-scoring
+    this.activeTrades = new Map(); // tradeId -> { trade, lastScore, scoreHistory }
+  }
+
+  /**
+   * Evaluate if a trade should be opened using scoring model
+   * Returns: { shouldOpen: boolean, score: number, decision: object, reasons: string[] }
+   */
+  evaluateTradeEntryWithScoring({ signal, broker, symbol, marketData = {}, newsItems = [] }) {
+    const direction = signal.direction || 'NEUTRAL';
+    
+    // Validate direction
+    if (direction !== 'BUY' && direction !== 'SELL') {
+      return {
+        shouldOpen: false,
+        score: 0,
+        decision: { action: 'REJECT', confidence: 'HIGH' },
+        reasons: [`Invalid or neutral direction: ${direction}`],
+        blocked: 'INVALID_DIRECTION'
+      };
+    }
+    
+    // Build scoring context
+    const context = this.buildContextForScoring(symbol, marketData);
+    const signalData = this.buildSignalDataForScoring(signal);
+    const riskData = this.buildRiskDataForScoring(symbol, newsItems, marketData);
+    
+    // Calculate score
+    const scoreResult = this.scoringModel.calculateTradeScore({
+      signal: signalData,
+      context: context,
+      risk: riskData
+    });
+    
+    // Get explanation
+    const explanation = this.scoringModel.explainScore(scoreResult);
+    
+    return {
+      shouldOpen: scoreResult.decision.action === 'ENTER',
+      score: scoreResult.totalScore,
+      decision: scoreResult.decision,
+      breakdown: scoreResult.breakdown,
+      reasons: scoreResult.reasons,
+      recommendation: explanation.recommendation,
+      blocked: scoreResult.decision.action === 'REJECT' ? 'LOW_SCORE' : null
+    };
+  }
+  
+  /**
+   * Build context for scoring
+   */
+  buildContextForScoring(symbol, marketData) {
+    const phase = this.marketPhaseCache.get(symbol);
+    
+    return {
+      marketPhase: phase?.phase || null,
+      tradingSession: this.detectTradingSession(),
+      liquidity: marketData.liquidity || null,
+      spread: marketData.spread || null,
+      normalSpread: marketData.normalSpread || null
+    };
+  }
+  
+  /**
+   * Build signal data for scoring
+   */
+  buildSignalDataForScoring(signal) {
+    return {
+      confidence: signal.confidence || 0,
+      strength: signal.strength || 0,
+      multiTimeframeAlignment: signal.mtfAlignment || signal.multiTimeframeAlignment || 0,
+      confluence: signal.confluence || signal.layers18Confluence || 0,
+      age: signal.age || (Date.now() - (signal.timestamp || Date.now())),
+      trendAlignment: signal.trendAlignment || null
+    };
+  }
+  
+  /**
+   * Build risk data for scoring
+   */
+  buildRiskDataForScoring(symbol, newsItems, marketData) {
+    // Classify and aggregate news
+    let newsImpact = null;
+    if (newsItems && newsItems.length > 0) {
+      const aggregated = this.newsClassifier.aggregateNewsImpact(newsItems, symbol);
+      if (aggregated.level !== 'low' || aggregated.timing === 'imminent' || aggregated.timing === 'during') {
+        newsImpact = {
+          level: aggregated.level,
+          type: newsItems[0]?.type || 'event',
+          timing: aggregated.timing
+        };
+      }
+    }
+    
+    const volData = this.volatilityCache.get(symbol);
+    
+    return {
+      newsImpact: newsImpact,
+      volatility: volData?.state || 'normal',
+      exposure: marketData.exposure || 0,
+      correlationRisk: marketData.correlationRisk || null
+    };
+  }
+  
+  /**
+   * Detect current trading session
+   */
+  detectTradingSession() {
+    const now = new Date();
+    const hour = now.getUTCHours();
+    
+    // London: 8-17 UTC
+    // New York: 13-22 UTC
+    // Overlap: 13-17 UTC
+    // Asian: 0-8 UTC
+    
+    if (hour >= 13 && hour < 17) {
+      return 'overlap';
+    } else if (hour >= 8 && hour < 17) {
+      return 'london';
+    } else if (hour >= 17 && hour < 22) {
+      return 'newyork';
+    } else if (hour >= 0 && hour < 8) {
+      return 'asian';
+    } else {
+      return 'offhours';
+    }
   }
 
   /**
@@ -661,6 +804,130 @@ class IntelligentTradeManager {
     }
     
     return recommendations;
+  }
+  
+  /**
+   * Start monitoring a trade with re-scoring
+   */
+  startMonitoringTrade(tradeId, trade, initialScore) {
+    this.activeTrades.set(tradeId, {
+      trade: trade,
+      lastScore: initialScore,
+      scoreHistory: [{ timestamp: Date.now(), score: initialScore }],
+      lastRescore: Date.now()
+    });
+    
+    this.logger?.info?.({ tradeId, score: initialScore }, 'Started monitoring trade with scoring');
+  }
+  
+  /**
+   * Re-score an active trade
+   * Returns: { action, score, trend, reasons }
+   */
+  rescoreActiveTrade(tradeId, currentMarketData, newsItems = []) {
+    const tradeData = this.activeTrades.get(tradeId);
+    if (!tradeData) {
+      return null;
+    }
+    
+    const { trade } = tradeData;
+    
+    // Build scoring inputs
+    const context = this.buildContextForScoring(trade.symbol, currentMarketData);
+    const signalData = {
+      confidence: trade.initialConfidence || 50,
+      strength: trade.initialStrength || 50,
+      multiTimeframeAlignment: trade.mtfAlignment || 0.5,
+      confluence: trade.confluence || 50,
+      age: Date.now() - trade.openTime,
+      trendAlignment: trade.trendAlignment
+    };
+    const riskData = this.buildRiskDataForScoring(trade.symbol, newsItems, currentMarketData);
+    
+    // Calculate new score with tradeId for history tracking
+    const scoreResult = this.scoringModel.calculateTradeScore({
+      signal: signalData,
+      context: context,
+      risk: riskData,
+      tradeId: tradeId
+    });
+    
+    // Update trade data
+    tradeData.lastScore = scoreResult.totalScore;
+    tradeData.scoreHistory.push({
+      timestamp: Date.now(),
+      score: scoreResult.totalScore,
+      breakdown: scoreResult.breakdown
+    });
+    tradeData.lastRescore = Date.now();
+    
+    // Keep history bounded
+    if (tradeData.scoreHistory.length > 100) {
+      tradeData.scoreHistory.shift();
+    }
+    
+    // Analyze trend
+    const trend = this.scoringModel.analyzeScoreTrend(tradeData.scoreHistory);
+    
+    // Log significant changes
+    if (scoreResult.decision.action === 'EXIT' || scoreResult.decision.action === 'EXIT_NOW') {
+      this.logger?.warn?.({
+        tradeId,
+        score: scoreResult.totalScore,
+        action: scoreResult.decision.action,
+        trend
+      }, 'Trade score dropped - exit recommended');
+    }
+    
+    return {
+      action: scoreResult.decision.action,
+      score: scoreResult.totalScore,
+      breakdown: scoreResult.breakdown,
+      trend: trend,
+      reasons: scoreResult.reasons,
+      confidence: scoreResult.decision.confidence
+    };
+  }
+  
+  /**
+   * Stop monitoring a trade (when closed)
+   */
+  stopMonitoringTrade(tradeId) {
+    this.activeTrades.delete(tradeId);
+    this.scoringModel.clearTradeHistory(tradeId);
+    this.logger?.info?.({ tradeId }, 'Stopped monitoring trade');
+  }
+  
+  /**
+   * Get all trades that need rescoring
+   * Returns trades that haven't been rescored recently
+   */
+  getTradesNeedingRescore(rescoringIntervalMs = 60000) {
+    const now = Date.now();
+    const trades = [];
+    
+    for (const [tradeId, tradeData] of this.activeTrades.entries()) {
+      if (now - tradeData.lastRescore >= rescoringIntervalMs) {
+        trades.push({
+          tradeId,
+          trade: tradeData.trade,
+          lastScore: tradeData.lastScore
+        });
+      }
+    }
+    
+    return trades;
+  }
+  
+  /**
+   * Classify news with smart actions
+   */
+  classifyNewsWithActions(newsItem, trade = null) {
+    if (!trade) {
+      return this.newsClassifier.classifyNews(newsItem);
+    }
+    
+    return this.newsClassifier.evaluateNewsImpact(newsItem, trade);
   }
 }
 
