@@ -2986,6 +2986,7 @@ class EaBridgeService {
     const broker = this.normalizeBroker(payload?.broker) || null;
     const positions = Array.isArray(payload.positions) ? payload.positions : [];
     const now = Date.now();
+    const newsItems = Array.isArray(payload.newsItems) ? payload.newsItems : [];
 
     const guards = {
       news: this.buildNewsGuard({ broker }),
@@ -2995,7 +2996,7 @@ class EaBridgeService {
     };
 
     const actions = positions
-      .map((pos) => this.evaluateSinglePosition(pos, { broker, now, guards }))
+      .map((pos) => this.evaluateSinglePosition(pos, { broker, now, guards, newsItems }))
       .filter(Boolean);
 
     const commands = this.buildManagementCommands(actions, { broker, now });
@@ -3174,11 +3175,20 @@ class EaBridgeService {
       : [];
 
     const actions = [];
+    const pushAction = (action) => {
+      if (!action) {
+        return;
+      }
+      if (actions.some((existing) => existing.type === action.type && existing.reason === action.reason)) {
+        return;
+      }
+      actions.push(action);
+    };
 
     if (plan.trailing.enabled && Number.isFinite(rMultiple)) {
       if (rMultiple >= plan.trailing.breakevenAtR && Number.isFinite(stopLoss)) {
         if (Math.abs(stopLoss - entryPrice) > pipSize * 0.2) {
-          actions.push({
+          pushAction({
             type: 'move_sl',
             reason: 'breakeven',
             price: entryPrice,
@@ -3187,7 +3197,7 @@ class EaBridgeService {
       }
 
       if (rMultiple >= plan.trailing.trailStartR) {
-        actions.push({
+        pushAction({
           type: 'trail',
           reason: 'dynamic_trailing',
           distancePips: plan.trailing.distancePips,
@@ -3202,7 +3212,7 @@ class EaBridgeService {
           continue;
         }
         if (rMultiple >= level.atR) {
-          actions.push({
+          pushAction({
             type: 'partial_close',
             reason: `target_${level.atR}R`,
             percent: level.percent,
@@ -3217,12 +3227,45 @@ class EaBridgeService {
     const trapExitThreshold = Number(process.env.EA_LIQUIDITY_TRAP_EXIT_SCORE) || 70;
     if (guards.news?.pauseTrading || guards.dataQuality?.blockTrading) {
       if (Number.isFinite(rMultiple) && rMultiple >= 0.6) {
-        actions.push({ type: 'close', reason: 'guard_exit' });
+        pushAction({ type: 'close', reason: 'guard_exit' });
       }
     }
     if (Number.isFinite(trapScore) && trapScore >= trapExitThreshold) {
       if (Number.isFinite(rMultiple) && rMultiple >= 0.2) {
-        actions.push({ type: 'close', reason: 'liquidity_trap_exit' });
+        pushAction({ type: 'close', reason: 'liquidity_trap_exit' });
+      }
+    }
+
+    if (this.intelligentTradeManager?.monitorTrade) {
+      const monitorDecision = this.intelligentTradeManager.monitorTrade({
+        trade: {
+          openPrice: entryPrice,
+          stopLoss,
+          takeProfit,
+          direction: isBuy ? 'BUY' : 'SELL',
+          symbol,
+        },
+        currentPrice,
+        marketData: {
+          newsItems: context?.newsItems || [],
+          liquidityTrap: position?.liquidityTrap || null,
+        },
+      });
+
+      if (monitorDecision?.action === 'CLOSE_NOW') {
+        pushAction({
+          type: 'close',
+          reason: monitorDecision.reason || 'intelligent_exit',
+        });
+      } else if (
+        monitorDecision?.action === 'MODIFY_SL' &&
+        Number.isFinite(monitorDecision?.newStopLoss)
+      ) {
+        pushAction({
+          type: 'move_sl',
+          reason: monitorDecision.reason || 'intelligent_trail',
+          price: monitorDecision.newStopLoss,
+        });
       }
     }
 

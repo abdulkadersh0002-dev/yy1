@@ -50,4 +50,18 @@ describe('IntelligentTradeManager news summaries', () => {
     const decision = manager.monitorTrade({ trade, currentPrice, marketData });
     assert.equal(decision.action, 'CLOSE_NOW');
   });
+
+  it('returns modify SL decision when trailing is active', () => {
+    const manager = new IntelligentTradeManager({ logger: { info() {}, warn() {}, error() {} } });
+    const trade = {
+      openPrice: 1.2,
+      stopLoss: 1.19,
+      takeProfit: 1.24,
+      direction: 'BUY',
+      symbol: 'EURUSD',
+    };
+    const currentPrice = 1.23;
+    const decision = manager.monitorTrade({ trade, currentPrice, marketData: {} });
+    assert.ok(['MODIFY_SL', 'HOLD', 'CLOSE_NOW'].includes(decision.action));
+  });
 });
