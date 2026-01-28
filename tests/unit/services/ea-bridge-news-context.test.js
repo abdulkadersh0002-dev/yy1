@@ -15,6 +15,9 @@ describe('EaBridgeService news context', () => {
     EA_SIGNAL_NEWS_LOOKAHEAD_MINUTES: process.env.EA_SIGNAL_NEWS_LOOKAHEAD_MINUTES,
     EA_SIGNAL_NEWS_IMPACT_THRESHOLD: process.env.EA_SIGNAL_NEWS_IMPACT_THRESHOLD,
     EA_SIGNAL_NEWS_IMMINENT_MINUTES: process.env.EA_SIGNAL_NEWS_IMMINENT_MINUTES,
+    EA_SIGNAL_NEWS_IMMINENT_EXTRA_PENALTY: process.env.EA_SIGNAL_NEWS_IMMINENT_EXTRA_PENALTY,
+    EA_SIGNAL_NEWS_MEDIUM_IMMINENT_MULTIPLIER:
+      process.env.EA_SIGNAL_NEWS_MEDIUM_IMMINENT_MULTIPLIER,
   };
 
   afterEach(() => {
@@ -124,5 +127,31 @@ describe('EaBridgeService news context', () => {
 
     assert.ok(adjusted.newsPenalty <= 25);
     assert.ok(adjusted.newsStrengthPenalty <= 25);
+  });
+
+  it('uses imminent and medium multipliers when configured', () => {
+    const svc = new EaBridgeService({ logger: { info() {}, warn() {}, error() {} } });
+    process.env.EA_SIGNAL_NEWS_IMMINENT_EXTRA_PENALTY = '6';
+    process.env.EA_SIGNAL_NEWS_MEDIUM_IMMINENT_MULTIPLIER = '0.8';
+
+    const now = Date.now();
+    svc.recordNews({
+      broker: 'mt5',
+      items: [
+        {
+          id: 'n-med',
+          title: 'Medium impact event',
+          currency: 'EUR',
+          impact: 50,
+          time: now + 60 * 1000,
+        },
+      ],
+    });
+
+    const context = svc.buildSignalNewsContext({ broker: 'mt5', symbol: 'EURUSD', now });
+    const baseSignal = { confidence: 60, strength: 60, direction: 'BUY' };
+    const { signal: adjusted } = svc.applyNewsContextToSignal(baseSignal, context);
+
+    assert.ok(adjusted.newsPenalty > 0);
   });
 });

@@ -189,7 +189,18 @@ export const buildScenarioForLayeredAnalysis = ({
               midDelta: telemetry?.quote?.midDelta ?? null
             }
           : { ageMs, pending: true },
-      barsCoverage: barsCoverage && typeof barsCoverage === 'object' ? barsCoverage : null
+      barsCoverage: barsCoverage && typeof barsCoverage === 'object' ? barsCoverage : null,
+      news:
+        rawSignal?.components?.news && typeof rawSignal.components.news === 'object'
+          ? {
+              impactScore: toNumberOrNull(rawSignal.components.news.impact),
+              upcomingEvents: toNumberOrNull(rawSignal.components.news.upcomingEvents),
+              direction: rawSignal.components.news.direction ?? null,
+              confidence: toNumberOrNull(rawSignal.components.news.confidence),
+              eaContext: rawSignal.components.news.eaContext || null,
+              matchedItems: toNumberOrNull(rawSignal.components.news?.eaContext?.total),
+            }
+          : null
     },
     telemetry,
     factors: {
