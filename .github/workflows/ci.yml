@@ -23,7 +23,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -59,7 +59,7 @@ jobs:
       NODE_ENV: test
       PIPELINE_TEST_SUMMARY: lint,format,unit,integration,quality-gates
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node
         uses: actions/setup-node@v4
