@@ -1099,6 +1099,7 @@ export class RealtimeEaSignalRunner {
         // Strict dashboard: keep the primary stream focused on tradeable ENTER.
         // Still allow lifecycle updates for previously published signals (accuracy), and
         // publish analyzed candidates on a separate channel so the UI can explain "why 0".
+        // Strong override WAIT_MONITOR signals are allowed through for visibility.
         if (canPublishEntryReady || strongOverrideWaitReady || isLifecycleUpdate) {
           return { event: 'signal', keySuffix: '' };
         }
@@ -1112,6 +1113,7 @@ export class RealtimeEaSignalRunner {
       // - Standard: strong/near signals in ENTER (or WAIT_MONITOR if allowed).
       // - Candidates: analyzed payloads (optional).
       // - Lifecycle updates: if we previously published, broadcast state transitions.
+      // - Strong override WAIT_MONITOR signals are allowed for visibility even without full layers.
       if (
         (directional &&
           actionableState &&
