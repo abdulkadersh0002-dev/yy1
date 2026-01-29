@@ -61,27 +61,23 @@ const hydrateUser = (raw) => {
   return raw;
 };
 
+// Auto-admin bypass for trusted deployments. Set VITE_AUTO_ADMIN_LOGIN=false to require login.
 const shouldAutoAdmin = () =>
   String(import.meta.env.VITE_AUTO_ADMIN_LOGIN || 'true').toLowerCase() === 'true';
+
+const AUTO_ADMIN_USER = {
+  id: 'auto-admin',
+  username: 'admin',
+  roles: ['admin'],
+  status: 'active',
+};
 
 export const AuthProvider = ({ children }) => {
   const stored = loadStored();
   const autoAdmin = shouldAutoAdmin();
-  const [accessToken, setAccessToken] = useState(stored.accessToken);
-  const [refreshToken, setRefreshToken] = useState(stored.refreshToken);
-  const [user, setUser] = useState(
-    hydrateUser(
-      stored.user ||
-        (autoAdmin
-          ? {
-              id: 'auto-admin',
-              username: 'admin',
-              roles: ['admin'],
-              status: 'active',
-            }
-          : null)
-    )
-  );
+  const [accessToken, setAccessToken] = useState(autoAdmin ? null : stored.accessToken);
+  const [refreshToken, setRefreshToken] = useState(autoAdmin ? null : stored.refreshToken);
+  const [user, setUser] = useState(autoAdmin ? AUTO_ADMIN_USER : hydrateUser(stored.user));
   const [status, setStatus] = useState({ loading: false, error: null });
   const [mfaState, setMfaState] = useState(null);
 
@@ -105,7 +101,8 @@ export const AuthProvider = ({ children }) => {
 
   const login = useCallback(async ({ username, password }) => {
     if (autoAdmin) {
-      saveSession({ user: user || { username: 'admin', roles: ['admin'] } });
+      saveSession({ user: user || AUTO_ADMIN_USER });
+      setStatus({ loading: false, error: null });
       return { success: true };
     }
     setStatus({ loading: true, error: null });
@@ -176,6 +173,7 @@ export const AuthProvider = ({ children }) => {
   const logout = useCallback(async () => {
     if (autoAdmin) {
       clearSession();
+      setUser(AUTO_ADMIN_USER);
       return;
     }
     try {
@@ -198,7 +196,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchProfile = useCallback(async () => {
     if (autoAdmin) {
-      return user;
+      return user || AUTO_ADMIN_USER;
     }
     if (!accessToken) {
       return null;
@@ -232,6 +230,7 @@ export const AuthProvider = ({ children }) => {
       fetchProfile,
     }),
     [
+      autoAdmin,
       accessToken,
       refreshToken,
       user,
