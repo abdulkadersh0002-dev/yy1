@@ -244,9 +244,7 @@ class QueryPerformanceTracker {
   _truncateQuery(queryText) {
     const maxLength = 200;
     const cleaned = queryText.replace(/\s+/g, ' ').trim();
-    return cleaned.length > maxLength 
-      ? cleaned.substring(0, maxLength) + '...'
-      : cleaned;
+    return cleaned.length > maxLength ? `${cleaned.substring(0, maxLength)}...` : cleaned;
   }
 
   /**
@@ -256,11 +254,13 @@ class QueryPerformanceTracker {
    * @returns {any[]}
    */
   _sanitizeParams(params) {
-    if (!Array.isArray(params)) return [];
-    
-    return params.map(param => {
+    if (!Array.isArray(params)) {
+      return [];
+    }
+
+    return params.map((param) => {
       if (typeof param === 'string' && param.length > 50) {
-        return param.substring(0, 50) + '...';
+        return `${param.substring(0, 50)}...`;
       }
       return param;
     });

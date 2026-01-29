@@ -232,8 +232,10 @@ function _calculateCacheHitRate() {
     }
     totalQueries += stats.count;
   }
-  
-  if (totalQueries === 0) return '0.00%';
+
+  if (totalQueries === 0) {
+    return '0.00%';
+  }
   return ((cachedQueries / totalQueries) * 100).toFixed(2) + '%';
 }
 
