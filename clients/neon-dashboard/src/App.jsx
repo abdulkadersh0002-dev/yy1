@@ -50,7 +50,7 @@ const SHOW_AUTOTRADING_UI = false;
 const DASHBOARD_AUTOTRADING_AUTOSTART = true;
 
 const matchesTickerCategory = (symbolUpper, categoryId) => {
-  const allowed = isFxSymbol(symbolUpper) || isMetalSymbol(symbolUpper) || isCryptoSymbol(symbolUpper);
+  const allowed = isFxSymbol(symbolUpper) || isMetalSymbol(symbolUpper);
   if (!allowed) {
     return false;
   }
@@ -2145,7 +2145,6 @@ function App() {
       return [];
     }
 
-    // For very short queries, "startsWith" cuts down accidental matches.
     const shortQuery = needle.length <= 2;
     const results = [];
     for (const quote of tickerFilteredQuotes) {
@@ -2155,8 +2154,8 @@ function App() {
       }
 
       const exact = symbol === needle;
-      const starts = shortQuery ? symbol.startsWith(needle) : symbol.startsWith(needle);
-      const includes = shortQuery ? symbol.startsWith(needle) : symbol.includes(needle);
+      const starts = symbol.startsWith(needle);
+      const includes = shortQuery ? starts : symbol.includes(needle);
       if (!exact && !starts && !includes) {
         continue;
       }
@@ -2367,7 +2366,7 @@ function App() {
       if (!selected) {
         return;
       }
-      setTickerSearch(selected);
+      startTransition(() => setTickerSearch(selected));
       if (EA_ONLY_UI_MODE) {
         openPairAnalysisForSymbolAndRequestSnapshot(selected);
       } else {
@@ -2385,7 +2384,7 @@ function App() {
     const list = Array.isArray(tickerSearchMatches) ? tickerSearchMatches.slice(0, 60) : [];
     const now = Date.now();
 
-    return list
+    const rows = list
       .map((quote) => {
         const symbolValue = quote?.symbol || quote?.pair;
         const symbol = String(symbolValue ?? '').trim().toUpperCase();
@@ -2420,6 +2419,14 @@ function App() {
         };
       })
       .filter(Boolean);
+
+    rows.sort((a, b) => {
+      if (a.symbol !== b.symbol) {
+        return a.symbol.localeCompare(b.symbol);
+      }
+      return a.key.localeCompare(b.key);
+    });
+    return rows;
   }, [tickerSearchMatches, tickerSearchNormalized]);
 
   useEffect(() => {
@@ -2455,9 +2462,9 @@ function App() {
       // Animation travels 50% of the duplicated track width.
       const travelPx = trackWidth / 2;
       // Keep a slow, readable speed regardless of the number of items.
-      const pixelsPerSecond = 18;
+      const pixelsPerSecond = 14;
       const rawSeconds = travelPx / pixelsPerSecond;
-      const durationSeconds = Math.max(240, Math.min(1800, Math.round(rawSeconds)));
+      const durationSeconds = Math.max(300, Math.min(2400, Math.round(rawSeconds)));
 
       if (prev.duration !== durationSeconds) {
         track.style.setProperty('--market-ticker-duration', `${durationSeconds}s`);
@@ -5505,7 +5512,10 @@ function App() {
                   className="market-ticker__search-input"
                   type="text"
                   value={tickerSearch}
-                  onChange={(event) => setTickerSearch(event.target.value)}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    startTransition(() => setTickerSearch(next));
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault();
@@ -5513,7 +5523,7 @@ function App() {
                       const focused = tickerSearchFocused?.symbol || tickerSearchFocused?.pair;
                       const candidate = String(focused || tickerSearch || '').trim();
                       if (candidate) {
-                        setTickerSearch(candidate);
+                        startTransition(() => setTickerSearch(candidate));
                         if (EA_ONLY_UI_MODE) {
                           openPairAnalysisForSymbolAndRequestSnapshot(candidate);
                         } else {
@@ -5523,11 +5533,11 @@ function App() {
                     }
                     if (event.key === 'Escape') {
                       event.preventDefault();
-                      setTickerSearch('');
+                      startTransition(() => setTickerSearch(''));
                       closeAnalyzer();
                     }
                   }}
-                  placeholder="Search symbol (EURUSD, BTCUSD, XAUUSD, SP500…)"
+                  placeholder="Search symbol (EURUSD, XAUUSD, GBPJPY…)"
                   aria-label="Search ticker symbol"
                 />
               </div>
