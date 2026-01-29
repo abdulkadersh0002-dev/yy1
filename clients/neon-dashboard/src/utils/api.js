@@ -103,7 +103,7 @@ const defaultCacheTtlMs = resolveDefaultCacheTtlMs();
 
 export const getApiConfig = () => ({
   baseUrl,
-  wsUrl
+  wsUrl,
 });
 
 const buildHeaders = (baseHeaders = {}) => {
@@ -166,7 +166,7 @@ export async function fetchJson(path, options = {}) {
   const init = {
     method,
     headers,
-    signal: options.signal
+    signal: options.signal,
   };
 
   if (options.body !== undefined) {
@@ -176,6 +176,13 @@ export async function fetchJson(path, options = {}) {
       headers.set('Content-Type', 'application/json');
     }
     init.body = isObjectBody ? JSON.stringify(options.body) : options.body;
+  }
+  if (options.withAuthToken) {
+    const token =
+      typeof window !== 'undefined' ? window.localStorage.getItem('neon_access_token') : null;
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
   }
 
   const requestPromise = (async () => {
@@ -231,6 +238,6 @@ export function postJson(path, body, options = {}) {
   return fetchJson(path, {
     ...options,
     method: options.method || 'POST',
-    body
+    body,
   });
 }

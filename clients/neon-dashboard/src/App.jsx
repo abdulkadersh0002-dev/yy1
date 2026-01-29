@@ -18,6 +18,9 @@ import SignalDashboardTable from './components/SignalDashboardTable.jsx';
 import CandidateSignalTable from './components/CandidateSignalTable.jsx';
 import { fetchJson, getApiConfig, postJson } from './utils/api.js';
 import { useModuleHealth } from './context/ModuleHealthContext.jsx';
+import { useAuth } from './context/AuthContext.jsx';
+import LoginPanel from './components/LoginPanel.jsx';
+import SmartSettingsPanel from './components/SmartSettingsPanel.jsx';
 import { formatDateTime, formatNumber, formatRelativeTime } from './utils/format.js';
 import {
   ACTIVE_SYMBOLS_SYNC_MAX,
@@ -244,6 +247,7 @@ const buildSessionState = (session, nowUtcMinutes, nowDate, formatter) => {
 function App() {
   const nowFormatter = useCallback(() => new Date(), []);
   const now = useLiveClock(nowFormatter);
+  const auth = useAuth();
   const [metaTraderBridgeOpen, setMetaTraderBridgeOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState('MT5');
   const [marketFeed, setMarketFeed] = useState({
@@ -292,6 +296,7 @@ function App() {
   const [autoTradingPanelOpen, setAutoTradingPanelOpen] = useState(false);
   const [lastAutoTradingChangeAt, setLastAutoTradingChangeAt] = useState(null);
   const [lastAutoTradingMessage, setLastAutoTradingMessage] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [signals, setSignals] = useState([]);
   const [candidateSignals, setCandidateSignals] = useState([]);
   const [entryReadySelectedId, setEntryReadySelectedId] = useState(null);
@@ -2896,17 +2901,54 @@ function App() {
     null;
   const buildLabel = engineStatus?.buildVersion || engineStatus?.version || null;
 
+  if (!auth?.isAuthenticated) {
+    return (
+      <div className="auth-shell">
+        <LoginPanel />
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard">
       <header className="dashboard__header">
-        <div className="dashboard__brand"></div>
+        <div className="dashboard__brand">
+          <div className="dashboard__logo">
+            <span className="dashboard__logo-orb" />
+            <span className="dashboard__logo-text">NEON OPS</span>
+          </div>
+          <div>
+            <h1 className="dashboard__title">Neon Trading Console</h1>
+            <p className="dashboard__subtitle">Smart signal orchestration & execution</p>
+          </div>
+        </div>
         <div className="dashboard__meta">
           {endpointLabel && <span className="dashboard__tag">Endpoint · {endpointLabel}</span>}
           {buildLabel && <span className="dashboard__tag">Build · {buildLabel}</span>}
+          {auth?.user?.username && <span className="dashboard__tag">Admin · {auth.user.username}</span>}
+          <div className="dashboard__controls">
+            <button
+              type="button"
+              className="engine-console__bridge-refresh engine-console__bridge-refresh--compact"
+              onClick={() => setSettingsOpen((prev) => !prev)}
+            >
+              {settingsOpen ? 'Close Settings' : 'Smart Settings'}
+            </button>
+            <button
+              type="button"
+              className="engine-console__bridge-refresh engine-console__bridge-refresh--compact"
+              onClick={auth?.logout}
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="dashboard__main">
+        {settingsOpen && (
+          <SmartSettingsPanel onClose={() => setSettingsOpen(false)} />
+        )}
         <section className="dashboard__section dashboard__section--sessions">
           {!pairAnalysisOpen && (
             <>
