@@ -61,11 +61,27 @@ const hydrateUser = (raw) => {
   return raw;
 };
 
+const shouldAutoAdmin = () =>
+  String(import.meta.env.VITE_AUTO_ADMIN_LOGIN || 'true').toLowerCase() === 'true';
+
 export const AuthProvider = ({ children }) => {
   const stored = loadStored();
+  const autoAdmin = shouldAutoAdmin();
   const [accessToken, setAccessToken] = useState(stored.accessToken);
   const [refreshToken, setRefreshToken] = useState(stored.refreshToken);
-  const [user, setUser] = useState(hydrateUser(stored.user));
+  const [user, setUser] = useState(
+    hydrateUser(
+      stored.user ||
+        (autoAdmin
+          ? {
+              id: 'auto-admin',
+              username: 'admin',
+              roles: ['admin'],
+              status: 'active',
+            }
+          : null)
+    )
+  );
   const [status, setStatus] = useState({ loading: false, error: null });
   const [mfaState, setMfaState] = useState(null);
 
@@ -88,6 +104,10 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = useCallback(async ({ username, password }) => {
+    if (autoAdmin) {
+      saveSession({ user: user || { username: 'admin', roles: ['admin'] } });
+      return { success: true };
+    }
     setStatus({ loading: true, error: null });
     try {
       const response = await postJson('/api/client/login', { username, password });
@@ -108,9 +128,12 @@ export const AuthProvider = ({ children }) => {
       setStatus({ loading: false, error: error?.message || 'Login failed' });
       return { success: false, error: error?.message || 'Login failed' };
     }
-  }, [saveSession]);
+  }, [autoAdmin, saveSession, user]);
 
   const completeMfa = useCallback(async (code) => {
+    if (autoAdmin) {
+      return { success: true };
+    }
     if (!mfaState?.challengeToken) {
       return { success: false, error: 'Missing challenge' };
     }
@@ -130,9 +153,12 @@ export const AuthProvider = ({ children }) => {
       setStatus({ loading: false, error: error?.message || 'Verification failed' });
       return { success: false, error: error?.message || 'Verification failed' };
     }
-  }, [mfaState, saveSession]);
+  }, [autoAdmin, mfaState, saveSession]);
 
   const refresh = useCallback(async () => {
+    if (autoAdmin) {
+      return null;
+    }
     if (!refreshToken) {
       return null;
     }
@@ -145,9 +171,13 @@ export const AuthProvider = ({ children }) => {
     } catch (_error) {
       return null;
     }
-  }, [refreshToken, saveSession, user]);
+  }, [autoAdmin, refreshToken, saveSession, user]);
 
   const logout = useCallback(async () => {
+    if (autoAdmin) {
+      clearSession();
+      return;
+    }
     try {
       if (accessToken) {
         await postJson(
@@ -164,9 +194,12 @@ export const AuthProvider = ({ children }) => {
       // best-effort logout
     }
     clearSession();
-  }, [accessToken, clearSession]);
+  }, [accessToken, autoAdmin, clearSession]);
 
   const fetchProfile = useCallback(async () => {
+    if (autoAdmin) {
+      return user;
+    }
     if (!accessToken) {
       return null;
     }
@@ -182,7 +215,7 @@ export const AuthProvider = ({ children }) => {
     } catch (_error) {
       return null;
     }
-  }, [accessToken, refreshToken]);
+  }, [accessToken, autoAdmin, refreshToken, user]);
 
   const value = useMemo(
     () => ({
@@ -191,7 +224,7 @@ export const AuthProvider = ({ children }) => {
       user,
       status,
       mfaState,
-      isAuthenticated: Boolean(accessToken),
+      isAuthenticated: autoAdmin || Boolean(accessToken),
       login,
       completeMfa,
       refresh,
