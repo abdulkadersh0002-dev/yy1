@@ -2106,13 +2106,15 @@ function App() {
       return [];
     }
 
-    return list.map((symbol) => {
-      const normalized = normalizeTickerSymbol(symbol);
-      if (!normalized) {
-        return null;
-      }
-      return bySymbol.get(normalized) || { symbol: normalized };
-    }).filter(Boolean);
+    return list
+      .map((symbol) => {
+        const normalized = normalizeTickerSymbol(symbol);
+        if (!normalized) {
+          return null;
+        }
+        return bySymbol.get(normalized) || { symbol: normalized, placeholder: true };
+      })
+      .filter(Boolean);
   }, [marketFeed.updatedAt]);
 
   const tickerFilteredQuotes = useMemo(() => {
@@ -2287,6 +2289,11 @@ function App() {
       const broker = normalizeBrokerId(quote?.broker || effectivePlatformId || '');
       const symbolNormalized = normalizeTickerSymbol(symbolValue);
       const deltaKey = `${broker}:${symbolNormalized}`;
+      if (quote?.placeholder) {
+        lastMidBySymbolRef.current.delete(deltaKey);
+      } else if (mid != null && Number.isFinite(mid)) {
+        lastMidBySymbolRef.current.set(deltaKey, mid);
+      }
       const prevMid = lastMidBySymbolRef.current.get(deltaKey);
       const delta =
         mid != null && prevMid != null && Number.isFinite(prevMid) ? mid - prevMid : null;
@@ -2302,7 +2309,10 @@ function App() {
       const deltaPointsInt =
         delta != null && point != null && Number.isFinite(delta) ? Math.round(delta / point) : null;
       const deltaValue = deltaPointsInt != null && deltaPointsInt !== 0 ? deltaPointsInt : null;
-      const deltaPointsAbs = deltaValue != null ? Math.abs(deltaValue) : null;
+      const deltaPointsAbs =
+        deltaValue != null && (bid != null || ask != null || last != null)
+          ? Math.abs(deltaValue)
+          : null;
 
       const arrowClass =
         deltaValue != null && deltaValue > 0
@@ -2350,15 +2360,21 @@ function App() {
         key: `${quote?.broker || effectivePlatformId}:${symbolUpper || symbolValue}:${loopTag}:${index}`,
         selected,
         symbolLabel: symbolUpper || symbolText || symbolValue,
-        midLabel: mid != null ? formatNumber(mid, displayDigits) : '—',
-        detailsLabel: details || '—',
+        midLabel:
+          mid != null
+            ? formatNumber(mid, displayDigits)
+            : quote?.placeholder
+              ? 'Waiting…'
+              : '—',
+        detailsLabel: details || (quote?.placeholder ? 'Awaiting stream' : '—'),
         detailsEmpty: !details,
         deltaLabel: deltaPointsAbs != null ? `${deltaPointsAbs}p` : '',
         deltaEmpty: deltaValue == null,
         arrow: deltaValue != null ? (deltaValue > 0 ? '▲' : deltaValue < 0 ? '▼' : '•') : '•',
         arrowClass,
         priceClass,
-        deltaClass
+        deltaClass,
+        placeholder: quote?.placeholder === true
       };
     });
   }, [effectivePlatformId, tickerQuotes.length, tickerRenderQuotes, tickerSearchNormalized]);
@@ -2415,9 +2431,16 @@ function App() {
           key: symbol,
           selected: symbol,
           symbol,
-          bidLabel: bid != null ? formatNumber(bid, displayDigits) : '—',
-          askLabel: ask != null ? formatNumber(ask, displayDigits) : '—',
-          spreadLabel: spreadPoints != null ? `${formatNumber(spreadPoints, 0)}p` : '—',
+          bidLabel:
+            bid != null ? formatNumber(bid, displayDigits) : quote?.placeholder ? 'Waiting…' : '—',
+          askLabel:
+            ask != null ? formatNumber(ask, displayDigits) : quote?.placeholder ? 'Waiting…' : '—',
+          spreadLabel:
+            spreadPoints != null
+              ? `${formatNumber(spreadPoints, 0)}p`
+              : quote?.placeholder
+                ? 'Awaiting'
+                : '—',
           ageLabel: ageSec != null ? `${ageSec}s` : '—',
           assetClass: classifyTickerSymbol(symbol)
         };
