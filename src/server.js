@@ -389,6 +389,7 @@ const eaBridgeService = new EaBridgeService({
   brokerRouter,
   logger,
   brokerMeta: appConfig.brokerMeta,
+  broadcast: _websocketLayer?.broadcast,
 });
 logger.info('EA Bridge Service initialized for intelligent MT4/MT5 integration');
 

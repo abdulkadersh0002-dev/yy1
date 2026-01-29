@@ -1,4 +1,5 @@
 import { buildLayeredAnalysis } from '../../core/analyzers/layered-analysis.js';
+import { getPairMetadata } from '../../config/pair-catalog.js';
 
 const toNumberOrNull = (value) => {
   const n = Number(value);
@@ -245,11 +246,99 @@ export const attachLayeredAnalysisToSignal = ({
       now
     });
     const layers = buildLayeredAnalysis({ scenario, signal: rawSignal });
+    const normalizedLayers = normalizeLayeredAnalysis(layers);
 
     rawSignal.components =
       rawSignal.components && typeof rawSignal.components === 'object' ? rawSignal.components : {};
 
-    rawSignal.components.layeredAnalysis = normalizeLayeredAnalysis(layers);
+    rawSignal.components.layeredAnalysis = normalizedLayers;
+
+    const layerList = Array.isArray(normalizedLayers?.layers) ? normalizedLayers.layers : [];
+    const getLayer = (key) =>
+      layerList.find((layer) => String(layer?.key || '').toUpperCase() === key) || null;
+    const layer1 = getLayer('L1');
+    const layer2 = getLayer('L2');
+    const layer7 = getLayer('L7');
+    const layer8 = getLayer('L8');
+    const layer12 = getLayer('L12');
+    const layer17 = getLayer('L17');
+    const layer18 = getLayer('L18');
+
+    const pair = rawSignal?.pair || symbol || null;
+    const metadata = pair ? getPairMetadata(pair) : null;
+    const cleanedPair = String(pair || '').toUpperCase();
+    const fallbackBase = cleanedPair.length >= 6 ? cleanedPair.slice(0, 3) : null;
+    const fallbackQuote = cleanedPair.length >= 6 ? cleanedPair.slice(3, 6) : null;
+
+    rawSignal.components.pairContext = {
+      pair: metadata?.pair || pair || null,
+      base: metadata?.base || fallbackBase,
+      quote: metadata?.quote || fallbackQuote,
+      assetClass: metadata?.assetClass || null,
+      displayName: metadata?.displayName || null,
+      pipSize: metadata?.pipSize ?? null,
+      pricePrecision: metadata?.pricePrecision ?? null,
+      contractSize: metadata?.contractSize ?? null,
+      sessions: metadata?.sessions ?? null,
+      liquidityNotes: metadata?.liquidityNotes ?? null,
+    };
+
+    const generatedAt = toNumberOrNull(rawSignal?.generatedAt ?? now) ?? Date.now();
+    const confluenceScore =
+      Number(layer17?.metrics?.confluenceWeighting?.weightedScore ?? layer17?.confidence) || null;
+    const decisionState =
+      layer18?.metrics?.decision?.state || rawSignal?.isValid?.decision?.state || null;
+    const spreadPoints = toNumberOrNull(layer1?.metrics?.spreadPoints);
+    const newsImpact =
+      toNumberOrNull(layer12?.metrics?.news?.impact ?? layer12?.metrics?.newsImpactScore) ??
+      toNumberOrNull(layer12?.score);
+    const entryContext = {
+      generatedAt,
+      direction: rawSignal?.direction || null,
+      timeframe:
+        layer2?.metrics?.timeframeFocus ||
+        layer1?.metrics?.timeframeFocus ||
+        rawSignal?.components?.technical?.timeframe ||
+        null,
+      marketPhase: layer2?.metrics?.marketPhase || null,
+      volatilityState: layer7?.metrics?.volatility?.state || null,
+      session: layer8?.metrics?.session || null,
+      confluenceScore,
+      decisionState,
+      spreadPoints,
+      newsImpact,
+    };
+    rawSignal.components.entryContext = entryContext;
+
+    const phaseLabel = entryContext.marketPhase || 'current';
+    const volLabel = entryContext.volatilityState || 'current';
+    rawSignal.components.expectedMarketBehavior = {
+      summary: `Maintain ${phaseLabel} phase with ${volLabel} volatility; monitor confluence and spreads.`,
+      expectations: {
+        marketPhase: entryContext.marketPhase,
+        volatilityState: entryContext.volatilityState,
+        confluenceScore,
+        spreadPoints,
+        newsImpact,
+      },
+    };
+
+    const invalidationRules = [
+      confluenceScore != null
+        ? `Confluence drops below ${Math.max(40, Math.round(confluenceScore) - 15)}`
+        : 'Confluence drops below threshold',
+      entryContext.volatilityState
+        ? `Volatility shifts out of ${entryContext.volatilityState} regime`
+        : 'Volatility shock or regime change',
+      spreadPoints != null
+        ? `Spread spikes above ${Math.max(30, Math.round(spreadPoints * 1.5))} pts`
+        : 'Spread spike beyond acceptable range',
+      entryContext.session ? `Session changes away from ${entryContext.session}` : null,
+      newsImpact != null
+        ? `High news impact (>=${Math.max(3, Math.round(newsImpact) + 1)})`
+        : 'High-impact news event detected',
+    ].filter(Boolean);
+    rawSignal.components.invalidationRules = invalidationRules;
   } catch (_error) {
     // best-effort
   }

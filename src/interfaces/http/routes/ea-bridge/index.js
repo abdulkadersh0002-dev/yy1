@@ -534,7 +534,7 @@ export default function eaBridgeRoutes({
         ...req.body,
         broker,
       };
-      const result = eaBridgeService.evaluatePositionManagement(payload);
+      const result = await eaBridgeService.evaluatePositionManagement(payload);
 
       const enqueueEnv = String(process.env.EA_MANAGEMENT_ENQUEUE || '')
         .trim()

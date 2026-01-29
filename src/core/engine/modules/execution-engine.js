@@ -109,6 +109,11 @@ export const executionEngine = {
           trailingDistance,
           stepDistance,
         },
+        pairContext: signal?.components?.pairContext || null,
+        entryContext: signal?.components?.entryContext || null,
+        expectedMarketBehavior: signal?.components?.expectedMarketBehavior || null,
+        invalidationRules: signal?.components?.invalidationRules || null,
+        layeredAnalysis: signal?.components?.layeredAnalysis || null,
         signal,
       };
 

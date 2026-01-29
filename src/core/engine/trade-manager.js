@@ -5,7 +5,10 @@
 
 import { listTargetPairs } from '../../config/pair-catalog.js';
 import logger from '../../infrastructure/services/logging/logger.js';
-import { evaluateLayers18Readiness } from '../../infrastructure/services/ea-signal-pipeline.js';
+import {
+  attachLayeredAnalysisToSignal,
+  evaluateLayers18Readiness
+} from '../../infrastructure/services/ea-signal-pipeline.js';
 import { readEnvBool, readEnvCsvSet, readEnvNumber, readEnvString } from '../../utils/env.js';
 
 const debugGateLogsEnabled = () => readEnvBool('AUTO_TRADING_DEBUG_GATES', false) === true;
@@ -1128,6 +1131,7 @@ class TradeManager {
     try {
       await this.tradingEngine.manageActiveTrades();
       await this.monitorSmartExits();
+      await this.monitorLiveTradeContexts();
     } catch (error) {
       const classified = this.tradingEngine.classifyError?.(error, {
         scope: 'TradeManager.monitorActiveTrades'
@@ -1248,6 +1252,168 @@ class TradeManager {
         logger.warn({ module: 'TradeManager', err: error }, 'Smart exit evaluation failed');
       } finally {
         this.smartExitInFlight.delete(tradeId);
+      }
+    }
+  }
+
+  async buildLiveTradeContext(trade) {
+    if (!trade || !trade.pair || !this.tradingEngine?.generateSignal) {
+      return null;
+    }
+    const broker = trade?.broker || trade?.brokerRoute || null;
+    const signal = await this.tradingEngine.generateSignal(trade.pair, {
+      broker,
+      analysisMode: 'ea',
+      eaOnly: true,
+      eaBridgeService: this.eaBridgeService,
+    });
+    if (!signal || typeof signal !== 'object') {
+      return null;
+    }
+
+    const barFallback = (() => {
+      if (!broker || !this.eaBridgeService?.getMarketBars) {
+        return null;
+      }
+      try {
+        const bars = this.eaBridgeService.getMarketBars({
+          broker,
+          symbol: trade.pair,
+          timeframe: 'M1',
+          limit: 1,
+          maxAgeMs: 0,
+        });
+        const latest = Array.isArray(bars) ? bars[0] : null;
+        if (!latest) {
+          return null;
+        }
+        return {
+          timeframe: 'M1',
+          price: latest.close ?? latest.price ?? null,
+          open: latest.open ?? null,
+          prevClose: latest.prevClose ?? null,
+          volume: latest.volume ?? null,
+          timeMs: latest.timeMs ?? latest.time ?? null,
+        };
+      } catch (_error) {
+        return null;
+      }
+    })();
+
+    const enrichedSignal =
+      signal && typeof signal === 'object'
+        ? {
+            ...signal,
+            components:
+              signal.components && typeof signal.components === 'object'
+                ? { ...signal.components }
+                : {},
+          }
+        : signal;
+
+    try {
+      attachLayeredAnalysisToSignal({
+        rawSignal: enrichedSignal,
+        broker,
+        symbol: trade.pair,
+        eaBridgeService: this.eaBridgeService,
+        quoteMaxAgeMs: 30 * 1000,
+        barFallback,
+        now: Date.now(),
+      });
+    } catch (_error) {
+      // best-effort
+    }
+
+    const layers = Array.isArray(enrichedSignal?.components?.layeredAnalysis?.layers)
+      ? enrichedSignal.components.layeredAnalysis.layers
+      : [];
+    const layer16 = layers.find((layer) => String(layer?.key || '') === 'L16') || null;
+    const layer17 = layers.find((layer) => String(layer?.key || '') === 'L17') || null;
+    const layer18 = layers.find((layer) => String(layer?.key || '') === 'L18') || null;
+
+    const layersStatus = {
+      layer16: layer16?.metrics || null,
+      layer17: layer17?.metrics || null,
+      layer18: layer18?.metrics || null,
+    };
+
+    const entryContext = trade?.entryContext || trade?.signal?.components?.entryContext || null;
+    const currentContext = enrichedSignal?.components?.entryContext || null;
+
+    const drift = {
+      marketPhase:
+        entryContext?.marketPhase && currentContext?.marketPhase
+          ? entryContext.marketPhase !== currentContext.marketPhase
+          : null,
+      volatilityState:
+        entryContext?.volatilityState && currentContext?.volatilityState
+          ? entryContext.volatilityState !== currentContext.volatilityState
+          : null,
+      session:
+        entryContext?.session && currentContext?.session
+          ? entryContext.session !== currentContext.session
+          : null,
+      spreadPoints:
+        entryContext?.spreadPoints != null && currentContext?.spreadPoints != null
+          ? Number(currentContext.spreadPoints) - Number(entryContext.spreadPoints)
+          : null,
+      newsImpact:
+        entryContext?.newsImpact != null && currentContext?.newsImpact != null
+          ? Number(currentContext.newsImpact) - Number(entryContext.newsImpact)
+          : null,
+    };
+
+    const confluenceScore =
+      Number(layer17?.metrics?.confluenceWeighting?.weightedScore ?? layer17?.confidence) || null;
+    const decisionState = String(layer18?.metrics?.decision?.state || '').toUpperCase();
+
+    let decision = 'HOLD';
+    if (decisionState && decisionState !== 'ENTER') {
+      decision = 'EXIT';
+    } else if (layer16?.metrics?.isTradeValid === false) {
+      decision = 'EXIT';
+    } else if (confluenceScore != null && confluenceScore < layers18MinConfluence) {
+      decision = 'REDUCE';
+    } else if (
+      (currentContext?.newsImpact != null && Number(currentContext.newsImpact) >= 4) ||
+      (currentContext?.spreadPoints != null && Number(currentContext.spreadPoints) >= 60)
+    ) {
+      decision = 'REDUCE';
+    }
+
+    return {
+      decision,
+      layersStatus,
+      currentContext,
+      drift,
+    };
+  }
+
+  async monitorLiveTradeContexts() {
+    const trades = this.tradingEngine?.activeTrades;
+    if (!trades || typeof trades.values !== 'function') {
+      return;
+    }
+
+    for (const trade of trades.values()) {
+      if (!trade || String(trade?.status || '').toLowerCase() !== 'open') {
+        continue;
+      }
+      try {
+        const liveContext = await this.buildLiveTradeContext(trade);
+        if (!liveContext) {
+          continue;
+        }
+        trade.liveContext = liveContext;
+        this.emitEvent('trade_live_context', {
+          tradeId: trade.id,
+          pair: trade.pair,
+          decision: liveContext.decision,
+          drift: liveContext.drift,
+        });
+      } catch (_error) {
+        // best-effort
       }
     }
   }
