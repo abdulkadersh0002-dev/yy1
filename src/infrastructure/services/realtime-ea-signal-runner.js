@@ -1083,6 +1083,8 @@ export class RealtimeEaSignalRunner {
       Boolean(rawSignal?.components?.layeredAnalysis);
 
     const publish = (() => {
+      const strongOverrideWaitReady =
+        layers18Override && allowWaitState && tier === 'strong' && meetsConfluence;
       const canPublishEntryReady =
         directional &&
         decisionState === 'ENTER' &&
@@ -1097,7 +1099,7 @@ export class RealtimeEaSignalRunner {
         // Strict dashboard: keep the primary stream focused on tradeable ENTER.
         // Still allow lifecycle updates for previously published signals (accuracy), and
         // publish analyzed candidates on a separate channel so the UI can explain "why 0".
-        if (canPublishEntryReady || isLifecycleUpdate) {
+        if (canPublishEntryReady || strongOverrideWaitReady || isLifecycleUpdate) {
           return { event: 'signal', keySuffix: '' };
         }
         if (canPublishCandidate) {
@@ -1118,6 +1120,7 @@ export class RealtimeEaSignalRunner {
           meetsConfluence &&
           meetsLayers18 &&
           meetsTradeValidity) ||
+        (strongOverrideWaitReady && directional) ||
         (directional && isLifecycleUpdate)
       ) {
         return { event: 'signal', keySuffix: '' };
