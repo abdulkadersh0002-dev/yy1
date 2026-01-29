@@ -14,6 +14,7 @@
 
 import { Pool } from 'pg';
 import os from 'os';
+import logger from '../services/logging/logger.js';
 
 /**
  * Connection Pool Manager Class
@@ -37,6 +38,7 @@ export class ConnectionPoolManager {
     this.healthCheckInterval = null;
     this.adaptiveCheckInterval = null;
     this.startTime = Date.now();
+    this.logger = config.logger || logger;
   }
 
   /**
@@ -108,7 +110,7 @@ export class ConnectionPoolManager {
 
     this.pool.on('error', (err) => {
       this.stats.errors++;
-      console.error('Pool error:', err.message);
+      this.logger?.error?.({ err }, 'Pool error');
     });
 
     // Start health checking
@@ -165,15 +167,16 @@ export class ConnectionPoolManager {
       try {
         const client = await this.pool.connect();
         try {
-          await client.query('SELECT 1');
+          await client.query({ text: 'SELECT 1', statement_timeout: 5000 });
         } finally {
           client.release();
         }
       } catch (err) {
         this.stats.healthCheckFailures++;
-        console.error('Health check failed:', err.message);
+        this.logger?.warn?.({ err }, 'Health check failed');
       }
     }, healthCheckIntervalMs);
+    this.healthCheckInterval.unref?.();
   }
 
   /**
@@ -193,7 +196,7 @@ export class ConnectionPoolManager {
 
       // High load detection: many waiting, pool at max capacity
       if (waitingCount > 0 && totalCount >= stats.config.max * 0.9) {
-        console.warn('High pool load detected:', {
+        this.logger?.warn?.('High pool load detected', {
           waiting: waitingCount,
           total: totalCount,
           max: stats.config.max,
@@ -205,13 +208,14 @@ export class ConnectionPoolManager {
       if (totalCount > stats.config.min && idleCount / totalCount > 0.8) {
         // Connections will naturally time out due to idleTimeoutMillis
         // No action needed, just log for monitoring
-        console.log('Low pool utilization:', {
+        this.logger?.info?.('Low pool utilization', {
           idle: idleCount,
           total: totalCount,
           utilization: `${((1 - idleCount / totalCount) * 100).toFixed(1)}%`,
         });
       }
     }, checkIntervalMs);
+    this.adaptiveCheckInterval.unref?.();
   }
 
   /**
@@ -351,7 +355,7 @@ export class ConnectionPoolManager {
     try {
       const client = await this.pool.connect();
       try {
-        await client.query('SELECT 1');
+        await client.query({ text: 'SELECT 1', statement_timeout: 5000 });
         return {
           healthy: true,
           message: 'Database connection healthy',
@@ -425,7 +429,7 @@ export function getPoolManager() {
 export function resetPoolManager() {
   if (poolManager) {
     poolManager.close().catch((err) => {
-      console.error('Error closing pool manager:', err);
+      logger?.warn?.({ err }, 'Error closing pool manager');
     });
     poolManager = null;
   }

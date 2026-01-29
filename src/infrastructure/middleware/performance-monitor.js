@@ -26,6 +26,7 @@ const stats = {
   byEndpoint: new Map(),
   lastReset: Date.now(),
 };
+const MAX_ENDPOINT_STATS = 120;
 
 /**
  * Track performance metrics for a request
@@ -52,6 +53,12 @@ function trackMetrics(method, path, duration, statusCode) {
   // Track per-endpoint stats
   const endpoint = `${method} ${path}`;
   if (!stats.byEndpoint.has(endpoint)) {
+    if (stats.byEndpoint.size >= MAX_ENDPOINT_STATS) {
+      const oldestKey = stats.byEndpoint.keys().next().value;
+      if (oldestKey) {
+        stats.byEndpoint.delete(oldestKey);
+      }
+    }
     stats.byEndpoint.set(endpoint, {
       count: 0,
       totalDuration: 0,

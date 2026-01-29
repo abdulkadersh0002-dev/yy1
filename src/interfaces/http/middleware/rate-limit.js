@@ -4,9 +4,10 @@ const DEFAULT_MAX_REQUESTS = 30;
 export function createRateLimiter({
   windowMs = DEFAULT_WINDOW_MS,
   max = DEFAULT_MAX_REQUESTS,
-  logger
+  logger,
 } = {}) {
   const hits = new Map();
+  let cleanupTimer = null;
 
   const cleanup = () => {
     const now = Date.now();
@@ -17,6 +18,19 @@ export function createRateLimiter({
     }
   };
 
+  const scheduleCleanup = () => {
+    if (cleanupTimer) {
+      return;
+    }
+    cleanupTimer = setInterval(
+      () => {
+        cleanup();
+      },
+      Math.max(1000, Math.min(windowMs, 60000))
+    );
+    cleanupTimer.unref?.();
+  };
+
   return function rateLimiter(req, res, next) {
     const now = Date.now();
     const identity = req.identity?.id || 'anonymous';
@@ -24,6 +38,8 @@ export function createRateLimiter({
       req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
     const key = `${identity}|${ip}|${req.method}|${req.path}`;
     const existing = hits.get(key);
+
+    scheduleCleanup();
 
     if (!existing || existing.resetAt <= now) {
       hits.set(key, { count: 1, resetAt: now + windowMs });
@@ -36,7 +52,7 @@ export function createRateLimiter({
       return res.status(429).json({
         success: false,
         error: 'Too many requests',
-        ...(requestId ? { requestId } : null)
+        ...(requestId ? { requestId } : null),
       });
     }
 

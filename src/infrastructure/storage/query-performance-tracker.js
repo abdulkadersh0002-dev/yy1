@@ -1,12 +1,12 @@
 /**
  * Query Performance Tracker
- * 
+ *
  * Tracks database query performance metrics including:
  * - Execution times per query
  * - Slow query detection and logging
  * - Query statistics (min/max/avg/count)
  * - Most frequent and slowest queries
- * 
+ *
  * Part of 64 improvements roadmap - Improvement #5
  */
 
@@ -33,18 +33,20 @@ class QueryPerformanceTracker {
   constructor() {
     /** @type {Map<string, QueryStats>} */
     this.queryStats = new Map();
-    
+
     /** @type {SlowQuery[]} */
     this.slowQueries = [];
-    
+
     /** @type {number} */
     this.slowQueryThreshold = 100; // ms
-    
+
     /** @type {number} */
     this.maxSlowQueries = 50;
-    
+
     /** @type {Date} */
     this.startTime = new Date();
+    this.retentionMs = 60 * 60 * 1000;
+    this.activeQueries = 0;
   }
 
   /**
@@ -55,6 +57,10 @@ class QueryPerformanceTracker {
    * @param {any[]} params - Query parameters
    */
   trackQuery(queryName, queryText, duration, params = []) {
+    this.activeQueries = Math.max(0, this.activeQueries - 1);
+    if (this.queryStats.size > 0) {
+      this.purgeExpired(Date.now());
+    }
     // Update statistics
     if (!this.queryStats.has(queryName)) {
       this.queryStats.set(queryName, {
@@ -63,7 +69,7 @@ class QueryPerformanceTracker {
         minDuration: Infinity,
         maxDuration: 0,
         avgDuration: 0,
-        lastExecuted: Date.now()
+        lastExecuted: Date.now(),
       });
     }
 
@@ -82,11 +88,11 @@ class QueryPerformanceTracker {
         queryText: this._truncateQuery(queryText),
         duration: Math.round(duration * 100) / 100,
         timestamp: new Date(),
-        params: this._sanitizeParams(params)
+        params: this._sanitizeParams(params),
       };
 
       this.slowQueries.unshift(slowQuery);
-      
+
       // Keep only recent slow queries
       if (this.slowQueries.length > this.maxSlowQueries) {
         this.slowQueries.pop();
@@ -95,6 +101,22 @@ class QueryPerformanceTracker {
       // Log slow query
       console.warn(`[SLOW QUERY] ${queryName} took ${duration.toFixed(2)}ms`);
     }
+  }
+
+  trackQueryStart() {
+    this.activeQueries += 1;
+  }
+
+  purgeExpired(now = Date.now()) {
+    const cutoff = now - this.retentionMs;
+    for (const [name, stats] of this.queryStats.entries()) {
+      if (stats.lastExecuted < cutoff) {
+        this.queryStats.delete(name);
+      }
+    }
+    this.slowQueries = this.slowQueries.filter(
+      (entry) => entry.timestamp && entry.timestamp.getTime() >= cutoff
+    );
   }
 
   /**
@@ -133,7 +155,7 @@ class QueryPerformanceTracker {
     const queries = Array.from(this.queryStats.entries())
       .map(([name, stats]) => ({
         queryName: name,
-        stats: this._formatStats(stats)
+        stats: this._formatStats(stats),
       }))
       .sort((a, b) => b.stats.avgDuration - a.stats.avgDuration)
       .slice(0, limit);
@@ -150,7 +172,7 @@ class QueryPerformanceTracker {
     const queries = Array.from(this.queryStats.entries())
       .map(([name, stats]) => ({
         queryName: name,
-        stats: this._formatStats(stats)
+        stats: this._formatStats(stats),
       }))
       .sort((a, b) => b.stats.count - a.stats.count)
       .slice(0, limit);
@@ -165,39 +187,44 @@ class QueryPerformanceTracker {
   getSummary() {
     const now = Date.now();
     const uptimeMs = now - this.startTime.getTime();
-    const totalQueries = Array.from(this.queryStats.values())
-      .reduce((sum, stats) => sum + stats.count, 0);
-    
-    const totalDuration = Array.from(this.queryStats.values())
-      .reduce((sum, stats) => sum + stats.totalDuration, 0);
+    const totalQueries = Array.from(this.queryStats.values()).reduce(
+      (sum, stats) => sum + stats.count,
+      0
+    );
 
-    const avgDuration = totalQueries > 0 
-      ? totalDuration / totalQueries 
-      : 0;
+    const totalDuration = Array.from(this.queryStats.values()).reduce(
+      (sum, stats) => sum + stats.totalDuration,
+      0
+    );
+
+    const avgDuration = totalQueries > 0 ? totalDuration / totalQueries : 0;
 
     return {
       uptime: {
         ms: uptimeMs,
         seconds: Math.floor(uptimeMs / 1000),
-        minutes: Math.floor(uptimeMs / 60000)
+        minutes: Math.floor(uptimeMs / 60000),
       },
       queries: {
         total: totalQueries,
         unique: this.queryStats.size,
         queriesPerSecond: totalQueries / (uptimeMs / 1000),
-        avgDuration: Math.round(avgDuration * 100) / 100
+        avgDuration: Math.round(avgDuration * 100) / 100,
       },
       slowQueries: {
         threshold: this.slowQueryThreshold,
         count: this.slowQueries.length,
-        recent: this.slowQueries.slice(0, 5).map(q => ({
+        recent: this.slowQueries.slice(0, 5).map((q) => ({
           name: q.queryName,
           duration: q.duration,
-          timestamp: q.timestamp
-        }))
+          timestamp: q.timestamp,
+        })),
+      },
+      concurrency: {
+        active: this.activeQueries,
       },
       topSlowest: this.getTopSlowestQueries(5),
-      mostFrequent: this.getMostFrequentQueries(5)
+      mostFrequent: this.getMostFrequentQueries(5),
     };
   }
 
@@ -231,7 +258,7 @@ class QueryPerformanceTracker {
       maxDuration: Math.round(stats.maxDuration * 100) / 100,
       avgDuration: Math.round(stats.avgDuration * 100) / 100,
       totalDuration: Math.round(stats.totalDuration * 100) / 100,
-      lastExecuted: new Date(stats.lastExecuted).toISOString()
+      lastExecuted: new Date(stats.lastExecuted).toISOString(),
     };
   }
 
