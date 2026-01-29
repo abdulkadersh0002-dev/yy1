@@ -346,6 +346,50 @@ export const attachLayeredAnalysisToSignal = ({
   return rawSignal;
 };
 
+const evaluateStrongOverride = ({
+  allowStrongOverride,
+  signal,
+  decisionStateFallback,
+  gateOk = false,
+} = {}) => {
+  if (!allowStrongOverride || gateOk) {
+    return { ok: false, reason: null };
+  }
+  const direction = String(signal?.direction || '').toUpperCase();
+  if (direction !== 'BUY' && direction !== 'SELL') {
+    return { ok: false, reason: 'direction_neutral' };
+  }
+  const decisionState = String(
+    signal?.isValid?.decision?.state || decisionStateFallback || ''
+  ).toUpperCase();
+  if (decisionState !== 'ENTER') {
+    return { ok: false, reason: 'decision_not_enter' };
+  }
+  if (signal?.isValid?.isValid !== true) {
+    return { ok: false, reason: 'trade_invalid' };
+  }
+  const confidence = Number(signal?.confidence);
+  const strength = Number(signal?.strength);
+  if (!Number.isFinite(confidence) || !Number.isFinite(strength)) {
+    return { ok: false, reason: 'missing_strength' };
+  }
+  const minConfidence = Number(process.env.EA_SIGNAL_STRONG_OVERRIDE_MIN_CONFIDENCE);
+  const minStrength = Number(process.env.EA_SIGNAL_STRONG_OVERRIDE_MIN_STRENGTH);
+  const confFloor = Number.isFinite(minConfidence) ? minConfidence : 85;
+  const strengthFloor = Number.isFinite(minStrength) ? minStrength : 70;
+  if (confidence < confFloor || strength < strengthFloor) {
+    return { ok: false, reason: 'below_strong_floor' };
+  }
+  const entry = signal?.entry || {};
+  const entryPrice = Number(entry?.price ?? signal?.entryPrice);
+  const stopLoss = Number(entry?.stopLoss ?? signal?.stopLoss);
+  const takeProfit = Number(entry?.takeProfit ?? signal?.takeProfit);
+  if (!Number.isFinite(entryPrice) || !Number.isFinite(stopLoss) || !Number.isFinite(takeProfit)) {
+    return { ok: false, reason: 'missing_entry_levels' };
+  }
+  return { ok: true, reason: 'strong_override' };
+};
+
 export const evaluateLayers18Readiness = ({
   layeredAnalysis,
   minConfluence,
@@ -357,49 +401,11 @@ export const evaluateLayers18Readiness = ({
   const layers = Array.isArray(layeredAnalysis?.layers) ? layeredAnalysis.layers : [];
 
   if (layers.length !== 18) {
-    const strongOverride = (() => {
-      if (!allowStrongOverride) {
-        return { ok: false, reason: null };
-      }
-      const direction = String(signal?.direction || '').toUpperCase();
-      if (direction !== 'BUY' && direction !== 'SELL') {
-        return { ok: false, reason: 'direction_neutral' };
-      }
-      const decisionState = String(
-        signal?.isValid?.decision?.state || decisionStateFallback || ''
-      ).toUpperCase();
-      if (decisionState !== 'ENTER') {
-        return { ok: false, reason: 'decision_not_enter' };
-      }
-      if (signal?.isValid?.isValid !== true) {
-        return { ok: false, reason: 'trade_invalid' };
-      }
-      const confidence = Number(signal?.confidence);
-      const strength = Number(signal?.strength);
-      if (!Number.isFinite(confidence) || !Number.isFinite(strength)) {
-        return { ok: false, reason: 'missing_strength' };
-      }
-      const minConfidence = Number(process.env.EA_SIGNAL_STRONG_OVERRIDE_MIN_CONFIDENCE);
-      const minStrength = Number(process.env.EA_SIGNAL_STRONG_OVERRIDE_MIN_STRENGTH);
-      const confFloor = Number.isFinite(minConfidence) ? minConfidence : 85;
-      const strengthFloor = Number.isFinite(minStrength) ? minStrength : 70;
-      if (confidence < confFloor || strength < strengthFloor) {
-        return { ok: false, reason: 'below_strong_floor' };
-      }
-      const entry = signal?.entry || {};
-      const entryPrice = Number(entry?.price ?? signal?.entryPrice);
-      const stopLoss = Number(entry?.stopLoss ?? signal?.stopLoss);
-      const takeProfit = Number(entry?.takeProfit ?? signal?.takeProfit);
-      if (
-        !Number.isFinite(entryPrice) ||
-        !Number.isFinite(stopLoss) ||
-        !Number.isFinite(takeProfit)
-      ) {
-        return { ok: false, reason: 'missing_entry_levels' };
-      }
-      return { ok: true, reason: 'strong_override' };
-    })();
-
+    const strongOverride = evaluateStrongOverride({
+      allowStrongOverride,
+      signal,
+      decisionStateFallback,
+    });
     return {
       ok: strongOverride.ok,
       layersCount: layers.length,
@@ -426,48 +432,12 @@ export const evaluateLayers18Readiness = ({
   ).toUpperCase();
 
   const ok = layer16Pass && layer17Ok && layer18State === 'ENTER';
-  const strongOverride = (() => {
-    if (!allowStrongOverride || ok) {
-      return { ok: false, reason: null };
-    }
-    const direction = String(signal?.direction || '').toUpperCase();
-    if (direction !== 'BUY' && direction !== 'SELL') {
-      return { ok: false, reason: 'direction_neutral' };
-    }
-    const decisionState = String(
-      signal?.isValid?.decision?.state || layer18State || ''
-    ).toUpperCase();
-    if (decisionState !== 'ENTER') {
-      return { ok: false, reason: 'decision_not_enter' };
-    }
-    if (signal?.isValid?.isValid !== true) {
-      return { ok: false, reason: 'trade_invalid' };
-    }
-    const confidence = Number(signal?.confidence);
-    const strength = Number(signal?.strength);
-    if (!Number.isFinite(confidence) || !Number.isFinite(strength)) {
-      return { ok: false, reason: 'missing_strength' };
-    }
-    const minConfidence = Number(process.env.EA_SIGNAL_STRONG_OVERRIDE_MIN_CONFIDENCE);
-    const minStrength = Number(process.env.EA_SIGNAL_STRONG_OVERRIDE_MIN_STRENGTH);
-    const confFloor = Number.isFinite(minConfidence) ? minConfidence : 85;
-    const strengthFloor = Number.isFinite(minStrength) ? minStrength : 70;
-    if (confidence < confFloor || strength < strengthFloor) {
-      return { ok: false, reason: 'below_strong_floor' };
-    }
-    const entry = signal?.entry || {};
-    const entryPrice = Number(entry?.price ?? signal?.entryPrice);
-    const stopLoss = Number(entry?.stopLoss ?? signal?.stopLoss);
-    const takeProfit = Number(entry?.takeProfit ?? signal?.takeProfit);
-    if (
-      !Number.isFinite(entryPrice) ||
-      !Number.isFinite(stopLoss) ||
-      !Number.isFinite(takeProfit)
-    ) {
-      return { ok: false, reason: 'missing_entry_levels' };
-    }
-    return { ok: true, reason: 'strong_override' };
-  })();
+  const strongOverride = evaluateStrongOverride({
+    allowStrongOverride,
+    signal,
+    decisionStateFallback: layer18State,
+    gateOk: ok,
+  });
 
   return {
     ok: ok || strongOverride.ok,

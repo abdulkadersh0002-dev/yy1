@@ -43,4 +43,48 @@ describe('EA signal pipeline layered context', () => {
     assert.equal(result.ok, true);
     assert.equal(result.strongOverride?.ok, true);
   });
+
+  it('blocks strong override when validation fails', () => {
+    const result = evaluateLayers18Readiness({
+      layeredAnalysis: { layers: [] },
+      minConfluence: 60,
+      decisionStateFallback: 'ENTER',
+      allowStrongOverride: false,
+      signal: {
+        direction: 'BUY',
+        confidence: 92,
+        strength: 80,
+        isValid: { isValid: true, decision: { state: 'ENTER' } },
+        entry: { price: 1.1, stopLoss: 1.09, takeProfit: 1.12 },
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.strongOverride?.ok, false);
+  });
+
+  it('allows strong override when layers exist but fail readiness', () => {
+    const result = evaluateLayers18Readiness({
+      layeredAnalysis: {
+        layers: Array.from({ length: 18 }).map((_, index) => ({
+          key: `L${index + 1}`,
+          confidence: index === 16 ? 35 : 0,
+          metrics: index === 15 ? { verdict: 'FAIL' } : {},
+        })),
+      },
+      minConfluence: 60,
+      decisionStateFallback: 'ENTER',
+      allowStrongOverride: true,
+      signal: {
+        direction: 'BUY',
+        confidence: 90,
+        strength: 75,
+        isValid: { isValid: true, decision: { state: 'ENTER' } },
+        entry: { price: 1.1, stopLoss: 1.09, takeProfit: 1.12 },
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.strongOverride?.ok, true);
+  });
 });

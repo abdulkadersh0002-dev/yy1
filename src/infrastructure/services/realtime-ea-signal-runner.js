@@ -1071,10 +1071,7 @@ export class RealtimeEaSignalRunner {
     const layers18Ready = layersStatus.ok === true;
     const layers18Override = layersStatus?.strongOverride?.ok === true;
 
-    const meetsLayers18 =
-      !this.dashboardRequireLayers18 ||
-      layers18Ready ||
-      (layers18Override && this.dashboardRequireEnter && decisionState === 'ENTER');
+    const meetsLayers18 = !this.dashboardRequireLayers18 || layers18Ready || layers18Override;
     const meetsTradeValidity = tradeValid === true;
 
     // "Analyzed" candidates: any signal that includes the canonical 18-layer payload.
