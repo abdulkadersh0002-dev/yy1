@@ -112,7 +112,7 @@ export default function eaBridgeRoutes({
         requireLayers18,
         allowWaitMonitorExecution,
         strongOverride: {
-          enabled: true,
+          enabled: overrideMinConfidence != null || overrideMinStrength != null,
           minConfidence: overrideMinConfidence,
           minStrength: overrideMinStrength,
         },
