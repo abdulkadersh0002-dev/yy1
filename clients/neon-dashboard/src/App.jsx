@@ -1372,6 +1372,12 @@ function App() {
     [bridgeIsConnected, effectivePlatformId]
   );
 
+  const WARMUP_TICK_INTERVAL_MS = 15 * 1000;
+  const WARMUP_BATCH_SIZE = 40;
+  const WARMUP_SNAPSHOT_BATCH = 6;
+  const WARMUP_REQUEST_GAP_MS = 5 * 60 * 1000;
+  const WARMUP_LAST_REQUESTED_TTL_MS = 30 * 60 * 1000;
+
   const tickerWarmupRef = useRef({
     index: 0,
     timer: null,
@@ -1394,10 +1400,10 @@ function App() {
     }
 
     const ref = tickerWarmupRef.current;
-    const intervalMs = 15 * 1000;
-    const batchSize = 40;
-    const snapshotBatch = 6;
-    const requestGapMs = 5 * 60 * 1000;
+    const tickIntervalMs = WARMUP_TICK_INTERVAL_MS;
+    const batchSize = WARMUP_BATCH_SIZE;
+    const snapshotBatch = WARMUP_SNAPSHOT_BATCH;
+    const requestGapMs = WARMUP_REQUEST_GAP_MS;
 
     const tick = () => {
       if (!bridgeIsConnected) {
@@ -1415,16 +1421,20 @@ function App() {
       }
 
       const start = ref.index % missing.length;
-      const batch = [
-        ...missing.slice(start, start + batchSize),
-        ...missing.slice(0, Math.max(0, start + batchSize - missing.length))
-      ].slice(0, batchSize);
+      const wrapCount = Math.max(0, start + batchSize - missing.length);
+      const batch = [...missing.slice(start, start + batchSize), ...missing.slice(0, wrapCount)].slice(
+        0,
+        batchSize
+      );
 
-      if (batch.length) {
-        scheduleActiveSymbolsSync(batch);
-      }
+      scheduleActiveSymbolsSync(batch);
 
       const now = Date.now();
+      for (const [symbol, lastReq] of ref.lastRequested.entries()) {
+        if (now - lastReq > WARMUP_LAST_REQUESTED_TTL_MS) {
+          ref.lastRequested.delete(symbol);
+        }
+      }
       for (const symbol of batch.slice(0, snapshotBatch)) {
         const normalized = normalizeTickerSymbol(symbol);
         if (!normalized) {
@@ -1442,14 +1452,22 @@ function App() {
     };
 
     tick();
-    ref.timer = setInterval(tick, intervalMs);
+    ref.timer = setInterval(tick, tickIntervalMs);
     return () => {
       if (ref.timer) {
         clearInterval(ref.timer);
         ref.timer = null;
       }
+      ref.index = 0;
+      ref.lastRequested.clear();
     };
-  }, [bridgeIsConnected, tickerSearchNormalized, requestSnapshotForSymbol, scheduleActiveSymbolsSync]);
+  }, [
+    bridgeIsConnected,
+    tickerSearchNormalized,
+    requestSnapshotForSymbol,
+    scheduleActiveSymbolsSync,
+    normalizeTickerSymbol
+  ]);
 
   const openAnalyzerForSymbolAndRequestSnapshot = useCallback(
     (symbolValue) => {
