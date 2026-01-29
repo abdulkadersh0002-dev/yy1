@@ -101,7 +101,9 @@ export const AuthProvider = ({ children }) => {
 
   const login = useCallback(async ({ username, password }) => {
     if (autoAdmin) {
-      saveSession({ user: user || AUTO_ADMIN_USER });
+      setAccessToken(null);
+      setRefreshToken(null);
+      setUser(AUTO_ADMIN_USER);
       setStatus({ loading: false, error: null });
       return { success: true };
     }
@@ -125,7 +127,7 @@ export const AuthProvider = ({ children }) => {
       setStatus({ loading: false, error: error?.message || 'Login failed' });
       return { success: false, error: error?.message || 'Login failed' };
     }
-  }, [autoAdmin, saveSession, user]);
+  }, [autoAdmin, saveSession]);
 
   const completeMfa = useCallback(async (code) => {
     if (autoAdmin) {
@@ -172,8 +174,8 @@ export const AuthProvider = ({ children }) => {
 
   const logout = useCallback(async () => {
     if (autoAdmin) {
-      clearSession();
       setUser(AUTO_ADMIN_USER);
+      setStatus({ loading: false, error: null });
       return;
     }
     try {
@@ -196,7 +198,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchProfile = useCallback(async () => {
     if (autoAdmin) {
-      return user || AUTO_ADMIN_USER;
+      return AUTO_ADMIN_USER;
     }
     if (!accessToken) {
       return null;
