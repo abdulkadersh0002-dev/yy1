@@ -39,6 +39,22 @@ export class ConnectionPoolManager {
     this.adaptiveCheckInterval = null;
     this.startTime = Date.now();
     this.logger = config.logger || logger;
+    this.healthCheckTimeoutMs = config.healthCheckTimeoutMs || 5000;
+  }
+
+  async runHealthCheck(client) {
+    const timeoutMs = Number.isFinite(Number(this.healthCheckTimeoutMs))
+      ? Number(this.healthCheckTimeoutMs)
+      : 5000;
+    await Promise.race([
+      client.query('SELECT 1'),
+      new Promise((_, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error('Health check timeout'));
+        }, timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
   }
 
   /**
@@ -144,7 +160,7 @@ export class ConnectionPoolManager {
             client.release();
           })
           .catch((err) => {
-            console.warn('Pool warm-up connection failed:', err.message);
+            this.logger?.warn?.({ err }, 'Pool warm-up connection failed');
           })
       );
     }
@@ -167,7 +183,7 @@ export class ConnectionPoolManager {
       try {
         const client = await this.pool.connect();
         try {
-          await client.query({ text: 'SELECT 1', statement_timeout: 5000 });
+          await this.runHealthCheck(client);
         } finally {
           client.release();
         }
@@ -355,7 +371,7 @@ export class ConnectionPoolManager {
     try {
       const client = await this.pool.connect();
       try {
-        await client.query({ text: 'SELECT 1', statement_timeout: 5000 });
+        await this.runHealthCheck(client);
         return {
           healthy: true,
           message: 'Database connection healthy',

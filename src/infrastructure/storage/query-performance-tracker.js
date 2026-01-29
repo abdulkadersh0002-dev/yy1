@@ -45,8 +45,11 @@ class QueryPerformanceTracker {
 
     /** @type {Date} */
     this.startTime = new Date();
+    /** @type {number} */
     this.retentionMs = 60 * 60 * 1000;
+    /** @type {number} */
     this.activeQueries = 0;
+    this.lastPurgeAt = 0;
   }
 
   /**
@@ -57,9 +60,12 @@ class QueryPerformanceTracker {
    * @param {any[]} params - Query parameters
    */
   trackQuery(queryName, queryText, duration, params = []) {
-    this.activeQueries = Math.max(0, this.activeQueries - 1);
-    if (this.queryStats.size > 0) {
-      this.purgeExpired(Date.now());
+    if (this.activeQueries > 0) {
+      this.activeQueries -= 1;
+    }
+    const now = Date.now();
+    if (this.queryStats.size > 0 && now - this.lastPurgeAt > 60 * 1000) {
+      this.purgeExpired(now);
     }
     // Update statistics
     if (!this.queryStats.has(queryName)) {
@@ -108,6 +114,7 @@ class QueryPerformanceTracker {
   }
 
   purgeExpired(now = Date.now()) {
+    this.lastPurgeAt = now;
     const cutoff = now - this.retentionMs;
     for (const [name, stats] of this.queryStats.entries()) {
       if (stats.lastExecuted < cutoff) {

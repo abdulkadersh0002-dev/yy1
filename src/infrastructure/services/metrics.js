@@ -126,16 +126,6 @@ export const metrics = {
   executionSlippageHistogram,
 };
 
-export function observeSignalGeneration({ pair, durationSeconds, status }) {
-  const labels = { pair: pair || 'UNKNOWN', status };
-  signalGenerationDuration.observe(labels, durationSeconds);
-  signalGenerationTotal.inc(labels);
-}
-
-export function recordTradeExecution(status) {
-  tradeExecutionsTotal.inc({ status });
-}
-
 const knownAvailabilityProviders = new Set();
 const MAX_PROVIDER_LABELS = 50;
 const safeGaugeSet = (gauge, labels, value) => {
@@ -147,6 +137,24 @@ const safeGaugeSet = (gauge, labels, value) => {
 };
 const safeGaugeValue = (value, fallback = 0) =>
   Number.isFinite(Number(value)) ? Number(value) : fallback;
+
+export function observeSignalGeneration({ pair, durationSeconds, status }) {
+  const labels = { pair: pair || 'UNKNOWN', status };
+  try {
+    signalGenerationDuration.observe(labels, durationSeconds);
+    signalGenerationTotal.inc(labels);
+  } catch (_error) {
+    // best-effort
+  }
+}
+
+export function recordTradeExecution(status) {
+  try {
+    tradeExecutionsTotal.inc({ status });
+  } catch (_error) {
+    // best-effort
+  }
+}
 
 export function setProviderHealth(provider, isHealthy) {
   safeGaugeSet(providerHealthGauge, { provider }, isHealthy ? 1 : 0);
@@ -163,7 +171,11 @@ export function setPrefetchQueueDepth(count) {
 }
 
 export function recordPrefetchResult(pair, timeframe, status) {
-  prefetchRequestsCounter.inc({ pair, timeframe, status });
+  try {
+    prefetchRequestsCounter.inc({ pair, timeframe, status });
+  } catch (_error) {
+    // best-effort
+  }
 }
 
 export function updateProviderAvailabilityMetrics({ state, historyStats, providers = [] } = {}) {
@@ -220,10 +232,13 @@ export function updateProviderAvailabilityMetrics({ state, historyStats, provide
     for (const entry of providers) {
       const provider = entry?.provider ? String(entry.provider) : 'unknown';
       seenProviders.add(provider);
-      knownAvailabilityProviders.add(provider);
-      if (knownAvailabilityProviders.size > MAX_PROVIDER_LABELS) {
+      if (
+        !knownAvailabilityProviders.has(provider) &&
+        knownAvailabilityProviders.size >= MAX_PROVIDER_LABELS
+      ) {
         continue;
       }
+      knownAvailabilityProviders.add(provider);
 
       const available = entry?.available === false ? 0 : 1;
       safeGaugeSet(providerAvailabilityProviderGauge, { provider, metric: 'available' }, available);
@@ -278,10 +293,14 @@ export function recordExecutionSlippage({ broker, status, slippagePips } = {}) {
   if (!Number.isFinite(value)) {
     return;
   }
-  executionSlippageHistogram.observe(
-    { broker: broker || 'unknown', status: status || 'ok' },
-    value
-  );
+  try {
+    executionSlippageHistogram.observe(
+      { broker: broker || 'unknown', status: status || 'ok' },
+      value
+    );
+  } catch (_error) {
+    // best-effort
+  }
 }
 
 export default {

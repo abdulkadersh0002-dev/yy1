@@ -31,6 +31,8 @@ export function createRateLimiter({
     cleanupTimer.unref?.();
   };
 
+  scheduleCleanup();
+
   return function rateLimiter(req, res, next) {
     const now = Date.now();
     const identity = req.identity?.id || 'anonymous';
@@ -38,8 +40,6 @@ export function createRateLimiter({
       req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
     const key = `${identity}|${ip}|${req.method}|${req.path}`;
     const existing = hits.get(key);
-
-    scheduleCleanup();
 
     if (!existing || existing.resetAt <= now) {
       hits.set(key, { count: 1, resetAt: now + windowMs });

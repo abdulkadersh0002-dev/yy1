@@ -55,9 +55,9 @@ export async function query(text, params = [], options = {}) {
   // Execute query with performance tracking
   const startTime = performance.now();
   let result;
-  queryPerformanceTracker.trackQueryStart?.();
 
   try {
+    queryPerformanceTracker.trackQueryStart?.();
     result = await baseQuery(text, params);
     const duration = performance.now() - startTime;
 
@@ -87,9 +87,9 @@ export async function query(text, params = [], options = {}) {
 export async function withClient(callback, options = {}) {
   const { name = 'transaction' } = options;
   const startTime = performance.now();
-  queryPerformanceTracker.trackQueryStart?.();
 
   try {
+    queryPerformanceTracker.trackQueryStart?.();
     const result = await baseWithClient(callback);
     const duration = performance.now() - startTime;
     queryPerformanceTracker.trackQuery(name, 'TRANSACTION', duration, []);

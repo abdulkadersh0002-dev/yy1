@@ -54,7 +54,15 @@ function trackMetrics(method, path, duration, statusCode) {
   const endpoint = `${method} ${path}`;
   if (!stats.byEndpoint.has(endpoint)) {
     if (stats.byEndpoint.size >= MAX_ENDPOINT_STATS) {
-      const oldestKey = stats.byEndpoint.keys().next().value;
+      let oldestKey = null;
+      let oldestSeen = Infinity;
+      for (const [key, value] of stats.byEndpoint.entries()) {
+        const seen = value?.lastSeen ?? 0;
+        if (seen < oldestSeen) {
+          oldestSeen = seen;
+          oldestKey = key;
+        }
+      }
       if (oldestKey) {
         stats.byEndpoint.delete(oldestKey);
       }
@@ -66,10 +74,12 @@ function trackMetrics(method, path, duration, statusCode) {
       maxDuration: 0,
       avgDuration: 0,
       slowCount: 0,
+      lastSeen: Date.now(),
     });
   }
 
   const endpointStats = stats.byEndpoint.get(endpoint);
+  endpointStats.lastSeen = Date.now();
   endpointStats.count++;
   endpointStats.totalDuration += duration;
   endpointStats.minDuration = Math.min(endpointStats.minDuration, duration);
