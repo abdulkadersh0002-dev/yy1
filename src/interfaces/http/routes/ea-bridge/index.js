@@ -48,6 +48,8 @@ export default function eaBridgeRoutes({
     const requireLayers18 = tradeManager?.realtimeRequireLayers18 ?? true;
 
     const allowWaitMonitorExecution = readEnvBool('EA_SIGNAL_ALLOW_WAIT_MONITOR', false) === true;
+    const overrideMinConfidence = readEnvNumber('EA_SIGNAL_STRONG_OVERRIDE_MIN_CONFIDENCE', null);
+    const overrideMinStrength = readEnvNumber('EA_SIGNAL_STRONG_OVERRIDE_MIN_STRENGTH', null);
 
     const dynamicTrailingEnabled = readEnvBool('EA_DYNAMIC_TRAILING_ENABLED', false) === true;
     const partialCloseEnabled = readEnvBool('EA_PARTIAL_CLOSE_ENABLED', false) === true;
@@ -109,6 +111,11 @@ export default function eaBridgeRoutes({
         minStrength,
         requireLayers18,
         allowWaitMonitorExecution,
+        strongOverride: {
+          enabled: true,
+          minConfidence: overrideMinConfidence,
+          minStrength: overrideMinStrength,
+        },
         assetClasses: tradeManager?.autoTradingAssetClasses
           ? Array.from(tradeManager.autoTradingAssetClasses)
           : null,
