@@ -37,7 +37,6 @@ import {
   classifyTickerSymbol,
   extractFxCurrencies,
   formatDuration,
-  isCryptoSymbol,
   isFxSymbol,
   isMetalSymbol,
   normalizeBrokerId,
