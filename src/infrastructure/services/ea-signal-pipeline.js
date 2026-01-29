@@ -21,7 +21,7 @@ const getBarsCoverage = ({ eaBridgeService, broker, symbol, now } = {}) => {
         symbol,
         timeframe,
         limit: 3,
-        maxAgeMs: 0
+        maxAgeMs: 0,
       });
       const list = Array.isArray(bars) ? bars : [];
       const latest = list[0] || null;
@@ -34,7 +34,7 @@ const getBarsCoverage = ({ eaBridgeService, broker, symbol, now } = {}) => {
         receivedAt,
         ageMs: latestTime != null ? Math.max(0, nowMs - latestTime) : null,
         receivedAgeMs: receivedAt != null ? Math.max(0, nowMs - receivedAt) : null,
-        source: latest?.source ?? null
+        source: latest?.source ?? null,
       };
     } catch (_error) {
       // best-effort
@@ -45,7 +45,7 @@ const getBarsCoverage = ({ eaBridgeService, broker, symbol, now } = {}) => {
 };
 
 export const normalizeLayeredAnalysis = (layers) => ({
-  layers: Array.isArray(layers) ? layers : []
+  layers: Array.isArray(layers) ? layers : [],
 });
 
 export const getBestEffortQuote = ({
@@ -54,7 +54,7 @@ export const getBestEffortQuote = ({
   symbol,
   quoteMaxAgeMs,
   barFallback,
-  now
+  now,
 } = {}) => {
   const nowMs = toNumberOrNull(now) ?? Date.now();
 
@@ -63,7 +63,7 @@ export const getBestEffortQuote = ({
       ? eaBridgeService.getQuotes({
           broker,
           symbols: [symbol],
-          maxAgeMs: quoteMaxAgeMs
+          maxAgeMs: quoteMaxAgeMs,
         })
       : [];
     const quote = Array.isArray(quotes) && quotes.length ? quotes[0] : null;
@@ -78,9 +78,9 @@ export const getBestEffortQuote = ({
           symbol,
           last: barFallback.price,
           source: `ea.bars.${barFallback.timeframe}`,
-          receivedAt: barFallback.timeMs || nowMs
+          receivedAt: barFallback.timeMs || nowMs,
         },
-        source: 'bars'
+        source: 'bars',
       };
     }
 
@@ -96,7 +96,7 @@ export const buildScenarioForLayeredAnalysis = ({
   effectiveQuote,
   barFallback,
   barsCoverage,
-  now
+  now,
 } = {}) => {
   const nowMs = toNumberOrNull(now) ?? Date.now();
 
@@ -159,7 +159,7 @@ export const buildScenarioForLayeredAnalysis = ({
     primary: {
       direction: rawSignal?.direction,
       confidence: rawSignal?.confidence,
-      finalScore: rawSignal?.finalScore
+      finalScore: rawSignal?.finalScore,
     },
     intermarket:
       rawSignal?.components?.intermarket && typeof rawSignal.components.intermarket === 'object'
@@ -187,17 +187,17 @@ export const buildScenarioForLayeredAnalysis = ({
                 telemetry?.quote?.midAccelerationPerSec2 ??
                 telemetry?.quote?.accelerationPerSec2 ??
                 null,
-              midDelta: telemetry?.quote?.midDelta ?? null
+              midDelta: telemetry?.quote?.midDelta ?? null,
             }
           : { ageMs, pending: true },
-      barsCoverage: barsCoverage && typeof barsCoverage === 'object' ? barsCoverage : null
+      barsCoverage: barsCoverage && typeof barsCoverage === 'object' ? barsCoverage : null,
     },
     telemetry,
     factors: {
       economic: rawSignal?.components?.economic?.details || rawSignal?.components?.economic || null,
       news: rawSignal?.components?.news || null,
       technical: rawSignal?.components?.technical || null,
-      candles: rawSignal?.components?.technical?.candlesSummary || null
+      candles: rawSignal?.components?.technical?.candlesSummary || null,
     },
     decision: {
       state: rawSignal?.isValid?.decision?.state || null,
@@ -207,8 +207,8 @@ export const buildScenarioForLayeredAnalysis = ({
       checks: rawSignal?.isValid?.checks || null,
       isTradeValid: rawSignal?.isValid?.isValid === true,
       missing: rawSignal?.isValid?.decision?.missing || null,
-      whatWouldChange: rawSignal?.isValid?.decision?.whatWouldChange || null
-    }
+      whatWouldChange: rawSignal?.isValid?.decision?.whatWouldChange || null,
+    },
   };
 };
 
@@ -219,7 +219,7 @@ export const attachLayeredAnalysisToSignal = ({
   eaBridgeService,
   quoteMaxAgeMs,
   barFallback,
-  now
+  now,
 } = {}) => {
   if (!rawSignal || typeof rawSignal !== 'object') {
     return rawSignal;
@@ -232,7 +232,7 @@ export const attachLayeredAnalysisToSignal = ({
       symbol,
       quoteMaxAgeMs,
       barFallback,
-      now
+      now,
     });
 
     const barsCoverage = getBarsCoverage({ eaBridgeService, broker, symbol, now });
@@ -243,7 +243,7 @@ export const attachLayeredAnalysisToSignal = ({
       effectiveQuote,
       barFallback,
       barsCoverage,
-      now
+      now,
     });
     const layers = buildLayeredAnalysis({ scenario, signal: rawSignal });
     const normalizedLayers = normalizeLayeredAnalysis(layers);
@@ -349,13 +349,65 @@ export const attachLayeredAnalysisToSignal = ({
 export const evaluateLayers18Readiness = ({
   layeredAnalysis,
   minConfluence,
-  decisionStateFallback
+  decisionStateFallback,
+  allowStrongOverride = false,
+  signal,
 } = {}) => {
   const min = Number.isFinite(Number(minConfluence)) ? Number(minConfluence) : 60;
   const layers = Array.isArray(layeredAnalysis?.layers) ? layeredAnalysis.layers : [];
 
   if (layers.length !== 18) {
-    return { ok: false, layersCount: layers.length };
+    const strongOverride = (() => {
+      if (!allowStrongOverride) {
+        return { ok: false, reason: null };
+      }
+      const direction = String(signal?.direction || '').toUpperCase();
+      if (direction !== 'BUY' && direction !== 'SELL') {
+        return { ok: false, reason: 'direction_neutral' };
+      }
+      const decisionState = String(
+        signal?.isValid?.decision?.state || decisionStateFallback || ''
+      ).toUpperCase();
+      if (decisionState !== 'ENTER') {
+        return { ok: false, reason: 'decision_not_enter' };
+      }
+      if (signal?.isValid?.isValid !== true) {
+        return { ok: false, reason: 'trade_invalid' };
+      }
+      const confidence = Number(signal?.confidence);
+      const strength = Number(signal?.strength);
+      if (!Number.isFinite(confidence) || !Number.isFinite(strength)) {
+        return { ok: false, reason: 'missing_strength' };
+      }
+      const minConfidence = Number(process.env.EA_SIGNAL_STRONG_OVERRIDE_MIN_CONFIDENCE);
+      const minStrength = Number(process.env.EA_SIGNAL_STRONG_OVERRIDE_MIN_STRENGTH);
+      const confFloor = Number.isFinite(minConfidence) ? minConfidence : 85;
+      const strengthFloor = Number.isFinite(minStrength) ? minStrength : 70;
+      if (confidence < confFloor || strength < strengthFloor) {
+        return { ok: false, reason: 'below_strong_floor' };
+      }
+      const entry = signal?.entry || {};
+      const entryPrice = Number(entry?.price ?? signal?.entryPrice);
+      const stopLoss = Number(entry?.stopLoss ?? signal?.stopLoss);
+      const takeProfit = Number(entry?.takeProfit ?? signal?.takeProfit);
+      if (
+        !Number.isFinite(entryPrice) ||
+        !Number.isFinite(stopLoss) ||
+        !Number.isFinite(takeProfit)
+      ) {
+        return { ok: false, reason: 'missing_entry_levels' };
+      }
+      return { ok: true, reason: 'strong_override' };
+    })();
+
+    return {
+      ok: strongOverride.ok,
+      layersCount: layers.length,
+      layer16Pass: false,
+      layer17Ok: false,
+      layer18State: decisionStateFallback ? String(decisionStateFallback).toUpperCase() : 'UNKNOWN',
+      strongOverride,
+    };
   }
 
   const layer16 = layers.find((l) => String(l?.key || '') === 'L16') || null;
@@ -373,11 +425,56 @@ export const evaluateLayers18Readiness = ({
     layer18?.metrics?.decision?.state || decisionStateFallback || ''
   ).toUpperCase();
 
+  const ok = layer16Pass && layer17Ok && layer18State === 'ENTER';
+  const strongOverride = (() => {
+    if (!allowStrongOverride || ok) {
+      return { ok: false, reason: null };
+    }
+    const direction = String(signal?.direction || '').toUpperCase();
+    if (direction !== 'BUY' && direction !== 'SELL') {
+      return { ok: false, reason: 'direction_neutral' };
+    }
+    const decisionState = String(
+      signal?.isValid?.decision?.state || layer18State || ''
+    ).toUpperCase();
+    if (decisionState !== 'ENTER') {
+      return { ok: false, reason: 'decision_not_enter' };
+    }
+    if (signal?.isValid?.isValid !== true) {
+      return { ok: false, reason: 'trade_invalid' };
+    }
+    const confidence = Number(signal?.confidence);
+    const strength = Number(signal?.strength);
+    if (!Number.isFinite(confidence) || !Number.isFinite(strength)) {
+      return { ok: false, reason: 'missing_strength' };
+    }
+    const minConfidence = Number(process.env.EA_SIGNAL_STRONG_OVERRIDE_MIN_CONFIDENCE);
+    const minStrength = Number(process.env.EA_SIGNAL_STRONG_OVERRIDE_MIN_STRENGTH);
+    const confFloor = Number.isFinite(minConfidence) ? minConfidence : 85;
+    const strengthFloor = Number.isFinite(minStrength) ? minStrength : 70;
+    if (confidence < confFloor || strength < strengthFloor) {
+      return { ok: false, reason: 'below_strong_floor' };
+    }
+    const entry = signal?.entry || {};
+    const entryPrice = Number(entry?.price ?? signal?.entryPrice);
+    const stopLoss = Number(entry?.stopLoss ?? signal?.stopLoss);
+    const takeProfit = Number(entry?.takeProfit ?? signal?.takeProfit);
+    if (
+      !Number.isFinite(entryPrice) ||
+      !Number.isFinite(stopLoss) ||
+      !Number.isFinite(takeProfit)
+    ) {
+      return { ok: false, reason: 'missing_entry_levels' };
+    }
+    return { ok: true, reason: 'strong_override' };
+  })();
+
   return {
-    ok: layer16Pass && layer17Ok && layer18State === 'ENTER',
+    ok: ok || strongOverride.ok,
     layersCount: layers.length,
     layer16Pass,
     layer17Ok,
-    layer18State
+    layer18State,
+    strongOverride,
   };
 };

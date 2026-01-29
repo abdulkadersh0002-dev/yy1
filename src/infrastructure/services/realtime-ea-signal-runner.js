@@ -1064,11 +1064,17 @@ export class RealtimeEaSignalRunner {
       layeredAnalysis: layered,
       minConfluence: this.dashboardLayers18MinConfluence,
       decisionStateFallback: decisionState,
+      allowStrongOverride: true,
+      signal: rawSignal,
     });
     const layers18 = Array.isArray(layered?.layers) ? layered.layers : [];
     const layers18Ready = layersStatus.ok === true;
+    const layers18Override = layersStatus?.strongOverride?.ok === true;
 
-    const meetsLayers18 = !this.dashboardRequireLayers18 || layers18Ready;
+    const meetsLayers18 =
+      !this.dashboardRequireLayers18 ||
+      layers18Ready ||
+      (layers18Override && this.dashboardRequireEnter && decisionState === 'ENTER');
     const meetsTradeValidity = tradeValid === true;
 
     // "Analyzed" candidates: any signal that includes the canonical 18-layer payload.

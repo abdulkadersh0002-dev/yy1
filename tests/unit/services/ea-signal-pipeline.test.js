@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { attachLayeredAnalysisToSignal } from '../../../src/infrastructure/services/ea-signal-pipeline.js';
+import {
+  attachLayeredAnalysisToSignal,
+  evaluateLayers18Readiness,
+} from '../../../src/infrastructure/services/ea-signal-pipeline.js';
 
 describe('EA signal pipeline layered context', () => {
   it('attaches pairContext, entryContext, expectedMarketBehavior, invalidationRules', () => {
@@ -20,5 +23,24 @@ describe('EA signal pipeline layered context', () => {
     assert.ok(result.components.expectedMarketBehavior);
     assert.ok(Array.isArray(result.components.invalidationRules));
     assert.ok(result.components.invalidationRules.length > 0);
+  });
+
+  it('allows strong override when layers are missing but signal is strong', () => {
+    const result = evaluateLayers18Readiness({
+      layeredAnalysis: { layers: [] },
+      minConfluence: 60,
+      decisionStateFallback: 'ENTER',
+      allowStrongOverride: true,
+      signal: {
+        direction: 'BUY',
+        confidence: 92,
+        strength: 80,
+        isValid: { isValid: true, decision: { state: 'ENTER' } },
+        entry: { price: 1.1, stopLoss: 1.09, takeProfit: 1.12 },
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.strongOverride?.ok, true);
   });
 });
