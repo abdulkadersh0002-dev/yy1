@@ -1372,6 +1372,85 @@ function App() {
     [bridgeIsConnected, effectivePlatformId]
   );
 
+  const tickerWarmupRef = useRef({
+    index: 0,
+    timer: null,
+    lastRequested: new Map()
+  });
+
+  useEffect(() => {
+    if (!bridgeIsConnected || tickerSearchNormalized) {
+      const ref = tickerWarmupRef.current;
+      if (ref.timer) {
+        clearInterval(ref.timer);
+        ref.timer = null;
+      }
+      return;
+    }
+
+    const list = Array.isArray(TICKER_CATALOG_SYMBOLS) ? TICKER_CATALOG_SYMBOLS : [];
+    if (list.length === 0) {
+      return;
+    }
+
+    const ref = tickerWarmupRef.current;
+    const intervalMs = 15 * 1000;
+    const batchSize = 40;
+    const snapshotBatch = 6;
+    const requestGapMs = 5 * 60 * 1000;
+
+    const tick = () => {
+      if (!bridgeIsConnected) {
+        return;
+      }
+
+      const bySymbol = quotesBySymbolRef.current || new Map();
+      const missing = list.filter((symbol) => {
+        const normalized = normalizeTickerSymbol(symbol);
+        return normalized && !bySymbol.get(normalized);
+      });
+
+      if (missing.length === 0) {
+        return;
+      }
+
+      const start = ref.index % missing.length;
+      const batch = [
+        ...missing.slice(start, start + batchSize),
+        ...missing.slice(0, Math.max(0, start + batchSize - missing.length))
+      ].slice(0, batchSize);
+
+      if (batch.length) {
+        scheduleActiveSymbolsSync(batch);
+      }
+
+      const now = Date.now();
+      for (const symbol of batch.slice(0, snapshotBatch)) {
+        const normalized = normalizeTickerSymbol(symbol);
+        if (!normalized) {
+          continue;
+        }
+        const lastReq = ref.lastRequested.get(normalized) || 0;
+        if (now - lastReq < requestGapMs) {
+          continue;
+        }
+        ref.lastRequested.set(normalized, now);
+        void requestSnapshotForSymbol(normalized);
+      }
+
+      ref.index = start + batchSize;
+    };
+
+    tick();
+    ref.timer = setInterval(tick, intervalMs);
+    return () => {
+      if (ref.timer) {
+        clearInterval(ref.timer);
+        ref.timer = null;
+      }
+    };
+  }, [bridgeIsConnected, tickerSearchNormalized, requestSnapshotForSymbol, scheduleActiveSymbolsSync]);
+
   const openAnalyzerForSymbolAndRequestSnapshot = useCallback(
     (symbolValue) => {
       const raw = String(symbolValue || '').trim();
