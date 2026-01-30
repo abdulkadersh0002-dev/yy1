@@ -903,13 +903,13 @@ export function aggregateCandleAnalyses(byTimeframe) {
   const avgConfidenceClamped = Number(clamp(avgConfidence, 0, 100).toFixed(0));
 
   const scenarioScores = {
-    continuation: clamp(Math.abs(avgDeltaClamped) * 4.2 + avgStrength * 0.4, 0, 100),
+    continuation: clamp(Math.abs(avgDeltaClamped) * 3.6 + avgStrength * 0.32, 0, 100),
     retracement: clamp(
-      100 - Math.abs(avgDeltaClamped) * 4.5 + Math.min(35, neutralVotes * 10),
+      100 - Math.abs(avgDeltaClamped) * 3.8 + Math.min(30, neutralVotes * 8),
       0,
       100
     ),
-    consolidation: clamp(100 - avgStrength + neutralVotes * 12, 0, 100),
+    consolidation: clamp(100 - avgStrength + neutralVotes * 10, 0, 100),
   };
 
   return {

@@ -397,7 +397,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     (memoryFlags.includes('sweep') ? 30 : 0) +
       (memoryFlags.includes('rejection') ? 30 : 0) +
       (memoryFlags.includes('volume_spike') ? 25 : 0) +
-      (memoryFlags.length ? 15 : 0),
+      Math.min(15, Math.max(0, memoryFlags.length - 3) * 5),
     0,
     100
   );
@@ -534,71 +534,6 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       ].filter(Boolean),
       warnings: rawWarnings,
       availability: quoteLast != null || quoteBid != null ? 'available' : 'partial',
-    })
-  );
-
-  layers.push(
-    buildLayer({
-      number: 9,
-      nameEn: 'Market Memory Zones',
-      nameAr: 'ذاكرة السوق',
-      direction: finalDirection,
-      confidence: toFiniteNumber(structure?.confidence ?? candlesSummary?.confidence),
-      score: memoryScore,
-      summaryEn: memoryFlags.length
-        ? `Memory flags: ${memoryFlags.slice(0, 4).join(', ')} · score=${memoryScore}`
-        : 'No dominant memory zones detected.',
-      summaryAr: memoryFlags.length
-        ? `إشارات الذاكرة: ${memoryFlags.slice(0, 4).join(', ')} · التقييم=${memoryScore}`
-        : 'لا توجد مناطق ذاكرة بارزة حالياً.',
-      metrics: {
-        memoryScore,
-        memoryFlags,
-        marketMemory,
-        trendScore,
-        volatilityState: volatility?.state || null,
-      },
-      evidence: memoryFlags.slice(0, 6).map((f) => `Memory flag: ${f}`),
-      warnings: memoryScore >= 70 ? [] : ['Memory zone not confirmed (weak).'],
-      availability: memoryFlags.length ? 'available' : 'partial',
-    })
-  );
-
-  layers.push(
-    buildLayer({
-      number: 10,
-      nameEn: 'Silent Liquidity Map',
-      nameAr: 'خريطة السيولة الصامتة',
-      direction: finalDirection,
-      confidence: toFiniteNumber(structure?.confidence ?? candlesSummary?.confidence),
-      score: liquidityDefenseScore,
-      summaryEn:
-        liquidityDefenseScore > 0
-          ? `Defense score=${liquidityDefenseScore} · sweep=${
-              smcSweep?.detected ? 'yes' : 'no'
-            } · orderBlock=${smcOrderBlock?.detected ? 'yes' : 'no'}`
-          : 'No liquidity defense zones confirmed.',
-      summaryAr:
-        liquidityDefenseScore > 0
-          ? `تقييم الدفاع=${liquidityDefenseScore} · اجتياح=${
-              smcSweep?.detected ? 'نعم' : 'لا'
-            } · كتلة أوامر=${smcOrderBlock?.detected ? 'نعم' : 'لا'}`
-          : 'لا توجد مناطق دفاع سيولة مؤكدة.',
-      metrics: {
-        liquidityDefenseScore,
-        liquiditySweep: smcSweep,
-        orderBlock: smcOrderBlock,
-        priceImbalance: smcPriceImbalance,
-        volumeImbalance: smcVolumeImbalance,
-      },
-      evidence: [
-        smcSweep?.detected ? 'Liquidity sweep detected' : null,
-        smcOrderBlock?.detected ? 'Order block reaction' : null,
-        smcPriceImbalance?.detected ? 'Price imbalance zone' : null,
-        smcVolumeImbalance?.detected ? 'Volume imbalance spike' : null,
-      ].filter(Boolean),
-      warnings: liquidityDefenseScore >= 65 ? [] : ['Liquidity defense weak/unclear'],
-      availability: liquidityDefenseScore > 0 ? 'available' : 'partial',
     })
   );
 
@@ -1073,7 +1008,73 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     })
   );
 
-  // 9) Relative strength
+  // 9) Market Memory Zones
+  layers.push(
+    buildLayer({
+      number: 9,
+      nameEn: 'Market Memory Zones',
+      nameAr: 'ذاكرة السوق',
+      direction: finalDirection,
+      confidence: toFiniteNumber(structure?.confidence ?? candlesSummary?.confidence),
+      score: memoryScore,
+      summaryEn: memoryFlags.length
+        ? `Memory flags: ${memoryFlags.slice(0, 4).join(', ')} · score=${memoryScore}`
+        : 'No dominant memory zones detected.',
+      summaryAr: memoryFlags.length
+        ? `إشارات الذاكرة: ${memoryFlags.slice(0, 4).join(', ')} · التقييم=${memoryScore}`
+        : 'لا توجد مناطق ذاكرة بارزة حالياً.',
+      metrics: {
+        memoryScore,
+        memoryFlags,
+        marketMemory,
+        trendScore,
+        volatilityState: volatility?.state || null,
+      },
+      evidence: memoryFlags.slice(0, 6).map((f) => `Memory flag: ${f}`),
+      warnings: memoryScore >= 70 ? [] : ['Memory zone not confirmed (weak).'],
+      availability: memoryFlags.length ? 'available' : 'partial',
+    })
+  );
+
+  layers.push(
+    buildLayer({
+      number: 10,
+      nameEn: 'Silent Liquidity Map',
+      nameAr: 'خريطة السيولة الصامتة',
+      direction: finalDirection,
+      confidence: toFiniteNumber(structure?.confidence ?? candlesSummary?.confidence),
+      score: liquidityDefenseScore,
+      summaryEn:
+        liquidityDefenseScore > 0
+          ? `Defense score=${liquidityDefenseScore} · sweep=${
+              smcSweep?.detected ? 'yes' : 'no'
+            } · orderBlock=${smcOrderBlock?.detected ? 'yes' : 'no'}`
+          : 'No liquidity defense zones confirmed.',
+      summaryAr:
+        liquidityDefenseScore > 0
+          ? `تقييم الدفاع=${liquidityDefenseScore} · اجتياح=${
+              smcSweep?.detected ? 'نعم' : 'لا'
+            } · كتلة أوامر=${smcOrderBlock?.detected ? 'نعم' : 'لا'}`
+          : 'لا توجد مناطق دفاع سيولة مؤكدة.',
+      metrics: {
+        liquidityDefenseScore,
+        liquiditySweep: smcSweep,
+        orderBlock: smcOrderBlock,
+        priceImbalance: smcPriceImbalance,
+        volumeImbalance: smcVolumeImbalance,
+      },
+      evidence: [
+        smcSweep?.detected ? 'Liquidity sweep detected' : null,
+        smcOrderBlock?.detected ? 'Order block reaction' : null,
+        smcPriceImbalance?.detected ? 'Price imbalance zone' : null,
+        smcVolumeImbalance?.detected ? 'Volume imbalance spike' : null,
+      ].filter(Boolean),
+      warnings: liquidityDefenseScore >= 65 ? [] : ['Liquidity defense weak/unclear'],
+      availability: liquidityDefenseScore > 0 ? 'available' : 'partial',
+    })
+  );
+
+  // 11) Relative strength
   const relSent = toFiniteNumber(econ?.relativeSentiment);
   const macroDiff = toFiniteNumber(macroRelative?.differential);
   const relBias = normalizeDirection(
@@ -1088,7 +1089,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
   );
   layers.push(
     buildLayer({
-      number: 9,
+      number: 11,
       nameEn: 'Relative Strength (Base vs Quote)',
       nameAr: 'القوة النسبية (العملة الأساسية مقابل المقابلة)',
       direction: relBias,
@@ -1114,7 +1115,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     })
   );
 
-  // 10) Intermarket
+  // 12) Intermarket
   if (intermarketCorrelation?.available) {
     const top = safeArray(intermarketCorrelation.top).filter(Boolean).slice(0, 6);
     const breaks = safeArray(intermarketCorrelation.breaks).filter(Boolean);
@@ -1148,7 +1149,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
 
     layers.push(
       buildLayer({
-        number: 10,
+        number: 12,
         nameEn: 'Intermarket Correlation (Live)',
         nameAr: 'ترابط الأسواق (Intermarket)',
         direction: 'NEUTRAL',
@@ -1186,7 +1187,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
   } else {
     layers.push(
       buildLayer({
-        number: 10,
+        number: 12,
         nameEn: 'Intermarket Correlation (Live)',
         nameAr: 'ترابط الأسواق (Intermarket)',
         direction: 'NEUTRAL',
@@ -1204,10 +1205,10 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     );
   }
 
-  // 11) Macroeconomics
+  // 13) Macroeconomics
   layers.push(
     buildLayer({
-      number: 11,
+      number: 13,
       nameEn: 'Macroeconomics',
       nameAr: 'الاقتصاد الكلي (Macro)',
       direction: normalizeDirection(macroRelative?.direction),
@@ -1227,11 +1228,11 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     })
   );
 
-  // 12) News impact
+  // 14) News impact
   const newsDir = normalizeDirection(news?.direction);
   layers.push(
     buildLayer({
-      number: 12,
+      number: 14,
       nameEn: 'News Impact',
       nameAr: 'تأثير الأخبار',
       direction: newsDir,
@@ -1255,12 +1256,12 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     })
   );
 
-  // 13) Market psychology
+  // 15) Market psychology
   const doji = patterns.some((p) => String(p?.name || '').includes('DOJI'));
   const psychDir = doji ? 'NEUTRAL' : candleDir;
   layers.push(
     buildLayer({
-      number: 13,
+      number: 15,
       nameEn: 'Market Psychology',
       nameAr: 'سيكولوجية السوق',
       direction: psychDir,
@@ -1283,7 +1284,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     })
   );
 
-  // 14) Risk environment
+  // 16) Risk environment
   const riskScore = clamp(
     100 -
       (spreadPoints != null ? clamp((spreadPoints - 10) * 2.5, 0, 35) : 0) -
@@ -1312,7 +1313,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
 
   layers.push(
     buildLayer({
-      number: 14,
+      number: 16,
       nameEn: 'Risk Environment (Risk-on/off + Execution)',
       nameAr: 'بيئة المخاطر (Risk-on/off + تنفيذ)',
       direction: finalDirection,
@@ -1346,12 +1347,12 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     })
   );
 
-  // 15) Statistical logic
+  // 17) Statistical logic
   const r2 = toFiniteNumber(regime?.r2);
   const stdevReturns = toFiniteNumber(volatility?.stdevReturns);
   layers.push(
     buildLayer({
-      number: 15,
+      number: 17,
       nameEn: 'Statistical Logic',
       nameAr: 'المنطق الإحصائي',
       direction: candleDir,
@@ -1373,11 +1374,11 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     })
   );
 
-  // 16) Signal validation
+  // 18) Signal validation
   const failedChecks = Object.entries(checks).filter(([, ok]) => ok === false);
   layers.push(
     buildLayer({
-      number: 16,
+      number: 18,
       nameEn: 'Signal Validation (Final Guard)',
       nameAr: 'تحقق الإشارة (الحارس الأخير)',
       direction: isTradeValid ? finalDirection : 'NEUTRAL',
@@ -1400,7 +1401,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     })
   );
 
-  // 17) Context awareness (alignment)
+  // 19) Context awareness (alignment)
   const votes = [
     normalizeDirection(technical?.direction),
     normalizeDirection(candlesSummary?.direction),
@@ -1423,7 +1424,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
 
   layers.push(
     buildLayer({
-      number: 17,
+      number: 19,
       nameEn: 'Context Awareness (Confluence)',
       nameAr: 'وعي السياق (توافق/Confluence)',
       direction: alignedDir,
@@ -1487,7 +1488,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
     })
   );
 
-  // 18) Decision engine
+  // 20) Decision engine
   const entry = safeObj(primary?.entry) || safeObj(sig?.entry) || {};
   const rr = toFiniteNumber(entry?.riskReward ?? sig?.riskReward);
 
@@ -1733,7 +1734,7 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
 
   layers.push(
     buildLayer({
-      number: 18,
+      number: 20,
       nameEn: 'Decision Engine (ENTER / WAIT / BLOCKED)',
       nameAr: 'محرك القرار (دخول / انتظار / محجوب)',
       direction: isBlocked ? 'NEUTRAL' : finalDirection,

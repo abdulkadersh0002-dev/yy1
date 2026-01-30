@@ -4144,8 +4144,8 @@ function App() {
                                     <span className="market-analyzer__val">
                                       A·Continue{' '}
                                       {formatNumber(candles.scenarioScores.continuation, 0)}% · B·
-                                      Retrace {formatNumber(candles.scenarioScores.retracement, 0)}%
-                                      · C·Range{' '}
+                                      Retrace{' '}
+                                      {formatNumber(candles.scenarioScores.retracement, 0)}% · C·Range{' '}
                                       {formatNumber(candles.scenarioScores.consolidation, 0)}%
                                     </span>
                                   </div>
