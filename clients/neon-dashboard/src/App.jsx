@@ -4138,6 +4138,19 @@ function App() {
                                   </div>
                                 )}
 
+                                {candles?.scenarioScores && (
+                                  <div className="market-analyzer__row">
+                                    <span className="market-analyzer__key">Scenario map</span>
+                                    <span className="market-analyzer__val">
+                                      A·Continue{' '}
+                                      {formatNumber(candles.scenarioScores.continuation, 0)}% · B·
+                                      Retrace {formatNumber(candles.scenarioScores.retracement, 0)}%
+                                      · C·Range{' '}
+                                      {formatNumber(candles.scenarioScores.consolidation, 0)}%
+                                    </span>
+                                  </div>
+                                )}
+
                                 <div className="market-analyzer__row">
                                   <span className="market-analyzer__key">Score</span>
                                   <span className="market-analyzer__val">

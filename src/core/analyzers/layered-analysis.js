@@ -392,10 +392,31 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
   const smcVolumeSpike = safeObj(smc?.volumeSpike) || null;
   const smcVolumeImbalance = safeObj(smc?.volumeImbalance) || null;
   const smcAccDist = safeObj(smc?.accumulationDistribution) || null;
+  const memoryFlags = safeArray(smcAccDist?.tags || smcAccDist?.flags || []);
+  const memoryScore = clamp(
+    (memoryFlags.includes('sweep') ? 30 : 0) +
+      (memoryFlags.includes('rejection') ? 30 : 0) +
+      (memoryFlags.includes('volume_spike') ? 25 : 0) +
+      (memoryFlags.length ? 15 : 0),
+    0,
+    100
+  );
+
+  const liquidityDefenseScore = clamp(
+    (smcSweep?.detected ? 35 : 0) +
+      (smcPriceImbalance?.detected ? 25 : 0) +
+      (smcOrderBlock?.detected ? 25 : 0) +
+      (smcVolumeImbalance?.detected ? 15 : 0),
+    0,
+    100
+  );
 
   const rsi = toFiniteNumber(pickAnalysis?.rsi ?? candlesSummary?.rsi);
   const trendPct = toFiniteNumber(pickAnalysis?.trendPct ?? candlesSummary?.trendPct);
   const atrPct = toFiniteNumber(volatility?.atrPct);
+
+  const trendScore =
+    trendPct != null ? clamp(Math.min(100, Math.abs(trendPct) * 700), 0, 100) : null;
 
   const newsImpactScore = toFiniteNumber(market?.news?.impactScore);
   const newsUpcoming = toFiniteNumber(news?.upcomingEvents);
@@ -513,6 +534,71 @@ export function buildLayeredAnalysis({ scenario, signal } = {}) {
       ].filter(Boolean),
       warnings: rawWarnings,
       availability: quoteLast != null || quoteBid != null ? 'available' : 'partial',
+    })
+  );
+
+  layers.push(
+    buildLayer({
+      number: 9,
+      nameEn: 'Market Memory Zones',
+      nameAr: 'ذاكرة السوق',
+      direction: finalDirection,
+      confidence: toFiniteNumber(structure?.confidence ?? candlesSummary?.confidence),
+      score: memoryScore,
+      summaryEn: memoryFlags.length
+        ? `Memory flags: ${memoryFlags.slice(0, 4).join(', ')} · score=${memoryScore}`
+        : 'No dominant memory zones detected.',
+      summaryAr: memoryFlags.length
+        ? `إشارات الذاكرة: ${memoryFlags.slice(0, 4).join(', ')} · التقييم=${memoryScore}`
+        : 'لا توجد مناطق ذاكرة بارزة حالياً.',
+      metrics: {
+        memoryScore,
+        memoryFlags,
+        marketMemory,
+        trendScore,
+        volatilityState: volatility?.state || null,
+      },
+      evidence: memoryFlags.slice(0, 6).map((f) => `Memory flag: ${f}`),
+      warnings: memoryScore >= 70 ? [] : ['Memory zone not confirmed (weak).'],
+      availability: memoryFlags.length ? 'available' : 'partial',
+    })
+  );
+
+  layers.push(
+    buildLayer({
+      number: 10,
+      nameEn: 'Silent Liquidity Map',
+      nameAr: 'خريطة السيولة الصامتة',
+      direction: finalDirection,
+      confidence: toFiniteNumber(structure?.confidence ?? candlesSummary?.confidence),
+      score: liquidityDefenseScore,
+      summaryEn:
+        liquidityDefenseScore > 0
+          ? `Defense score=${liquidityDefenseScore} · sweep=${
+              smcSweep?.detected ? 'yes' : 'no'
+            } · orderBlock=${smcOrderBlock?.detected ? 'yes' : 'no'}`
+          : 'No liquidity defense zones confirmed.',
+      summaryAr:
+        liquidityDefenseScore > 0
+          ? `تقييم الدفاع=${liquidityDefenseScore} · اجتياح=${
+              smcSweep?.detected ? 'نعم' : 'لا'
+            } · كتلة أوامر=${smcOrderBlock?.detected ? 'نعم' : 'لا'}`
+          : 'لا توجد مناطق دفاع سيولة مؤكدة.',
+      metrics: {
+        liquidityDefenseScore,
+        liquiditySweep: smcSweep,
+        orderBlock: smcOrderBlock,
+        priceImbalance: smcPriceImbalance,
+        volumeImbalance: smcVolumeImbalance,
+      },
+      evidence: [
+        smcSweep?.detected ? 'Liquidity sweep detected' : null,
+        smcOrderBlock?.detected ? 'Order block reaction' : null,
+        smcPriceImbalance?.detected ? 'Price imbalance zone' : null,
+        smcVolumeImbalance?.detected ? 'Volume imbalance spike' : null,
+      ].filter(Boolean),
+      warnings: liquidityDefenseScore >= 65 ? [] : ['Liquidity defense weak/unclear'],
+      availability: liquidityDefenseScore > 0 ? 'available' : 'partial',
     })
   );
 

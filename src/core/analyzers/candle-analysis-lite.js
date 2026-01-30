@@ -168,7 +168,7 @@ const computeVolumeImbalance = (candles, lookback = 20) => {
     imbalance: Number(imbalance.toFixed(4)),
     pressurePct: Number((imbalance * 100).toFixed(2)),
     state,
-    sampleSize: slice.length
+    sampleSize: slice.length,
   };
 };
 
@@ -228,7 +228,7 @@ const detectLiquiditySweep = (candles, { lookback = 20, atr = null } = {}) => {
       sweptBy: Number(sweptBy.toFixed(8)),
       rejection: Number(rejection.toFixed(8)),
       wickRatio: Number(wickRatioUpper.toFixed(2)),
-      confidence
+      confidence,
     };
   }
 
@@ -252,7 +252,7 @@ const detectLiquiditySweep = (candles, { lookback = 20, atr = null } = {}) => {
       sweptBy: Number(sweptBy.toFixed(8)),
       rejection: Number(rejection.toFixed(8)),
       wickRatio: Number(wickRatioLower.toFixed(2)),
-      confidence
+      confidence,
     };
   }
 
@@ -356,7 +356,7 @@ const detectOrderBlock = (candles, { atr = null, lookback = 40, impulseLookback 
       near,
       impulseRatio: impulseRatio != null ? Number(impulseRatio.toFixed(2)) : null,
       ageBars: barsFromLast,
-      confidence
+      confidence,
     };
   }
 
@@ -385,7 +385,7 @@ const detectVolumeSpike = (candles, lookback = 20) => {
     average: Number(avg.toFixed(2)),
     zScore: Number(z.toFixed(2)),
     ratio: Number(ratio.toFixed(2)),
-    isSpike
+    isSpike,
   };
 };
 
@@ -448,7 +448,7 @@ const detectPriceImbalance = (candles, { lookback = 30, atr = null } = {}) => {
         size: Number(size.toFixed(8)),
         fillPct: Number(fillPct.toFixed(1)),
         createdAt: t2 != null ? Number(t2) : null,
-        ageBars: series.length - 1 - i
+        ageBars: series.length - 1 - i,
       });
     }
 
@@ -480,7 +480,7 @@ const detectPriceImbalance = (candles, { lookback = 30, atr = null } = {}) => {
         size: Number(size.toFixed(8)),
         fillPct: Number(fillPct.toFixed(1)),
         createdAt: t2 != null ? Number(t2) : null,
-        ageBars: series.length - 1 - i
+        ageBars: series.length - 1 - i,
       });
     }
 
@@ -532,10 +532,10 @@ const detectPriceImbalance = (candles, { lookback = 30, atr = null } = {}) => {
           size: nearest.size,
           fillPct: nearest.fillPct,
           ageBars: nearest.ageBars,
-          distance: dist != null ? Number(dist.toFixed(8)) : null
+          distance: dist != null ? Number(dist.toFixed(8)) : null,
         }
       : null,
-    confidence
+    confidence,
   };
 };
 
@@ -728,7 +728,7 @@ export function analyzeCandleSeries(series, { timeframe = null } = {}) {
         state: 'accumulation',
         confidence: 70,
         pctMove: Number(pctMove.toFixed(3)),
-        pressurePct: imb.pressurePct
+        pressurePct: imb.pressurePct,
       };
     }
     if (imb.state === 'selling') {
@@ -736,7 +736,7 @@ export function analyzeCandleSeries(series, { timeframe = null } = {}) {
         state: 'distribution',
         confidence: 70,
         pctMove: Number(pctMove.toFixed(3)),
-        pressurePct: imb.pressurePct
+        pressurePct: imb.pressurePct,
       };
     }
     return { state: 'neutral', confidence: 45, pctMove: Number(pctMove.toFixed(3)) };
@@ -753,7 +753,7 @@ export function analyzeCandleSeries(series, { timeframe = null } = {}) {
     volumeSummary = {
       newest: newestVol != null ? Number(newestVol.toFixed(2)) : null,
       average: Number(avg.toFixed(2)),
-      trendPct: Number(trendPct.toFixed(2))
+      trendPct: Number(trendPct.toFixed(2)),
     };
   }
 
@@ -827,19 +827,19 @@ export function analyzeCandleSeries(series, { timeframe = null } = {}) {
       state: regimeState,
       confidence: Number(regimeConfidence.toFixed(0)),
       r2: r2 != null ? Number((r2 * 100).toFixed(0)) : null,
-      slope: regression?.slope != null ? Number(regression.slope.toFixed(8)) : null
+      slope: regression?.slope != null ? Number(regression.slope.toFixed(8)) : null,
     },
     volatility: {
       state: volState,
       atr: atr != null ? Number(atr.toFixed(8)) : null,
       atrPct: atrPct != null ? Number(atrPct.toFixed(4)) : null,
-      stdevReturns: volatility != null ? Number(volatility.toFixed(8)) : null
+      stdevReturns: volatility != null ? Number(volatility.toFixed(8)) : null,
     },
     structure: structure
       ? {
           state: structure.state,
           bias: structure.bias,
-          confidence: structure.confidence
+          confidence: structure.confidence,
         }
       : null,
     patterns: patterns.slice(0, 4),
@@ -850,12 +850,12 @@ export function analyzeCandleSeries(series, { timeframe = null } = {}) {
       volumeSpike: smcVolumeSpike,
       volumeImbalance: smcImbalance,
       accumulationDistribution: smcAccumDist,
-      priceImbalance: smcPriceImbalance
+      priceImbalance: smcPriceImbalance,
     },
     notes: {
       trendDirection,
-      source: 'ohlc'
-    }
+      source: 'ohlc',
+    },
   };
 }
 
@@ -898,11 +898,26 @@ export function aggregateCandleAnalyses(byTimeframe) {
   const direction = buyVotes > sellVotes ? 'BUY' : sellVotes > buyVotes ? 'SELL' : 'NEUTRAL';
   const strength = clamp(Math.abs(avgDelta) * 5.5, 0, 100);
 
+  const avgDeltaClamped = Number(clamp(avgDelta, -18, 18).toFixed(2));
+  const avgStrength = Number(strength.toFixed(1));
+  const avgConfidenceClamped = Number(clamp(avgConfidence, 0, 100).toFixed(0));
+
+  const scenarioScores = {
+    continuation: clamp(Math.abs(avgDeltaClamped) * 4.2 + avgStrength * 0.4, 0, 100),
+    retracement: clamp(
+      100 - Math.abs(avgDeltaClamped) * 4.5 + Math.min(35, neutralVotes * 10),
+      0,
+      100
+    ),
+    consolidation: clamp(100 - avgStrength + neutralVotes * 12, 0, 100),
+  };
+
   return {
     direction,
-    strength: Number(strength.toFixed(1)),
-    confidence: Number(clamp(avgConfidence, 0, 100).toFixed(0)),
-    scoreDelta: Number(clamp(avgDelta, -18, 18).toFixed(2)),
-    directionSummary: { BUY: buyVotes, SELL: sellVotes, NEUTRAL: neutralVotes }
+    strength: avgStrength,
+    confidence: avgConfidenceClamped,
+    scoreDelta: avgDeltaClamped,
+    directionSummary: { BUY: buyVotes, SELL: sellVotes, NEUTRAL: neutralVotes },
+    scenarioScores,
   };
 }
