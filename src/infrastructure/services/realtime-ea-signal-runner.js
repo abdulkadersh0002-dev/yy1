@@ -1064,11 +1064,14 @@ export class RealtimeEaSignalRunner {
       layeredAnalysis: layered,
       minConfluence: this.dashboardLayers18MinConfluence,
       decisionStateFallback: decisionState,
+      allowStrongOverride: true,
+      signal: rawSignal,
     });
     const layers18 = Array.isArray(layered?.layers) ? layered.layers : [];
     const layers18Ready = layersStatus.ok === true;
+    const layers18Override = layersStatus?.strongOverride?.ok === true;
 
-    const meetsLayers18 = !this.dashboardRequireLayers18 || layers18Ready;
+    const meetsLayers18 = !this.dashboardRequireLayers18 || layers18Ready || layers18Override;
     const meetsTradeValidity = tradeValid === true;
 
     // "Analyzed" candidates: any signal that includes the canonical 18-layer payload.
@@ -1080,6 +1083,8 @@ export class RealtimeEaSignalRunner {
       Boolean(rawSignal?.components?.layeredAnalysis);
 
     const publish = (() => {
+      const strongOverrideWaitReady =
+        layers18Override && allowWaitState && tier === 'strong' && meetsConfluence;
       const canPublishEntryReady =
         directional &&
         decisionState === 'ENTER' &&
@@ -1094,7 +1099,8 @@ export class RealtimeEaSignalRunner {
         // Strict dashboard: keep the primary stream focused on tradeable ENTER.
         // Still allow lifecycle updates for previously published signals (accuracy), and
         // publish analyzed candidates on a separate channel so the UI can explain "why 0".
-        if (canPublishEntryReady || isLifecycleUpdate) {
+        // Strong override WAIT_MONITOR signals are allowed through for visibility.
+        if (canPublishEntryReady || strongOverrideWaitReady || isLifecycleUpdate) {
           return { event: 'signal', keySuffix: '' };
         }
         if (canPublishCandidate) {
@@ -1107,6 +1113,7 @@ export class RealtimeEaSignalRunner {
       // - Standard: strong/near signals in ENTER (or WAIT_MONITOR if allowed).
       // - Candidates: analyzed payloads (optional).
       // - Lifecycle updates: if we previously published, broadcast state transitions.
+      // - Strong override WAIT_MONITOR signals are allowed for visibility even without full layers.
       if (
         (directional &&
           actionableState &&
@@ -1115,6 +1122,7 @@ export class RealtimeEaSignalRunner {
           meetsConfluence &&
           meetsLayers18 &&
           meetsTradeValidity) ||
+        (strongOverrideWaitReady && directional) ||
         (directional && isLifecycleUpdate)
       ) {
         return { event: 'signal', keySuffix: '' };

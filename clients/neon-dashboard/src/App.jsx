@@ -18,6 +18,9 @@ import SignalDashboardTable from './components/SignalDashboardTable.jsx';
 import CandidateSignalTable from './components/CandidateSignalTable.jsx';
 import { fetchJson, getApiConfig, postJson } from './utils/api.js';
 import { useModuleHealth } from './context/ModuleHealthContext.jsx';
+import { useAuth } from './context/AuthContext.jsx';
+import LoginPanel from './components/LoginPanel.jsx';
+import SmartSettingsPanel from './components/SmartSettingsPanel.jsx';
 import { formatDateTime, formatNumber, formatRelativeTime } from './utils/format.js';
 import {
   ACTIVE_SYMBOLS_SYNC_MAX,
@@ -37,7 +40,6 @@ import {
   classifyTickerSymbol,
   extractFxCurrencies,
   formatDuration,
-  isCryptoSymbol,
   isFxSymbol,
   isMetalSymbol,
   normalizeBrokerId,
@@ -50,7 +52,7 @@ const SHOW_AUTOTRADING_UI = false;
 const DASHBOARD_AUTOTRADING_AUTOSTART = true;
 
 const matchesTickerCategory = (symbolUpper, categoryId) => {
-  const allowed = isFxSymbol(symbolUpper) || isMetalSymbol(symbolUpper) || isCryptoSymbol(symbolUpper);
+  const allowed = isFxSymbol(symbolUpper) || isMetalSymbol(symbolUpper);
   if (!allowed) {
     return false;
   }
@@ -245,6 +247,7 @@ const buildSessionState = (session, nowUtcMinutes, nowDate, formatter) => {
 function App() {
   const nowFormatter = useCallback(() => new Date(), []);
   const now = useLiveClock(nowFormatter);
+  const auth = useAuth();
   const [metaTraderBridgeOpen, setMetaTraderBridgeOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState('MT5');
   const [marketFeed, setMarketFeed] = useState({
@@ -293,6 +296,7 @@ function App() {
   const [autoTradingPanelOpen, setAutoTradingPanelOpen] = useState(false);
   const [lastAutoTradingChangeAt, setLastAutoTradingChangeAt] = useState(null);
   const [lastAutoTradingMessage, setLastAutoTradingMessage] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [signals, setSignals] = useState([]);
   const [candidateSignals, setCandidateSignals] = useState([]);
   const [entryReadySelectedId, setEntryReadySelectedId] = useState(null);
@@ -1368,6 +1372,103 @@ function App() {
     [bridgeIsConnected, effectivePlatformId]
   );
 
+  const WARMUP_TICK_INTERVAL_MS = 15 * 1000;
+  const WARMUP_BATCH_SIZE = 40;
+  const WARMUP_SNAPSHOT_BATCH = 6;
+  const WARMUP_REQUEST_GAP_MS = 5 * 60 * 1000;
+  const WARMUP_LAST_REQUESTED_TTL_MS = 30 * 60 * 1000;
+
+  const tickerWarmupRef = useRef({
+    index: 0,
+    timer: null,
+    lastRequested: new Map()
+  });
+
+  useEffect(() => {
+    if (!bridgeIsConnected || tickerSearchNormalized) {
+      const ref = tickerWarmupRef.current;
+      if (ref.timer) {
+        clearInterval(ref.timer);
+        ref.timer = null;
+      }
+      return;
+    }
+
+    const list = Array.isArray(TICKER_CATALOG_SYMBOLS) ? TICKER_CATALOG_SYMBOLS : [];
+    if (list.length === 0) {
+      return;
+    }
+
+    const ref = tickerWarmupRef.current;
+    const tickIntervalMs = WARMUP_TICK_INTERVAL_MS;
+    const batchSize = WARMUP_BATCH_SIZE;
+    const snapshotBatch = WARMUP_SNAPSHOT_BATCH;
+    const requestGapMs = WARMUP_REQUEST_GAP_MS;
+
+    const tick = () => {
+      if (!bridgeIsConnected) {
+        return;
+      }
+
+      const bySymbol = quotesBySymbolRef.current || new Map();
+      const missing = list.filter((symbol) => {
+        const normalized = normalizeTickerSymbol(symbol);
+        return normalized && !bySymbol.get(normalized);
+      });
+
+      if (missing.length === 0) {
+        return;
+      }
+
+      const start = ref.index % missing.length;
+      const wrapCount = Math.max(0, start + batchSize - missing.length);
+      const batch = [...missing.slice(start, start + batchSize), ...missing.slice(0, wrapCount)].slice(
+        0,
+        batchSize
+      );
+
+      scheduleActiveSymbolsSync(batch);
+
+      const now = Date.now();
+      for (const [symbol, lastReq] of ref.lastRequested.entries()) {
+        if (now - lastReq > WARMUP_LAST_REQUESTED_TTL_MS) {
+          ref.lastRequested.delete(symbol);
+        }
+      }
+      for (const symbol of batch.slice(0, snapshotBatch)) {
+        const normalized = normalizeTickerSymbol(symbol);
+        if (!normalized) {
+          continue;
+        }
+        const lastReq = ref.lastRequested.get(normalized) || 0;
+        if (now - lastReq < requestGapMs) {
+          continue;
+        }
+        ref.lastRequested.set(normalized, now);
+        void requestSnapshotForSymbol(normalized);
+      }
+
+      ref.index = start + batchSize;
+    };
+
+    tick();
+    ref.timer = setInterval(tick, tickIntervalMs);
+    return () => {
+      if (ref.timer) {
+        clearInterval(ref.timer);
+        ref.timer = null;
+      }
+      ref.index = 0;
+      ref.lastRequested.clear();
+    };
+  }, [
+    bridgeIsConnected,
+    tickerSearchNormalized,
+    requestSnapshotForSymbol,
+    scheduleActiveSymbolsSync,
+    normalizeTickerSymbol
+  ]);
+
   const openAnalyzerForSymbolAndRequestSnapshot = useCallback(
     (symbolValue) => {
       const raw = String(symbolValue || '').trim();
@@ -2102,13 +2203,15 @@ function App() {
       return [];
     }
 
-    return list.map((symbol) => {
-      const normalized = normalizeTickerSymbol(symbol);
-      if (!normalized) {
-        return null;
-      }
-      return bySymbol.get(normalized) || { symbol: normalized };
-    }).filter(Boolean);
+    return list
+      .map((symbol) => {
+        const normalized = normalizeTickerSymbol(symbol);
+        if (!normalized) {
+          return null;
+        }
+        return bySymbol.get(normalized) || { symbol: normalized, placeholder: true };
+      })
+      .filter(Boolean);
   }, [marketFeed.updatedAt]);
 
   const tickerFilteredQuotes = useMemo(() => {
@@ -2145,7 +2248,6 @@ function App() {
       return [];
     }
 
-    // For very short queries, "startsWith" cuts down accidental matches.
     const shortQuery = needle.length <= 2;
     const results = [];
     for (const quote of tickerFilteredQuotes) {
@@ -2155,8 +2257,8 @@ function App() {
       }
 
       const exact = symbol === needle;
-      const starts = shortQuery ? symbol.startsWith(needle) : symbol.startsWith(needle);
-      const includes = shortQuery ? symbol.startsWith(needle) : symbol.includes(needle);
+      const starts = symbol.startsWith(needle);
+      const includes = shortQuery ? starts : symbol.includes(needle);
       if (!exact && !starts && !includes) {
         continue;
       }
@@ -2284,6 +2386,11 @@ function App() {
       const broker = normalizeBrokerId(quote?.broker || effectivePlatformId || '');
       const symbolNormalized = normalizeTickerSymbol(symbolValue);
       const deltaKey = `${broker}:${symbolNormalized}`;
+      if (quote?.placeholder) {
+        lastMidBySymbolRef.current.delete(deltaKey);
+      } else if (mid != null && Number.isFinite(mid)) {
+        lastMidBySymbolRef.current.set(deltaKey, mid);
+      }
       const prevMid = lastMidBySymbolRef.current.get(deltaKey);
       const delta =
         mid != null && prevMid != null && Number.isFinite(prevMid) ? mid - prevMid : null;
@@ -2299,7 +2406,10 @@ function App() {
       const deltaPointsInt =
         delta != null && point != null && Number.isFinite(delta) ? Math.round(delta / point) : null;
       const deltaValue = deltaPointsInt != null && deltaPointsInt !== 0 ? deltaPointsInt : null;
-      const deltaPointsAbs = deltaValue != null ? Math.abs(deltaValue) : null;
+      const deltaPointsAbs =
+        deltaValue != null && (bid != null || ask != null || last != null)
+          ? Math.abs(deltaValue)
+          : null;
 
       const arrowClass =
         deltaValue != null && deltaValue > 0
@@ -2347,15 +2457,21 @@ function App() {
         key: `${quote?.broker || effectivePlatformId}:${symbolUpper || symbolValue}:${loopTag}:${index}`,
         selected,
         symbolLabel: symbolUpper || symbolText || symbolValue,
-        midLabel: mid != null ? formatNumber(mid, displayDigits) : '—',
-        detailsLabel: details || '—',
+        midLabel:
+          mid != null
+            ? formatNumber(mid, displayDigits)
+            : quote?.placeholder
+              ? 'Waiting…'
+              : '—',
+        detailsLabel: details || (quote?.placeholder ? 'Awaiting stream' : '—'),
         detailsEmpty: !details,
         deltaLabel: deltaPointsAbs != null ? `${deltaPointsAbs}p` : '',
         deltaEmpty: deltaValue == null,
         arrow: deltaValue != null ? (deltaValue > 0 ? '▲' : deltaValue < 0 ? '▼' : '•') : '•',
         arrowClass,
         priceClass,
-        deltaClass
+        deltaClass,
+        placeholder: quote?.placeholder === true
       };
     });
   }, [effectivePlatformId, tickerQuotes.length, tickerRenderQuotes, tickerSearchNormalized]);
@@ -2367,7 +2483,7 @@ function App() {
       if (!selected) {
         return;
       }
-      setTickerSearch(selected);
+      startTransition(() => setTickerSearch(selected));
       if (EA_ONLY_UI_MODE) {
         openPairAnalysisForSymbolAndRequestSnapshot(selected);
       } else {
@@ -2385,7 +2501,7 @@ function App() {
     const list = Array.isArray(tickerSearchMatches) ? tickerSearchMatches.slice(0, 60) : [];
     const now = Date.now();
 
-    return list
+    const rows = list
       .map((quote) => {
         const symbolValue = quote?.symbol || quote?.pair;
         const symbol = String(symbolValue ?? '').trim().toUpperCase();
@@ -2412,14 +2528,29 @@ function App() {
           key: symbol,
           selected: symbol,
           symbol,
-          bidLabel: bid != null ? formatNumber(bid, displayDigits) : '—',
-          askLabel: ask != null ? formatNumber(ask, displayDigits) : '—',
-          spreadLabel: spreadPoints != null ? `${formatNumber(spreadPoints, 0)}p` : '—',
+          bidLabel:
+            bid != null ? formatNumber(bid, displayDigits) : quote?.placeholder ? 'Waiting…' : '—',
+          askLabel:
+            ask != null ? formatNumber(ask, displayDigits) : quote?.placeholder ? 'Waiting…' : '—',
+          spreadLabel:
+            spreadPoints != null
+              ? `${formatNumber(spreadPoints, 0)}p`
+              : quote?.placeholder
+                ? 'Awaiting'
+                : '—',
           ageLabel: ageSec != null ? `${ageSec}s` : '—',
           assetClass: classifyTickerSymbol(symbol)
         };
       })
       .filter(Boolean);
+
+    rows.sort((a, b) => {
+      if (a.symbol !== b.symbol) {
+        return a.symbol.localeCompare(b.symbol);
+      }
+      return a.key.localeCompare(b.key);
+    });
+    return rows;
   }, [tickerSearchMatches, tickerSearchNormalized]);
 
   useEffect(() => {
@@ -2455,9 +2586,9 @@ function App() {
       // Animation travels 50% of the duplicated track width.
       const travelPx = trackWidth / 2;
       // Keep a slow, readable speed regardless of the number of items.
-      const pixelsPerSecond = 18;
+      const pixelsPerSecond = 14;
       const rawSeconds = travelPx / pixelsPerSecond;
-      const durationSeconds = Math.max(240, Math.min(1800, Math.round(rawSeconds)));
+      const durationSeconds = Math.max(300, Math.min(2400, Math.round(rawSeconds)));
 
       if (prev.duration !== durationSeconds) {
         track.style.setProperty('--market-ticker-duration', `${durationSeconds}s`);
@@ -2890,17 +3021,54 @@ function App() {
     null;
   const buildLabel = engineStatus?.buildVersion || engineStatus?.version || null;
 
+  if (!auth?.isAuthenticated) {
+    return (
+      <div className="auth-shell">
+        <LoginPanel />
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard">
       <header className="dashboard__header">
-        <div className="dashboard__brand"></div>
+        <div className="dashboard__brand">
+          <div className="dashboard__logo">
+            <span className="dashboard__logo-orb" />
+            <span className="dashboard__logo-text">NEON OPS</span>
+          </div>
+          <div>
+            <h1 className="dashboard__title">Neon Trading Console</h1>
+            <p className="dashboard__subtitle">Smart signal orchestration & execution</p>
+          </div>
+        </div>
         <div className="dashboard__meta">
           {endpointLabel && <span className="dashboard__tag">Endpoint · {endpointLabel}</span>}
           {buildLabel && <span className="dashboard__tag">Build · {buildLabel}</span>}
+          {auth?.user?.username && <span className="dashboard__tag">Admin · {auth.user.username}</span>}
+          <div className="dashboard__controls">
+            <button
+              type="button"
+              className="engine-console__bridge-refresh engine-console__bridge-refresh--compact"
+              onClick={() => setSettingsOpen((prev) => !prev)}
+            >
+              {settingsOpen ? 'Close Settings' : 'Smart Settings'}
+            </button>
+            <button
+              type="button"
+              className="engine-console__bridge-refresh engine-console__bridge-refresh--compact"
+              onClick={auth?.logout}
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="dashboard__main">
+        {settingsOpen && (
+          <SmartSettingsPanel onClose={() => setSettingsOpen(false)} />
+        )}
         <section className="dashboard__section dashboard__section--sessions">
           {!pairAnalysisOpen && (
             <>
@@ -3966,6 +4134,19 @@ function App() {
                                       {newsImpactScore != null
                                         ? `${formatNumber(newsImpactScore, 1)}${newsMatchedItems != null ? ` (${formatNumber(newsMatchedItems, 0)} items)` : ''}`
                                         : '—'}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {candles?.scenarioScores && (
+                                  <div className="market-analyzer__row">
+                                    <span className="market-analyzer__key">Scenario map</span>
+                                    <span className="market-analyzer__val">
+                                      A·Continue{' '}
+                                      {formatNumber(candles.scenarioScores.continuation, 0)}% · B·
+                                      Retrace{' '}
+                                      {formatNumber(candles.scenarioScores.retracement, 0)}% · C·Range{' '}
+                                      {formatNumber(candles.scenarioScores.consolidation, 0)}%
                                     </span>
                                   </div>
                                 )}
@@ -5505,7 +5686,10 @@ function App() {
                   className="market-ticker__search-input"
                   type="text"
                   value={tickerSearch}
-                  onChange={(event) => setTickerSearch(event.target.value)}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    startTransition(() => setTickerSearch(next));
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault();
@@ -5513,7 +5697,7 @@ function App() {
                       const focused = tickerSearchFocused?.symbol || tickerSearchFocused?.pair;
                       const candidate = String(focused || tickerSearch || '').trim();
                       if (candidate) {
-                        setTickerSearch(candidate);
+                        startTransition(() => setTickerSearch(candidate));
                         if (EA_ONLY_UI_MODE) {
                           openPairAnalysisForSymbolAndRequestSnapshot(candidate);
                         } else {
@@ -5523,11 +5707,11 @@ function App() {
                     }
                     if (event.key === 'Escape') {
                       event.preventDefault();
-                      setTickerSearch('');
+                      startTransition(() => setTickerSearch(''));
                       closeAnalyzer();
                     }
                   }}
-                  placeholder="Search symbol (EURUSD, BTCUSD, XAUUSD, SP500…)"
+                  placeholder="Search symbol (EURUSD, XAUUSD, GBPJPY…)"
                   aria-label="Search ticker symbol"
                 />
               </div>

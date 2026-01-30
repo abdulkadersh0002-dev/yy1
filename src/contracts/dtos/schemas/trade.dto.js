@@ -38,6 +38,12 @@ export const TradeSchema = z
     status: z.enum(['OPEN', 'CLOSED', 'CANCELLED', 'ERROR']),
     closeReason: z.string().nullable(),
     broker: z.string().nullable(),
+    pairContext: z.any().optional(),
+    entryContext: z.any().optional(),
+    expectedMarketBehavior: z.any().optional(),
+    invalidationRules: z.any().optional(),
+    liveContext: z.any().optional(),
+    layeredAnalysis: z.any().optional(),
     currentPnL: z
       .object({ amount: z.number().nullable(), percentage: z.number().nullable() })
       .nullable(),
@@ -68,6 +74,12 @@ export function createTradeDTO(raw) {
     status: raw.status || 'OPEN',
     closeReason: raw.closeReason || null,
     broker: raw.broker || null,
+    pairContext: raw.pairContext ?? null,
+    entryContext: raw.entryContext ?? null,
+    expectedMarketBehavior: raw.expectedMarketBehavior ?? null,
+    invalidationRules: raw.invalidationRules ?? null,
+    liveContext: raw.liveContext ?? null,
+    layeredAnalysis: raw.layeredAnalysis ?? null,
     currentPnL: raw.currentPnL || null,
     finalPnL: raw.finalPnL || null
   };

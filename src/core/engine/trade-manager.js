@@ -5,7 +5,10 @@
 
 import { listTargetPairs } from '../../config/pair-catalog.js';
 import logger from '../../infrastructure/services/logging/logger.js';
-import { evaluateLayers18Readiness } from '../../infrastructure/services/ea-signal-pipeline.js';
+import {
+  attachLayeredAnalysisToSignal,
+  evaluateLayers18Readiness,
+} from '../../infrastructure/services/ea-signal-pipeline.js';
 import { readEnvBool, readEnvCsvSet, readEnvNumber, readEnvString } from '../../utils/env.js';
 
 const debugGateLogsEnabled = () => readEnvBool('AUTO_TRADING_DEBUG_GATES', false) === true;
@@ -49,7 +52,7 @@ const currencyCodes = new Set([
   'TRY',
   'RON',
   'BGN',
-  'ZAR'
+  'ZAR',
 ]);
 
 const metalBases = new Set(['XAU', 'XAG', 'XPT', 'XPD']);
@@ -92,7 +95,9 @@ const getLayers18Status = (signal) =>
   evaluateLayers18Readiness({
     layeredAnalysis: signal?.components?.layeredAnalysis,
     minConfluence: layers18MinConfluence,
-    decisionStateFallback: signal?.isValid?.decision?.state
+    decisionStateFallback: signal?.isValid?.decision?.state,
+    allowStrongOverride: true,
+    signal,
   });
 
 class TradeManager {
@@ -259,19 +264,30 @@ class TradeManager {
       decisionScore,
       confidence,
       strength,
-      shouldExecuteHint
+      shouldExecuteHint,
     };
 
     const reject = (reason, details = {}) => {
       if (debugEnabled) {
-        logger.info({ module: 'TradeManager', event: 'execution_gate_reject', reason, ...debugContext, details });
+        logger.info({
+          module: 'TradeManager',
+          event: 'execution_gate_reject',
+          reason,
+          ...debugContext,
+          details,
+        });
       }
       return { ok: false, reason, details: { ...debugContext, ...details } };
     };
 
     const accept = (details = {}) => {
       if (debugEnabled) {
-        logger.info({ module: 'TradeManager', event: 'execution_gate_accept', ...debugContext, details });
+        logger.info({
+          module: 'TradeManager',
+          event: 'execution_gate_accept',
+          ...debugContext,
+          details,
+        });
       }
       return { ok: true, details: { ...debugContext, ...details } };
     };
@@ -310,13 +326,13 @@ class TradeManager {
       if (confidence < minConf || strength < minStrength) {
         return reject(`Smart-strong gate failed (confidence=${confidence}, strength=${strength})`, {
           minConf,
-          minStrength
+          minStrength,
         });
       }
 
       if (Number.isFinite(decisionScore) && decisionScore < minScore) {
         return reject(`Smart-strong decision score too low (${decisionScore} < ${minScore})`, {
-          minScore
+          minScore,
         });
       }
     }
@@ -325,7 +341,7 @@ class TradeManager {
       const layersStatus = getLayers18Status(signal);
       if (!layersStatus.ok) {
         return reject(`Missing/failed 18-layer readiness (layers=${layersStatus.layersCount})`, {
-          layersStatus
+          layersStatus,
         });
       }
     }
@@ -541,7 +557,7 @@ class TradeManager {
           decisionScore: signal?.isValid?.decision?.score,
           confidence: signal?.confidence,
           strength: signal?.strength,
-          signal
+          signal,
         });
         continue;
       }
@@ -561,14 +577,14 @@ class TradeManager {
           confidence: signal?.confidence,
           strength: signal?.strength,
           ...(gate.details?.layersStatus ? { layersStatus: gate.details.layersStatus } : {}),
-          signal
+          signal,
         });
         continue;
       }
 
       const signalForBroker = {
         ...signal,
-        brokerPreference: id
+        brokerPreference: id,
       };
 
       this.emitEvent('auto_trade_attempt', {
@@ -578,7 +594,7 @@ class TradeManager {
         decisionScore: signal?.isValid?.decision?.score,
         confidence: signal?.confidence,
         strength: signal?.strength,
-        signal: signalForBroker
+        signal: signalForBroker,
       });
 
       const result = await this.tradingEngine.executeTrade(signalForBroker);
@@ -600,7 +616,7 @@ class TradeManager {
             broker: id,
             tradeId: result.trade?.id,
             pair,
-            decisionScore: signal?.isValid?.decision?.score
+            decisionScore: signal?.isValid?.decision?.score,
           },
           'Auto-trading opened trade (realtime strong signal)'
         );
@@ -613,7 +629,7 @@ class TradeManager {
           decisionScore: signal?.isValid?.decision?.score,
           confidence: signal?.confidence,
           strength: signal?.strength,
-          signal: signalForBroker
+          signal: signalForBroker,
         });
         logger.warn(
           { module: 'TradeManager', broker: id, pair, reason: result.reason },
@@ -638,7 +654,7 @@ class TradeManager {
       quotes = this.eaBridgeService.getQuotes({
         broker: normalized,
         maxAgeMs: this.universeMaxAgeMs,
-        orderBy: 'symbol'
+        orderBy: 'symbol',
       });
     } catch (_error) {
       quotes = [];
@@ -834,7 +850,7 @@ class TradeManager {
       return {
         success: false,
         message: `Broker ${String(brokerId).toUpperCase()} is not connected yet. Connect MT4/MT5 first.`,
-        broker: brokerId
+        broker: brokerId,
       };
     }
 
@@ -857,7 +873,7 @@ class TradeManager {
         connected: false,
         enabledBrokers: this.getEnabledBrokerIds(),
         pairs: this.tradingPairs.length,
-        checkIntervalMs: this.signalGenerationIntervalMs
+        checkIntervalMs: this.signalGenerationIntervalMs,
       };
     }
 
@@ -868,7 +884,7 @@ class TradeManager {
       connected: true,
       enabledBrokers: this.getEnabledBrokerIds(),
       pairs: this.tradingPairs.length,
-      checkIntervalMs: this.signalGenerationIntervalMs
+      checkIntervalMs: this.signalGenerationIntervalMs,
     };
   }
 
@@ -892,7 +908,7 @@ class TradeManager {
         success: true,
         message: 'Auto trading stopped',
         enabledBrokers: this.getEnabledBrokerIds(),
-        activeTrades
+        activeTrades,
       };
     }
 
@@ -900,7 +916,7 @@ class TradeManager {
       return {
         success: false,
         message: `Auto trading is not running for ${String(brokerProvided).toUpperCase()}`,
-        broker: brokerProvided
+        broker: brokerProvided,
       };
     }
 
@@ -916,7 +932,7 @@ class TradeManager {
       message: `Auto trading stopped for ${String(brokerProvided).toUpperCase()}`,
       broker: brokerProvided,
       enabledBrokers: this.getEnabledBrokerIds(),
-      activeTrades
+      activeTrades,
     };
   }
 
@@ -965,14 +981,14 @@ class TradeManager {
           if (isEaBroker && typeof this.eaBridgeService?.getSignalForExecution === 'function') {
             const execution = await this.eaBridgeService.getSignalForExecution({
               broker: brokerId,
-              symbol: pair
+              symbol: pair,
             });
             signal = execution?.signal || null;
             shouldExecuteHint = execution?.shouldExecute;
           } else {
             signal = await this.tradingEngine.generateSignal(pair, {
               broker: brokerId,
-              ...(isEaBroker ? { eaOnly: true } : {})
+              ...(isEaBroker ? { eaOnly: true } : {}),
             });
           }
           this.lastSignalCheck.set(lastKey, Date.now());
@@ -988,7 +1004,7 @@ class TradeManager {
               isValid: signal.isValid?.isValid,
               decisionScore: signal.isValid?.decision?.score,
               decisionState: signal?.isValid?.decision?.state,
-              shouldExecute: shouldExecuteHint
+              shouldExecute: shouldExecuteHint,
             },
             'Auto-trading signal evaluated'
           );
@@ -997,7 +1013,7 @@ class TradeManager {
             broker: brokerId,
             signal,
             source: 'scheduled',
-            shouldExecuteHint
+            shouldExecuteHint,
           });
           if (!gate.ok) {
             this.emitEvent('auto_trade_rejected', {
@@ -1009,7 +1025,7 @@ class TradeManager {
               confidence: signal?.confidence,
               strength: signal?.strength,
               ...(gate.details?.layersStatus ? { layersStatus: gate.details.layersStatus } : {}),
-              signal
+              signal,
             });
             continue;
           }
@@ -1019,11 +1035,11 @@ class TradeManager {
           const classified = this.tradingEngine.classifyError?.(error, {
             scope: 'TradeManager.checkForNewSignals',
             pair,
-            broker: brokerId
+            broker: brokerId,
           }) || {
             type: 'unknown',
             category: 'Unknown engine error',
-            context: { scope: 'TradeManager.checkForNewSignals', pair, broker: brokerId }
+            context: { scope: 'TradeManager.checkForNewSignals', pair, broker: brokerId },
           };
           logger.error(
             {
@@ -1031,7 +1047,7 @@ class TradeManager {
               broker: brokerId,
               pair,
               err: error,
-              errorType: classified.type
+              errorType: classified.type,
             },
             'Error checking signal for pair'
           );
@@ -1063,7 +1079,7 @@ class TradeManager {
 
         const signalForBroker = {
           ...signal,
-          brokerPreference: brokerId
+          brokerPreference: brokerId,
         };
 
         this.emitEvent('auto_trade_attempt', {
@@ -1073,7 +1089,7 @@ class TradeManager {
           decisionScore: signal?.isValid?.decision?.score,
           confidence: signal?.confidence,
           strength: signal?.strength,
-          signal: signalForBroker
+          signal: signalForBroker,
         });
 
         const result = await this.tradingEngine.executeTrade(signalForBroker);
@@ -1093,7 +1109,7 @@ class TradeManager {
               broker: brokerId,
               tradeId: result.trade?.id,
               pair: signal?.pair,
-              decisionScore: signal?.isValid?.decision?.score
+              decisionScore: signal?.isValid?.decision?.score,
             },
             'Auto-trading opened trade'
           );
@@ -1106,7 +1122,7 @@ class TradeManager {
             decisionScore: signal?.isValid?.decision?.score,
             confidence: signal?.confidence,
             strength: signal?.strength,
-            signal: signalForBroker
+            signal: signalForBroker,
           });
           logger.warn(
             { module: 'TradeManager', broker: brokerId, pair: signal?.pair, reason: result.reason },
@@ -1128,13 +1144,14 @@ class TradeManager {
     try {
       await this.tradingEngine.manageActiveTrades();
       await this.monitorSmartExits();
+      await this.monitorLiveTradeContexts();
     } catch (error) {
       const classified = this.tradingEngine.classifyError?.(error, {
-        scope: 'TradeManager.monitorActiveTrades'
+        scope: 'TradeManager.monitorActiveTrades',
       }) || {
         type: 'unknown',
         category: 'Unknown engine error',
-        context: { scope: 'TradeManager.monitorActiveTrades' }
+        context: { scope: 'TradeManager.monitorActiveTrades' },
       };
       logger.error(
         { module: 'TradeManager', err: error, errorType: classified.type },
@@ -1188,7 +1205,7 @@ class TradeManager {
         const signal = await this.tradingEngine.generateSignal(trade.pair, {
           broker,
           analysisMode: 'ea',
-          eaOnly: true
+          eaOnly: true,
         });
 
         if (!signal || typeof signal !== 'object') {
@@ -1230,7 +1247,7 @@ class TradeManager {
         }
 
         const currentPrice = await this.tradingEngine.getCurrentPriceForPair(trade.pair, {
-          broker
+          broker,
         });
 
         const closed = await this.tradingEngine.closeTrade(
@@ -1242,12 +1259,174 @@ class TradeManager {
         this.emitEvent('trade_closed', {
           ...(closed || {}),
           reason: 'smart_exit_reverse',
-          originSignal: signal
+          originSignal: signal,
         });
       } catch (error) {
         logger.warn({ module: 'TradeManager', err: error }, 'Smart exit evaluation failed');
       } finally {
         this.smartExitInFlight.delete(tradeId);
+      }
+    }
+  }
+
+  async buildLiveTradeContext(trade) {
+    if (!trade || !trade.pair || !this.tradingEngine?.generateSignal) {
+      return null;
+    }
+    const broker = trade?.broker || trade?.brokerRoute || null;
+    const signal = await this.tradingEngine.generateSignal(trade.pair, {
+      broker,
+      analysisMode: 'ea',
+      eaOnly: true,
+      eaBridgeService: this.eaBridgeService,
+    });
+    if (!signal || typeof signal !== 'object') {
+      return null;
+    }
+
+    const barFallback = (() => {
+      if (!broker || !this.eaBridgeService?.getMarketBars) {
+        return null;
+      }
+      try {
+        const bars = this.eaBridgeService.getMarketBars({
+          broker,
+          symbol: trade.pair,
+          timeframe: 'M1',
+          limit: 1,
+          maxAgeMs: 0,
+        });
+        const latest = Array.isArray(bars) ? bars[0] : null;
+        if (!latest) {
+          return null;
+        }
+        return {
+          timeframe: 'M1',
+          price: latest.close ?? latest.price ?? null,
+          open: latest.open ?? null,
+          prevClose: latest.prevClose ?? null,
+          volume: latest.volume ?? null,
+          timeMs: latest.timeMs ?? latest.time ?? null,
+        };
+      } catch (_error) {
+        return null;
+      }
+    })();
+
+    const enrichedSignal =
+      signal && typeof signal === 'object'
+        ? {
+            ...signal,
+            components:
+              signal.components && typeof signal.components === 'object'
+                ? { ...signal.components }
+                : {},
+          }
+        : signal;
+
+    try {
+      attachLayeredAnalysisToSignal({
+        rawSignal: enrichedSignal,
+        broker,
+        symbol: trade.pair,
+        eaBridgeService: this.eaBridgeService,
+        quoteMaxAgeMs: 30 * 1000,
+        barFallback,
+        now: Date.now(),
+      });
+    } catch (_error) {
+      // best-effort
+    }
+
+    const layers = Array.isArray(enrichedSignal?.components?.layeredAnalysis?.layers)
+      ? enrichedSignal.components.layeredAnalysis.layers
+      : [];
+    const layer16 = layers.find((layer) => String(layer?.key || '') === 'L16') || null;
+    const layer17 = layers.find((layer) => String(layer?.key || '') === 'L17') || null;
+    const layer18 = layers.find((layer) => String(layer?.key || '') === 'L18') || null;
+
+    const layersStatus = {
+      layer16: layer16?.metrics || null,
+      layer17: layer17?.metrics || null,
+      layer18: layer18?.metrics || null,
+    };
+
+    const entryContext = trade?.entryContext || trade?.signal?.components?.entryContext || null;
+    const currentContext = enrichedSignal?.components?.entryContext || null;
+
+    const drift = {
+      marketPhase:
+        entryContext?.marketPhase && currentContext?.marketPhase
+          ? entryContext.marketPhase !== currentContext.marketPhase
+          : null,
+      volatilityState:
+        entryContext?.volatilityState && currentContext?.volatilityState
+          ? entryContext.volatilityState !== currentContext.volatilityState
+          : null,
+      session:
+        entryContext?.session && currentContext?.session
+          ? entryContext.session !== currentContext.session
+          : null,
+      spreadPoints:
+        entryContext?.spreadPoints != null && currentContext?.spreadPoints != null
+          ? Number(currentContext.spreadPoints) - Number(entryContext.spreadPoints)
+          : null,
+      newsImpact:
+        entryContext?.newsImpact != null && currentContext?.newsImpact != null
+          ? Number(currentContext.newsImpact) - Number(entryContext.newsImpact)
+          : null,
+    };
+
+    const confluenceScore =
+      Number(layer17?.metrics?.confluenceWeighting?.weightedScore ?? layer17?.confidence) || null;
+    const decisionState = String(layer18?.metrics?.decision?.state || '').toUpperCase();
+
+    let decision = 'HOLD';
+    if (decisionState && decisionState !== 'ENTER') {
+      decision = 'EXIT';
+    } else if (layer16?.metrics?.isTradeValid === false) {
+      decision = 'EXIT';
+    } else if (confluenceScore != null && confluenceScore < layers18MinConfluence) {
+      decision = 'REDUCE';
+    } else if (
+      (currentContext?.newsImpact != null && Number(currentContext.newsImpact) >= 4) ||
+      (currentContext?.spreadPoints != null && Number(currentContext.spreadPoints) >= 60)
+    ) {
+      decision = 'REDUCE';
+    }
+
+    return {
+      decision,
+      layersStatus,
+      currentContext,
+      drift,
+    };
+  }
+
+  async monitorLiveTradeContexts() {
+    const trades = this.tradingEngine?.activeTrades;
+    if (!trades || typeof trades.values !== 'function') {
+      return;
+    }
+
+    for (const trade of trades.values()) {
+      if (!trade || String(trade?.status || '').toLowerCase() !== 'open') {
+        continue;
+      }
+      try {
+        const liveContext = await this.buildLiveTradeContext(trade);
+        if (!liveContext) {
+          continue;
+        }
+        trade.liveContext = liveContext;
+        this.emitEvent('trade_live_context', {
+          tradeId: trade.id,
+          pair: trade.pair,
+          decision: liveContext.decision,
+          drift: liveContext.drift,
+        });
+      } catch (_error) {
+        // best-effort
       }
     }
   }
@@ -1263,7 +1442,7 @@ class TradeManager {
       try {
         const trade = this.tradingEngine.activeTrades.get(tradeId);
         const currentPrice = await this.tradingEngine.getCurrentPriceForPair(trade.pair, {
-          broker: trade?.broker || trade?.brokerRoute || null
+          broker: trade?.broker || trade?.brokerRoute || null,
         });
         const closed = await this.tradingEngine.closeTrade(tradeId, currentPrice, 'manual_close');
         results.push({ tradeId, success: true, trade: closed });
@@ -1275,7 +1454,7 @@ class TradeManager {
     return {
       success: true,
       closed: results.filter((r) => r.success).length,
-      failed: results.filter((r) => !r.success).length
+      failed: results.filter((r) => !r.success).length,
     };
   }
 
@@ -1314,14 +1493,14 @@ class TradeManager {
         preset,
         profile,
         autostart,
-        smartStrongEnterScore
+        smartStrongEnterScore,
       },
       // For UI: show the live universe (not just the configured 7 majors).
       pairs: signalUniverse,
       configuredPairs: this.configuredPairs,
       activeTrades: this.tradingEngine.activeTrades.size,
       statistics: this.tradingEngine.getStatistics(),
-      rejectionSummary: this.tradingEngine.getRejectionSummary?.()
+      rejectionSummary: this.tradingEngine.getRejectionSummary?.(),
     };
   }
   addPair(pair) {

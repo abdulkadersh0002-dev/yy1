@@ -4,9 +4,10 @@ const DEFAULT_MAX_REQUESTS = 30;
 export function createRateLimiter({
   windowMs = DEFAULT_WINDOW_MS,
   max = DEFAULT_MAX_REQUESTS,
-  logger
+  logger,
 } = {}) {
   const hits = new Map();
+  let cleanupTimer = null;
 
   const cleanup = () => {
     const now = Date.now();
@@ -16,6 +17,21 @@ export function createRateLimiter({
       }
     }
   };
+
+  const scheduleCleanup = () => {
+    if (cleanupTimer) {
+      return;
+    }
+    cleanupTimer = setInterval(
+      () => {
+        cleanup();
+      },
+      Math.max(1000, Math.min(windowMs, 60000))
+    );
+    cleanupTimer.unref?.();
+  };
+
+  scheduleCleanup();
 
   return function rateLimiter(req, res, next) {
     const now = Date.now();
@@ -36,7 +52,7 @@ export function createRateLimiter({
       return res.status(429).json({
         success: false,
         error: 'Too many requests',
-        ...(requestId ? { requestId } : null)
+        ...(requestId ? { requestId } : null),
       });
     }
 

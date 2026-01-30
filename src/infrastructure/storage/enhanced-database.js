@@ -1,16 +1,21 @@
 /**
  * Enhanced Database Module
- * 
+ *
  * Enhances the base database module with:
  * - Query performance tracking
  * - Query result caching
  * - Connection pool monitoring
  * - Query metrics and statistics
- * 
+ *
  * Part of 64 improvements roadmap - Improvement #5
  */
 
-import { getPool, query as baseQuery, withClient as baseWithClient, closePool } from './database.js';
+import {
+  getPool,
+  query as baseQuery,
+  withClient as baseWithClient,
+  closePool,
+} from './database.js';
 import { queryPerformanceTracker } from './query-performance-tracker.js';
 import { CacheService } from '../services/cache-service.js';
 
@@ -29,7 +34,7 @@ const queryCache = new CacheService(1000, 60000); // 1000 items, 60s default TTL
  */
 export async function query(text, params = [], options = {}) {
   const { name = 'unnamed', cache = false, cacheTTL = 60000 } = options;
-  
+
   // Generate cache key if caching is enabled
   let cacheKey = null;
   if (cache) {
@@ -50,19 +55,20 @@ export async function query(text, params = [], options = {}) {
   // Execute query with performance tracking
   const startTime = performance.now();
   let result;
-  
+
   try {
+    queryPerformanceTracker.trackQueryStart?.();
     result = await baseQuery(text, params);
     const duration = performance.now() - startTime;
-    
+
     // Track query performance
     queryPerformanceTracker.trackQuery(name, text, duration, params);
-    
+
     // Cache result if enabled
     if (cache && cacheKey) {
       queryCache.set(cacheKey, result, cacheTTL);
     }
-    
+
     return result;
   } catch (error) {
     const duration = performance.now() - startTime;
@@ -81,8 +87,9 @@ export async function query(text, params = [], options = {}) {
 export async function withClient(callback, options = {}) {
   const { name = 'transaction' } = options;
   const startTime = performance.now();
-  
+
   try {
+    queryPerformanceTracker.trackQueryStart?.();
     const result = await baseWithClient(callback);
     const duration = performance.now() - startTime;
     queryPerformanceTracker.trackQuery(name, 'TRANSACTION', duration, []);
@@ -110,12 +117,12 @@ export function getPoolStats() {
     waitingCount: pool.waitingCount,
     maxConnections: pool.options.max,
     activeConnections: pool.totalCount - pool.idleCount,
-    utilization: ((pool.totalCount - pool.idleCount) / pool.options.max * 100).toFixed(2) + '%',
+    utilization: `${(((pool.totalCount - pool.idleCount) / pool.options.max) * 100).toFixed(2)}%`,
     config: {
       max: pool.options.max,
       idleTimeoutMillis: pool.options.idleTimeoutMillis,
-      connectionTimeoutMillis: pool.options.connectionTimeoutMillis
-    }
+      connectionTimeoutMillis: pool.options.connectionTimeoutMillis,
+    },
   };
 }
 
@@ -150,9 +157,9 @@ export function getPerformanceSummary() {
       hitRate: _calculateCacheHitRate(),
       config: {
         maxSize: queryCache.maxSize,
-        defaultTTL: queryCache.defaultTTL
-      }
-    }
+        defaultTTL: queryCache.defaultTTL,
+      },
+    },
   };
 }
 
@@ -184,21 +191,21 @@ export function setSlowQueryThreshold(thresholdMs) {
  */
 export async function healthCheck() {
   const startTime = performance.now();
-  
+
   try {
     await query('SELECT 1 as health', [], { name: 'health_check' });
     const duration = performance.now() - startTime;
-    
+
     return {
       healthy: true,
       responseTime: Math.round(duration * 100) / 100,
-      pool: getPoolStats()
+      pool: getPoolStats(),
     };
   } catch (error) {
     return {
       healthy: false,
       error: error.message,
-      pool: getPoolStats()
+      pool: getPoolStats(),
     };
   }
 }
@@ -225,16 +232,18 @@ function _calculateCacheHitRate() {
   const allStats = queryPerformanceTracker.getStats();
   let totalQueries = 0;
   let cachedQueries = 0;
-  
+
   for (const [name, stats] of Object.entries(allStats)) {
     if (name.endsWith('_cached')) {
       cachedQueries += stats.count;
     }
     totalQueries += stats.count;
   }
-  
-  if (totalQueries === 0) return '0.00%';
-  return ((cachedQueries / totalQueries) * 100).toFixed(2) + '%';
+
+  if (totalQueries === 0) {
+    return '0.00%';
+  }
+  return `${((cachedQueries / totalQueries) * 100).toFixed(2)}%`;
 }
 
 // Re-export closePool

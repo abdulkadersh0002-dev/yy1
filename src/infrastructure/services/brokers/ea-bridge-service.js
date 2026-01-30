@@ -23,6 +23,7 @@ class EaBridgeService {
     this.tradingEngine = options.tradingEngine;
     this.brokerRouter = options.brokerRouter;
     this.brokerMeta = options.brokerMeta || {};
+    this.broadcast = typeof options.broadcast === 'function' ? options.broadcast : null;
 
     // Active EA sessions
     this.sessions = new Map();
@@ -31,7 +32,7 @@ class EaBridgeService {
     this.intelligentTradeManager = new IntelligentTradeManager({
       logger: this.logger,
       eaBridgeService: this,
-      newsAggregator: options.newsAggregator
+      newsAggregator: options.newsAggregator,
     });
 
     // Trade performance history for learning
@@ -70,6 +71,9 @@ class EaBridgeService {
     this.latestBars = new Map();
     this.maxBarSeries = 20000;
     this.maxBarsPerSeries = 500;
+
+    // Entry context cache for live trade monitoring (broker:symbol:direction -> entryContext)
+    this.entryContextBySymbol = new Map();
 
     // Synthetic candles derived from EA quotes (free realtime fallback).
     // Only maintained for symbols the dashboard marks as active/requested.
@@ -1366,7 +1370,7 @@ class EaBridgeService {
         timeline.unshift(id);
       }
       ingested += 1;
-      
+
       // Feed high-impact news to intelligent trade manager
       if (this.intelligentTradeManager && item.currency && item.impact >= 70) {
         this.intelligentTradeManager.recordHighImpactNews(item.currency, {
@@ -1374,7 +1378,7 @@ class EaBridgeService {
           title: item.title,
           timestamp: item.time,
           impact: item.impact,
-          kind: item.kind
+          kind: item.kind,
         });
       }
     }
@@ -2771,7 +2775,7 @@ class EaBridgeService {
     };
   }
 
-  evaluatePositionManagement(payload = {}) {
+  async evaluatePositionManagement(payload = {}) {
     const broker = this.normalizeBroker(payload?.broker) || null;
     const positions = Array.isArray(payload.positions) ? payload.positions : [];
     const now = Date.now();
@@ -2788,14 +2792,144 @@ class EaBridgeService {
       .filter(Boolean);
 
     const commands = this.buildManagementCommands(actions, { broker, now });
+    const liveContexts = [];
+    for (const position of positions) {
+      try {
+        const liveContext = await this.buildLiveTradeContextForPosition(position, broker);
+        if (liveContext) {
+          liveContexts.push(liveContext);
+        }
+      } catch (_error) {
+        // best-effort
+      }
+    }
 
-    return {
+    const result = {
       success: true,
       broker,
       generatedAt: now,
       guards,
       actions,
       commands,
+      liveContexts,
+    };
+    if (this.broadcast && typeof this.broadcast === 'function' && liveContexts.length) {
+      try {
+        this.broadcast('ea.trade.live_context', { broker, liveContexts });
+      } catch (_error) {
+        // best-effort
+      }
+    }
+    return result;
+  }
+
+  async buildLiveTradeContextForPosition(position, broker) {
+    if (!position || !broker || typeof this.getAnalysisSnapshot !== 'function') {
+      return null;
+    }
+    const symbol = this.normalizeSymbol(position.symbol || position.pair || position.instrument);
+    if (!symbol) {
+      return null;
+    }
+
+    const direction = String(position.direction || position.side || '').toUpperCase();
+    const analysis = await this.getAnalysisSnapshot({ broker, symbol });
+    const signal = analysis?.signal || null;
+    if (!signal || typeof signal !== 'object') {
+      return null;
+    }
+
+    const hydratedSignal =
+      signal && typeof signal === 'object'
+        ? {
+            ...signal,
+            components:
+              signal.components && typeof signal.components === 'object'
+                ? { ...signal.components }
+                : {},
+          }
+        : signal;
+
+    try {
+      attachLayeredAnalysisToSignal({
+        rawSignal: hydratedSignal,
+        broker,
+        symbol,
+        eaBridgeService: this,
+        quoteMaxAgeMs: 30 * 1000,
+        now: Date.now(),
+      });
+    } catch (_error) {
+      // best-effort
+    }
+
+    const layers = Array.isArray(hydratedSignal?.components?.layeredAnalysis?.layers)
+      ? hydratedSignal.components.layeredAnalysis.layers
+      : [];
+    const layer16 = layers.find((layer) => String(layer?.key || '') === 'L16') || null;
+    const layer17 = layers.find((layer) => String(layer?.key || '') === 'L17') || null;
+    const layer18 = layers.find((layer) => String(layer?.key || '') === 'L18') || null;
+
+    const entryKey = `${broker}:${symbol}:${direction}`;
+    const cachedEntry =
+      position?.entryContext || position?.signal?.components?.entryContext || null;
+    const entryContext = cachedEntry || this.entryContextBySymbol.get(entryKey) || null;
+    const currentContext = hydratedSignal?.components?.entryContext || null;
+
+    const drift = {
+      marketPhase:
+        entryContext?.marketPhase && currentContext?.marketPhase
+          ? entryContext.marketPhase !== currentContext.marketPhase
+          : null,
+      volatilityState:
+        entryContext?.volatilityState && currentContext?.volatilityState
+          ? entryContext.volatilityState !== currentContext.volatilityState
+          : null,
+      session:
+        entryContext?.session && currentContext?.session
+          ? entryContext.session !== currentContext.session
+          : null,
+      spreadPoints:
+        entryContext?.spreadPoints != null && currentContext?.spreadPoints != null
+          ? Number(currentContext.spreadPoints) - Number(entryContext.spreadPoints)
+          : null,
+      newsImpact:
+        entryContext?.newsImpact != null && currentContext?.newsImpact != null
+          ? Number(currentContext.newsImpact) - Number(entryContext.newsImpact)
+          : null,
+    };
+
+    const confluenceScore =
+      Number(layer17?.metrics?.confluenceWeighting?.weightedScore ?? layer17?.confidence) || null;
+    const decisionState = String(layer18?.metrics?.decision?.state || '').toUpperCase();
+
+    const envMinConfluence = Number(process.env.EA_SIGNAL_LAYERS18_MIN_CONFLUENCE);
+    const minConfluence = Number.isFinite(envMinConfluence) ? Math.max(0, envMinConfluence) : 30;
+    let decision = 'HOLD';
+    if (decisionState && decisionState !== 'ENTER') {
+      decision = 'EXIT';
+    } else if (layer16?.metrics?.isTradeValid === false) {
+      decision = 'EXIT';
+    } else if (confluenceScore != null && confluenceScore < minConfluence) {
+      decision = 'REDUCE';
+    } else if (
+      (currentContext?.newsImpact != null && Number(currentContext.newsImpact) >= 4) ||
+      (currentContext?.spreadPoints != null && Number(currentContext.spreadPoints) >= 60)
+    ) {
+      decision = 'REDUCE';
+    }
+
+    return {
+      symbol,
+      direction,
+      decision,
+      layersStatus: {
+        layer16: layer16?.metrics || null,
+        layer17: layer17?.metrics || null,
+        layer18: layer18?.metrics || null,
+      },
+      currentContext,
+      drift,
     };
   }
 
@@ -3422,6 +3556,14 @@ class EaBridgeService {
 
       const adjustedSignal = this.adjustSignalWithLearning(signal);
       const managementPlan = this.buildTradeManagementPlan(adjustedSignal);
+      const cacheSignalEntryContext = () => {
+        if (!adjustedSignal?.components?.entryContext) {
+          return;
+        }
+        const dirKey = String(adjustedSignal.direction || '').toUpperCase();
+        const cacheKey = `${broker || 'ea'}:${pair}:${dirKey}`;
+        this.entryContextBySymbol.set(cacheKey, adjustedSignal.components.entryContext);
+      };
 
       const assetClass =
         this.tradingEngine && typeof this.tradingEngine.classifyAssetClass === 'function'
@@ -3439,12 +3581,15 @@ class EaBridgeService {
           layeredAnalysis: adjustedSignal?.components?.layeredAnalysis,
           minConfluence: layers18MinConfluence,
           decisionStateFallback: decisionState,
+          allowStrongOverride: true,
+          signal: adjustedSignal,
         });
         layersStatus = computedLayersStatus;
 
         if (!computedLayersStatus.ok) {
           // Keep WAIT_MONITOR visible (for UI/EA logging) but never executable.
           if (decisionState === 'WAIT_MONITOR') {
+            cacheSignalEntryContext();
             return {
               success: true,
               message: 'Signal is monitoring (not executable yet)',
@@ -3474,9 +3619,12 @@ class EaBridgeService {
               },
             };
           }
+          cacheSignalEntryContext();
           return {
             success: true,
-            message: 'Signal missing/failed 18-layer readiness',
+            message: computedLayersStatus?.strongOverride?.ok
+              ? 'Signal passed strong override (layers18 bypass)'
+              : 'Signal missing/failed 18-layer readiness',
             signal: adjustedSignal,
             snapshotPending,
             shouldExecute: false,
@@ -3502,26 +3650,6 @@ class EaBridgeService {
         }
       }
 
-      if (decisionState && !isEnter) {
-        return {
-          success: true,
-          message: 'Signal is blocked',
-          signal: adjustedSignal,
-          snapshotPending,
-          shouldExecute: false,
-          execution: {
-            shouldExecute: false,
-            riskMultiplier: this.riskAdjustmentFactor,
-            stopLossMultiplier: this.stopLossAdjustmentFactor,
-            managementPlan,
-            sessionGuard,
-            liquidityGuard,
-            newsGuard,
-            dataQualityGuard,
-          },
-        };
-      }
-
       if (direction !== 'BUY' && direction !== 'SELL') {
         return {
           success: false,
@@ -3539,21 +3667,22 @@ class EaBridgeService {
       });
       const tradingEnabled = enablement.enabled;
       const passesStrengthFloor = confidence >= minConfidence && strength >= minStrength;
-      
+
       // Use intelligent trade manager for final evaluation
       let intelligentEvaluation = null;
       let intelligentApproved = false;
       let intelligentReasons = [];
-      
+
       if (passesStrengthFloor && isEnter && tradingEnabled) {
         try {
           // Update market phase and volatility from signal
           if (adjustedSignal?.components?.layeredAnalysis?.layers) {
             const layers = adjustedSignal.components.layeredAnalysis.layers;
-            
+
             // Extract market phase - look for specific layer ID first, then name
-            const phaseLayer = layers.find(l => l.id === 'L12') || 
-                              layers.find(l => l.name === 'marketPhase' || l.name === 'phase');
+            const phaseLayer =
+              layers.find((l) => l.id === 'L12') ||
+              layers.find((l) => l.name === 'marketPhase' || l.name === 'phase');
             if (phaseLayer?.phase) {
               this.intelligentTradeManager.updateMarketPhase(
                 pair,
@@ -3561,10 +3690,10 @@ class EaBridgeService {
                 phaseLayer.confidence || 50
               );
             }
-            
+
             // Extract volatility - look for specific layer ID first, then name
-            const volLayer = layers.find(l => l.id === 'L05') ||
-                            layers.find(l => l.name === 'volatility');
+            const volLayer =
+              layers.find((l) => l.id === 'L05') || layers.find((l) => l.name === 'volatility');
             if (volLayer?.state || volLayer?.volatility) {
               this.intelligentTradeManager.updateVolatility(
                 pair,
@@ -3573,18 +3702,18 @@ class EaBridgeService {
               );
             }
           }
-          
+
           // Perform intelligent evaluation
           intelligentEvaluation = this.intelligentTradeManager.evaluateTradeEntry({
             signal: adjustedSignal,
             broker,
             symbol: pair,
-            marketData: { quote, snapshot }
+            marketData: { quote, snapshot },
           });
-          
+
           intelligentApproved = intelligentEvaluation.shouldOpen;
           intelligentReasons = intelligentEvaluation.reasons || [];
-          
+
           // Store quality score for monitoring
           if (intelligentEvaluation.qualityScore) {
             this.intelligentTradeManager.tradeQualityScores.set(
@@ -3592,7 +3721,6 @@ class EaBridgeService {
               intelligentEvaluation.qualityScore
             );
           }
-          
         } catch (error) {
           this.logger.warn({ err: error, symbol: pair }, 'Intelligent trade evaluation failed');
           // Safe fallback: block trades when intelligent evaluation fails
@@ -3604,109 +3732,81 @@ class EaBridgeService {
       } else {
         intelligentApproved = false;
       }
-      
-      const shouldExecuteNow = tradingEnabled && passesStrengthFloor && isEnter && intelligentApproved;
+
+      const shouldExecuteNow =
+        tradingEnabled && passesStrengthFloor && isEnter && intelligentApproved;
+
+      const baseExecution = {
+        shouldExecute: false,
+        riskMultiplier: this.riskAdjustmentFactor,
+        stopLossMultiplier: this.stopLossAdjustmentFactor,
+        managementPlan,
+        sessionGuard,
+        liquidityGuard,
+        newsGuard,
+        dataQualityGuard,
+        intelligentEvaluation,
+        gates: {
+          tradingEnabled,
+          tradingEnableReason: enablement.reason,
+          decisionState,
+          isEnter,
+          minConfidence,
+          minStrength,
+          confidence,
+          strength,
+          passesStrengthFloor,
+          intelligentApproved,
+          intelligentReasons,
+          layersStatus,
+        },
+      };
+
+      if (decisionState && !isEnter) {
+        cacheSignalEntryContext();
+        return {
+          success: true,
+          message: 'Signal is blocked',
+          signal: adjustedSignal,
+          snapshotPending,
+          shouldExecute: false,
+          execution: baseExecution,
+        };
+      }
 
       if (!passesStrengthFloor) {
+        cacheSignalEntryContext();
         return {
           success: true,
           message: 'Signal is not strong enough',
           signal: adjustedSignal,
           snapshotPending,
           shouldExecute: false,
-          execution: {
-            shouldExecute: false,
-            riskMultiplier: this.riskAdjustmentFactor,
-            stopLossMultiplier: this.stopLossAdjustmentFactor,
-            managementPlan,
-            sessionGuard,
-            liquidityGuard,
-            newsGuard,
-            dataQualityGuard,
-            intelligentEvaluation,
-            gates: {
-              tradingEnabled,
-              tradingEnableReason: enablement.reason,
-              decisionState,
-              isEnter,
-              minConfidence,
-              minStrength,
-              confidence,
-              strength,
-              passesStrengthFloor,
-              intelligentApproved,
-              intelligentReasons,
-              layersStatus,
-            },
-          },
+          execution: baseExecution,
         };
       }
-      
-      // Add intelligent blocking if evaluation failed
+
       if (!intelligentApproved && intelligentEvaluation) {
+        cacheSignalEntryContext();
         return {
           success: true,
           message: `Intelligent filter blocked: ${intelligentEvaluation.blocked || 'Quality threshold not met'}`,
           signal: adjustedSignal,
           snapshotPending,
           shouldExecute: false,
-          execution: {
-            shouldExecute: false,
-            riskMultiplier: this.riskAdjustmentFactor,
-            stopLossMultiplier: this.stopLossAdjustmentFactor,
-            managementPlan,
-            sessionGuard,
-            liquidityGuard,
-            newsGuard,
-            dataQualityGuard,
-            intelligentEvaluation,
-            gates: {
-              tradingEnabled,
-              tradingEnableReason: enablement.reason,
-              decisionState,
-              isEnter,
-              minConfidence,
-              minStrength,
-              confidence,
-              strength,
-              passesStrengthFloor,
-              intelligentApproved,
-              intelligentReasons,
-              layersStatus,
-            },
-          },
+          execution: baseExecution,
         };
       }
 
+      cacheSignalEntryContext();
       return {
         success: true,
         signal: adjustedSignal,
         snapshotPending,
         shouldExecute: shouldExecuteNow,
         execution: {
+          ...baseExecution,
           shouldExecute: shouldExecuteNow,
-          riskMultiplier: this.riskAdjustmentFactor,
-          stopLossMultiplier: this.stopLossAdjustmentFactor,
-          managementPlan,
-          sessionGuard,
-          liquidityGuard,
-          newsGuard,
-          dataQualityGuard,
-          intelligentEvaluation,
-          gates: {
-            tradingEnabled,
-            tradingEnableReason: enablement.reason,
-            decisionState,
-            isEnter,
-            minConfidence,
-            minStrength,
-            confidence,
-            strength,
-            passesStrengthFloor,
-            intelligentApproved,
-            intelligentReasons,
-            layersStatus,
-          },
         },
       };
     } catch (error) {
